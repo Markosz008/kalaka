@@ -2,6 +2,8 @@ import React from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function FavorCard({
+  kudosCount = 0,
+  onInspectUser,
   favor,
   currentUserId,
   userFavorHearts,
@@ -65,15 +67,37 @@ export default function FavorCard({
       )}
 
       <div className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-terracotta text-white font-bold text-xs grid place-items-center shrink-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onInspectUser && favor.user_id) {
+              onInspectUser({
+                userId: favor.user_id,
+                name: favor.author_name,
+                zone: favor.author_zone
+              });
+            }
+          }}
+          className="flex items-center gap-2 min-w-0 text-left group cursor-pointer"
+        >
+          <div className="w-8 h-8 rounded-full bg-pilis group-hover:bg-pilis-light text-white font-bold text-xs grid place-items-center shrink-0 transition">
             {favor.author_name?.[0] || 'K'}
           </div>
-          <div>
-            <div className="font-bold text-xs">{favor.author_name}</div>
-            <div className="text-[11px] text-[#5C6B62]">
-              {favor.author_favor_hearts || 0} kaláka segítés
+          <div className="min-w-0">
+            <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
+              <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">
+                {favor.author_name} • {favor.author_zone}
+              </span>
+              <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                ✓ {kudosCount} ajánlás
+              </span>
             </div>
+            <div className="text-[11px] text-[#5C6B62]">
+              Adatlap és visszajelzések ›
+            </div>
+          </div>
+        </button>
           </div>
         </div>
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function RideCard({
+  kudosCount = 0,
+  onInspectUser,
   ride,
   currentUserId,
   onStartAgreement,
@@ -97,18 +99,37 @@ export default function RideCard({
       )}
 
       <div className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-pilis text-white font-bold text-xs grid place-items-center shrink-0">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onInspectUser && ride.user_id) {
+              onInspectUser({
+                userId: ride.user_id,
+                name: ride.author_name,
+                zone: ride.author_zone
+              });
+            }
+          }}
+          className="flex items-center gap-2 min-w-0 text-left group cursor-pointer"
+        >
+          <div className="w-8 h-8 rounded-full bg-pilis group-hover:bg-pilis-light text-white font-bold text-xs grid place-items-center shrink-0 transition">
             {ride.author_name?.[0] || 'S'}
           </div>
           <div className="min-w-0">
-            <div className="font-bold text-xs text-[#18261F] truncate">
-              {ride.author_name}
+            <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
+              <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">
+                {ride.author_name} • {ride.author_zone}
+              </span>
+              <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
+                ✓ {kudosCount} ajánlás
+              </span>
             </div>
-            {activeBadge && (
-              <div className="text-[11px] text-[#5C6B62] truncate">
-                {activeBadge}
-              </div>
+            <div className="text-[11px] text-[#5C6B62]">
+              Adatlap és visszajelzések ›
+            </div>
+          </div>
+        </button>
             )}
           </div>
         </div>
