@@ -1486,6 +1486,8 @@ export default function App() {
                 <RideCard
                   key={ride.id}
                   ride={ride}
+                  kudosCount={kudosCountByUser[ride.user_id] || 0}
+                  onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}
                   onStartAgreement={handleStartRideAgreement}
                   onShowOnMap={(r) => {

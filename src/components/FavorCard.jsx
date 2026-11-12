@@ -98,8 +98,6 @@ export default function FavorCard({
             </div>
           </div>
         </button>
-          </div>
-        </div>
 
         {isOwner ? (
           <div className="flex items-center gap-1.5 shrink-0">

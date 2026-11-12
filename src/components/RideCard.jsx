@@ -130,9 +130,6 @@ export default function RideCard({
             </div>
           </div>
         </button>
-            )}
-          </div>
-        </div>
 
         {isOwner ? (
           <div className="flex items-center gap-1.5 shrink-0">
