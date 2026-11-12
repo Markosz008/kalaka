@@ -180,6 +180,20 @@ function resolveAutoExpiresAt(hhmm, isRecurring = false, fallbackHours = 12) {
   return new Date(Math.max(byTarget, byHours)).toISOString();
 }
 
+function formatDayLabelFromIso(isoStr, isRec = false, schedLabel = null) {
+  if (isRec) return schedLabel || 'Munkanapokon (H–P)';
+  if (!isoStr) return 'Ma';
+  const dt = new Date(isoStr);
+  if (isNaN(dt.getTime())) return 'Ma';
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
+  const diffDays = Math.round((targetStart - todayStart) / 86400000);
+  if (diffDays <= 0) return 'Ma';
+  if (diffDays === 1) return 'Holnap';
+  return dt.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -331,7 +345,8 @@ export default function App() {
           is_recurring: isRec,
           schedule_text: scheduleLabel,
           depart_time: timeStr,
-          date_label: 'Ma',
+          time_label: timeStr,
+          date_label: formatDayLabelFromIso(r.departure_at, isRec, scheduleLabel),
           stops: []
         };
       });
@@ -647,7 +662,7 @@ export default function App() {
       if (dep < new Date()) dep.setDate(dep.getDate() + 1);
 
       const validMinutes = Number(inlineValidMins) || 720;
-      const exp = new Date(Date.now() + validMinutes * 60 * 1000);
+      const exp = new Date(Math.max(Date.now() + validMinutes * 60 * 1000, dep.getTime() + 2 * 3600000));
 
       const isRec = inlineComposerMode === 'recurring';
       const dbKind = inlineComposerMode === 'ask' ? 'ask' : 'offer';
