@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.leaflet-container {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  z-index: 10;
+}
