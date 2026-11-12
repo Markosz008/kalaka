@@ -517,8 +517,8 @@ export default function AgreementChatModal({
     : ['Ott leszek a megállóban.', '2 perc és érkezem.', 'Köszönöm a segítséget!'];
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-limestone w-full max-w-lg h-[92vh] sm:h-[660px] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-[#DFD9CE] pb-[env(safe-area-inset-bottom)]">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-limestone w-full max-w-lg h-[100dvh] sm:h-[660px] rounded-none sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border-0 sm:border sm:border-[#DFD9CE] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {/* Fejléc */}
         <div className="bg-white px-4 py-3 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">

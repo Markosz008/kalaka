@@ -44,6 +44,55 @@ function buildIntermediateStops(baseTime, originText = '', destText = '') {
   ];
 }
 
+function getReadTimestamps(userId) {
+  if (!userId) return {};
+  try {
+    return JSON.parse(localStorage.getItem(`kalaka_read_${userId}`) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function markAgreementReadStorage(userId, agreementId) {
+  if (!userId || !agreementId) return;
+  try {
+    const map = getReadTimestamps(userId);
+    map[agreementId] = new Date().toISOString();
+    localStorage.setItem(`kalaka_read_${userId}`, JSON.stringify(map));
+  } catch {}
+}
+
+function getHiddenAgreements(userId) {
+  if (!userId) return [];
+  try {
+    return JSON.parse(localStorage.getItem(`kalaka_hidden_${userId}`) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function playSoftNotificationTone() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([120, 60, 120]);
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14);
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+  } catch {}
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -87,6 +136,9 @@ export default function App() {
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
+  const [incomingToast, setIncomingToast] = useState(null);
+  const [readVersion, setReadVersion] = useState(0);
+  const [hiddenAgreementIds, setHiddenAgreementIds] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -144,7 +196,10 @@ export default function App() {
         .single();
       if (fixed) data = fixed;
     }
-    if (data) setProfile(data);
+    if (data) {
+      setProfile(data);
+      setHiddenAgreementIds(getHiddenAgreements(data.id));
+    }
   }, []);
 
   const fetchAllLiveData = useCallback(async (currentUserId) => {
@@ -265,25 +320,57 @@ export default function App() {
         .order('created_at', { ascending: false });
 
       if (agrRows) {
-        setMyAgreements(
-          agrRows.map((a) => {
-            const isReq = a.requester_id === currentUserId;
-            return {
-              ...a,
-              partner_name: a.pro
-                ? a.pro.business_name
-                : isReq
-                ? a.helper?.display_name || 'Szomszéd'
-                : a.requester?.display_name || 'Szomszéd',
-              post_owner_id: a.ride?.user_id || a.helper_id,
-              title: a.ride
-                ? `${a.ride.origin_text} → ${a.ride.dest_text}`
-                : a.pro
-                ? a.pro.profession_name || 'Szakmai megkeresés'
-                : a.favor?.title || 'Egyeztetés'
-            };
-          })
+        const agrIds = agrRows.map((x) => x.id);
+        let latestMsgByAgr = {};
+        if (agrIds.length > 0) {
+          const { data: recentMsgs } = await supabase
+            .from('messages')
+            .select('agreement_id, sender_id, body, created_at')
+            .in('agreement_id', agrIds)
+            .order('created_at', { ascending: false })
+            .limit(80);
+          (recentMsgs || []).forEach((m) => {
+            if (!latestMsgByAgr[m.agreement_id]) {
+              latestMsgByAgr[m.agreement_id] = m;
+            }
+          });
+        }
+
+        const readMap = getReadTimestamps(currentUserId);
+        const mappedAgrs = agrRows.map((a) => {
+          const isReq = a.requester_id === currentUserId;
+          const lastMsg = latestMsgByAgr[a.id] || null;
+          const lastActivityAt = lastMsg?.created_at || a.created_at;
+          const lastReadAt = readMap[a.id];
+          const isUnread = Boolean(
+            lastMsg &&
+            lastMsg.sender_id !== currentUserId &&
+            (!lastReadAt || new Date(lastMsg.created_at) > new Date(lastReadAt))
+          );
+
+          return {
+            ...a,
+            partner_name: a.pro
+              ? a.pro.business_name
+              : isReq
+              ? a.helper?.display_name || 'Szomszéd'
+              : a.requester?.display_name || 'Szomszéd',
+            post_owner_id: a.ride?.user_id || a.helper_id,
+            title: a.ride
+              ? `${a.ride.origin_text} → ${a.ride.dest_text}`
+              : a.pro
+              ? a.pro.profession_name || 'Szakmai megkeresés'
+              : a.favor?.title || 'Egyeztetés',
+            last_message_body: lastMsg?.body || '',
+            last_activity_at: lastActivityAt,
+            has_unread: isUnread
+          };
+        });
+
+        mappedAgrs.sort(
+          (x, y) => new Date(y.last_activity_at) - new Date(x.last_activity_at)
         );
+        setMyAgreements(mappedAgrs);
       }
     }
   }, []);
@@ -331,6 +418,26 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, () =>
         fetchAllLiveData(session?.user?.id)
       )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const uid = session?.user?.id;
+        const msg = payload.new;
+        if (!uid || !msg) return;
+        fetchAllLiveData(uid);
+        if (msg.sender_id !== uid) {
+          // Ha el volt rejtve a beszélgetés, újra megjelenítjük
+          setHiddenAgreementIds((prev) => {
+            if (!prev.includes(msg.agreement_id)) return prev;
+            const next = prev.filter((id) => id !== msg.agreement_id);
+            localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
+            return next;
+          });
+          playSoftNotificationTone();
+          setIncomingToast({
+            agreement_id: msg.agreement_id,
+            body: msg.body
+          });
+        }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'road_alerts' }, () =>
         fetchAllLiveData(session?.user?.id)
       )
@@ -834,8 +941,72 @@ export default function App() {
 
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
 
+  const visibleAgreements = myAgreements.filter(
+    (a) => !hiddenAgreementIds.includes(a.id) || a.has_unread
+  );
+  const unreadCount = visibleAgreements.filter((a) => a.has_unread).length;
+
+  const handleOpenAgreement = (agr) => {
+    if (session?.user?.id && agr?.id) {
+      markAgreementReadStorage(session.user.id, agr.id);
+      setReadVersion((v) => v + 1);
+      setMyAgreements((prev) =>
+        prev.map((item) =>
+          item.id === agr.id ? { ...item, has_unread: false } : item
+        )
+      );
+    }
+    setIncomingToast(null);
+    setActiveAgreement(agr);
+  };
+
+  const handleHideCompletedAgreement = (e, agrId) => {
+    e.stopPropagation();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const next = Array.from(new Set([...hiddenAgreementIds, agrId]));
+    setHiddenAgreementIds(next);
+    localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
+  };
+
   return (
     <div className="w-full max-w-xl mx-auto min-h-screen pb-28 overflow-x-hidden">
+      {/* Felugró értesítés új bejövő üzenetkor (ha a chat nincs megnyitva) */}
+      {incomingToast && activeAgreement?.id !== incomingToast.agreement_id && (
+        <div
+          onClick={() => {
+            const target = myAgreements.find((a) => a.id === incomingToast.agreement_id);
+            if (target) handleOpenAgreement(target);
+            else {
+              setActiveTab('messages');
+              setIncomingToast(null);
+            }
+          }}
+          className="fixed top-3 left-3 right-3 max-w-md mx-auto z-50 bg-[#18261F] text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-400/40 flex items-center justify-between gap-3 cursor-pointer"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-terracotta animate-ping shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold text-emerald-300">
+                Új üzenet érkezett
+              </div>
+              <div className="text-xs font-medium truncate">
+                {incomingToast.body}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIncomingToast(null);
+            }}
+            className="text-xs font-bold text-white/70 hover:text-white px-1.5 shrink-0"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <HeaderRoadBar
         session={session}
         profile={profile}
@@ -1165,28 +1336,80 @@ export default function App() {
         {activeTab === 'messages' && (
           <div className="space-y-2.5">
             <h2 className="font-display font-extrabold text-lg">
-              Beszélgetéseim ({myAgreements.length})
+              Beszélgetéseim ({visibleAgreements.length})
             </h2>
-            {myAgreements.length === 0 ? (
+            {visibleAgreements.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 text-center text-xs text-[#5C6B62] border border-[#DFD9CE]">
                 Még nincs aktív beszélgetésed.
               </div>
             ) : (
-              myAgreements.map((agr) => (
-                <div
-                  key={agr.id}
-                  onClick={() => setActiveAgreement(agr)}
-                  className="bg-white rounded-2xl p-4 border border-[#DFD9CE] shadow-sm flex items-center justify-between gap-3 cursor-pointer hover:border-pilis transition"
-                >
-                  <div className="min-w-0">
-                    <div className="font-bold text-sm truncate">{agr.partner_name}</div>
-                    <div className="text-xs text-[#5C6B62] truncate">{agr.title}</div>
+              visibleAgreements.map((agr) => {
+                const isDone = agr.status === 'completed' || agr.status === 'cancelled';
+                return (
+                  <div
+                    key={agr.id}
+                    onClick={() => handleOpenAgreement(agr)}
+                    className={`bg-white rounded-2xl p-3.5 sm:p-4 border shadow-sm flex items-center justify-between gap-3 cursor-pointer transition ${
+                      agr.has_unread
+                        ? 'border-terracotta ring-1 ring-terracotta/30'
+                        : 'border-[#DFD9CE] hover:border-pilis'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      {agr.has_unread && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-terracotta mt-1.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-[#18261F] truncate">
+                            {agr.partner_name}
+                          </span>
+                          {isDone && (
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full shrink-0">
+                              Lezárva
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-[#5C6B62] truncate">
+                          {agr.title}
+                        </div>
+                        {agr.last_message_body && (
+                          <div
+                            className={`text-xs mt-1 truncate ${
+                              agr.has_unread
+                                ? 'font-bold text-[#18261F]'
+                                : 'text-[#5C6B62]'
+                            }`}
+                          >
+                            {agr.last_message_body}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isDone && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleHideCompletedAgreement(e, agr.id)}
+                          className="text-[11px] font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1.5 rounded-xl border border-[#DFD9CE]"
+                        >
+                          Elrejtés
+                        </button>
+                      )}
+                      <span
+                        className={`text-xs font-bold px-3 py-1.5 rounded-full ${
+                          agr.has_unread
+                            ? 'bg-terracotta text-white'
+                            : 'bg-pilis-soft text-pilis'
+                        }`}
+                      >
+                        {agr.has_unread ? 'Új üzenet' : 'Megnyitás ›'}
+                      </span>
+                    </div>
                   </div>
-                  <span className="shrink-0 text-xs font-bold bg-pilis-soft text-pilis px-3 py-1 rounded-full">
-                    Megnyitás ›
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -1248,13 +1471,18 @@ export default function App() {
 
           <button
             onClick={() => setActiveTab('messages')}
-            className={`py-3 text-xs font-bold border-t-2 transition truncate px-1 ${
+            className={`relative py-3 text-xs font-bold border-t-2 transition px-1 flex items-center justify-center gap-1 ${
               activeTab === 'messages'
                 ? 'border-pilis text-pilis'
                 : 'border-transparent text-[#5C6B62]'
             }`}
           >
-            Üzenet{myAgreements.length ? ` (${myAgreements.length})` : ''}
+            <span>Üzenet</span>
+            {unreadCount > 0 && (
+              <span className="bg-terracotta text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full leading-tight">
+                {unreadCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -1535,7 +1763,17 @@ export default function App() {
       <AgreementChatModal
         agreement={activeAgreement}
         currentUser={profile}
-        onClose={() => setActiveAgreement(null)}
+        onClose={() => {
+          if (session?.user?.id && activeAgreement?.id) {
+            markAgreementReadStorage(session.user.id, activeAgreement.id);
+            setMyAgreements((prev) =>
+              prev.map((x) =>
+                x.id === activeAgreement.id ? { ...x, has_unread: false } : x
+              )
+            );
+          }
+          setActiveAgreement(null);
+        }}
         onAgreementUpdated={(updatedAgr) => {
           setActiveAgreement((prev) => (prev ? { ...prev, ...updatedAgr } : null));
           fetchAllLiveData(session?.user?.id);
