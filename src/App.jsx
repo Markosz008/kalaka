@@ -1299,7 +1299,15 @@ export default function App() {
         profile={profile}
         roadAlerts={roadAlerts}
         onOpenRoadModal={() => setShowRoadModal(true)}
-        onOpenAuthModal={() => setShowAuthModal(true)}
+        onOpenAuthModal={() =>
+          session?.user
+            ? setInspectedUser({
+                userId: session.user.id,
+                name: profile?.display_name,
+                zone: profile?.zone
+              })
+            : setShowAuthModal(true)
+        }
       />
 
       {activeTab === 'rides' && (
@@ -2046,6 +2054,20 @@ export default function App() {
             </button>
           </form>
         </div>
+      )}
+
+      {inspectedUser && (
+        <UserProfileModal
+          userId={inspectedUser.userId}
+          initialName={inspectedUser.name}
+          initialZone={inspectedUser.zone}
+          currentUser={session?.user}
+          onClose={() => setInspectedUser(null)}
+          onProfileUpdated={(updatedProf) => {
+            setProfile(updatedProf);
+            fetchAllLiveData(session?.user?.id);
+          }}
+        />
       )}
 
       <AuthModal
