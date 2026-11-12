@@ -118,7 +118,7 @@ export async function computeStopsAlongRoute(ride) {
   const route = await fetchDrivingRoute(startCoord, endCoord);
   if (!route || !route.coords || route.coords.length < 2) return [];
 
-  const maxCorridorMeters = route.isFallback ? 300 : 185;
+  const maxCorridorMeters = route.isFallback ? 350 : 260;
   const candidates = [];
 
   for (const place of LOCAL_PLACES) {

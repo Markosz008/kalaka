@@ -317,6 +317,17 @@ export default function App() {
     if (!supabase) return;
     const nowIso = new Date().toISOString();
 
+    const { data: profRows } = await supabase
+      .from('profiles')
+      .select('id, ride_hearts, favor_hearts');
+    if (profRows) {
+      const m = {};
+      profRows.forEach((p) => {
+        m[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
+      });
+      setKudosCountByUser(m);
+    }
+
     const { data: rideRows } = await supabase
       .from('rides')
       .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone)')
@@ -337,9 +348,8 @@ export default function App() {
         return {
           ...r,
           note: cleanNote,
-          author_name: r.author?.display_name
-            ? `${r.author.display_name}${r.author.zone ? ' • ' + r.author.zone : ''}`
-            : 'Szomszéd',
+          author_name: r.author?.display_name || 'Szomszéd',
+          author_zone: r.author?.zone || '',
           author_ride_hearts: r.author?.ride_hearts || 0,
           author_favor_hearts: r.author?.favor_hearts || 0,
           is_recurring: isRec,
@@ -390,11 +400,30 @@ export default function App() {
       const mappedFavors = favorRows.map((f) => ({
         ...f,
         author_name: f.author?.display_name || 'Szomszéd',
+        author_zone: f.author?.zone || '',
         author_favor_hearts: f.author?.favor_hearts || 0,
         invited_by_name: 'Helyi tag'
       }));
       setFavors(mappedFavors);
     }
+
+    // Valós ajánlásszámok (kudosCountByUser) összegzése a kártyákhoz
+    const [{ data: allProfs }, { data: allKudosRows }] = await Promise.all([
+      supabase.from('profiles').select('id, ride_hearts, favor_hearts'),
+      supabase.from('kudos').select('receiver_id')
+    ]);
+    const kMap = {};
+    (allProfs || []).forEach((p) => {
+      kMap[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
+    });
+    const rawCounts = {};
+    (allKudosRows || []).forEach((kr) => {
+      if (kr.receiver_id) rawCounts[kr.receiver_id] = (rawCounts[kr.receiver_id] || 0) + 1;
+    });
+    Object.keys(rawCounts).forEach((uid) => {
+      kMap[uid] = Math.max(kMap[uid] || 0, rawCounts[uid]);
+    });
+    setKudosCountByUser(kMap);
 
     const { data: proRows } = await supabase
       .from('local_pros')
@@ -808,6 +837,7 @@ export default function App() {
       const [hh, mm] = (newTime || '05:50').split(':').map(Number);
       const dep = new Date();
       dep.setHours(hh || 5, mm || 50, 0, 0);
+      if (dep < new Date()) dep.setDate(dep.getDate() + 1);
 
       const isRec = newKind === 'recurring';
       const actualKind = isRec ? 'offer' : newKind;
@@ -896,9 +926,53 @@ export default function App() {
       return;
     }
 
+    const existingLocal = myAgreements.find((a) => a.ride_id === ride.id);
+    if (existingLocal) {
+      handleOpenAgreement(existingLocal);
+      return;
+    }
+
     const requesterId = ride.kind === 'offer' ? session.user.id : ride.user_id;
     const helperId = ride.kind === 'offer' ? ride.user_id : session.user.id;
+
+    const { data: existingDb } = await supabase
+      .from('agreements')
+      .select('*')
+      .eq('ride_id', ride.id)
+      .eq('requester_id', requesterId)
+      .eq('helper_id', helperId)
+      .maybeSingle();
+
+    if (existingDb) {
+      handleOpenAgreement({
+        ...existingDb,
+        post_owner_id: ride.user_id,
+        car_info: ride.car_info || null,
+        partner_name: ride.author_name,
+        title: `${ride.origin_text} → ${ride.dest_text}`
+      });
+      return;
+    }
     const stopLabel = selectedStop ? `${selectedStop.time} ${selectedStop.name}` : null;
+
+    const { data: existingAgr } = await supabase
+      .from('agreements')
+      .select('*')
+      .eq('ride_id', ride.id)
+      .eq('requester_id', requesterId)
+      .eq('helper_id', helperId)
+      .maybeSingle();
+
+    if (existingAgr) {
+      setActiveAgreement({
+        ...existingAgr,
+        post_owner_id: ride.user_id,
+        car_info: ride.car_info || null,
+        partner_name: ride.author_name,
+        title: `${ride.origin_text} → ${ride.dest_text}`
+      });
+      return;
+    }
 
     const { data: createdAgr, error } = await supabase
       .from('agreements')
@@ -941,12 +1015,38 @@ export default function App() {
       return;
     }
 
+    const existingLocal = myAgreements.find((a) => a.favor_id === favor.id);
+    if (existingLocal) {
+      handleOpenAgreement(existingLocal);
+      return;
+    }
+
+    const requesterId = session.user.id;
+    const helperId = favor.user_id;
+
+    const { data: existingAgr } = await supabase
+      .from('agreements')
+      .select('*')
+      .eq('favor_id', favor.id)
+      .eq('requester_id', requesterId)
+      .eq('helper_id', helperId)
+      .maybeSingle();
+
+    if (existingAgr) {
+      setActiveAgreement({
+        ...existingAgr,
+        partner_name: favor.author_name,
+        title: favor.title
+      });
+      return;
+    }
+
     const { data: createdAgr, error } = await supabase
       .from('agreements')
       .insert({
         favor_id: favor.id,
-        requester_id: session.user.id,
-        helper_id: favor.user_id,
+        requester_id: requesterId,
+        helper_id: helperId,
         status: 'chatting'
       })
       .select('*')
@@ -1551,19 +1651,7 @@ export default function App() {
                       </select>
                     )}
 
-                    {inlineComposerMode === 'recurring' && (
-                      <select
-                        value={inlineValidMins}
-                        onChange={(e) => setInlineValidMins(Number(e.target.value))}
-                        className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold text-pilis"
-                      >
-                        {VALIDITY_OPTIONS.map((opt) => (
-                          <option key={opt.minutes} value={opt.minutes}>
-                            Érvényes: {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    
                   </div>
 
                   <div className="flex gap-2">
@@ -1606,6 +1694,7 @@ export default function App() {
                 <RideCard
                   key={ride.id}
                   ride={ride}
+                  hasExistingAgreement={myAgreements.some((a) => a.ride_id === ride.id)}
                   kudosCount={kudosCountByUser[ride.user_id] || 0}
                   onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}
@@ -1645,6 +1734,7 @@ export default function App() {
                 <FavorCard
                   key={fav.id}
                   favor={fav}
+                  hasExistingAgreement={myAgreements.some((a) => a.favor_id === fav.id)}
                   kudosCount={kudosCountByUser[fav.user_id] || 0}
                   onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}

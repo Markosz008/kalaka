@@ -455,6 +455,10 @@ export default function ProsDirectoryView({
           comment: cleanComment || null
         });
         if (error) throw error;
+        await supabase
+          .from('local_pros')
+          .update({ endorsement_count: (pro.endorsement_count || 0) + 1 })
+          .eq('id', pro.id);
       }
 
       setEndorsedProIds((prev) => new Set([...prev, pro.id]));

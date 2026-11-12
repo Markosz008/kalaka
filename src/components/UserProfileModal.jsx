@@ -13,6 +13,7 @@ export default function UserProfileModal({
   const [profileData, setProfileData] = useState(null);
   const [kudosList, setKudosList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   // Saját profil szerkesztése
   const isOwnProfile = Boolean(currentUser?.id && userId === currentUser.id);
@@ -29,18 +30,47 @@ export default function UserProfileModal({
 
     (async () => {
       setLoading(true);
-      const [{ data: prof }, { data: kudosRows }] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle(),
-        supabase
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      // Kudos lekérdezés FK-fallbackkel, hogy soha ne dobjon 400-as hibát
+      let resolvedKudos = [];
+      const { data: joinedKudos, error: joinErr } = await supabase
+        .from('kudos')
+        .select('id, kudos_type, created_at, giver_id, giver:profiles!kudos_giver_id_fkey(display_name, zone)')
+        .eq('receiver_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!joinErr && joinedKudos) {
+        resolvedKudos = joinedKudos;
+      } else {
+        const { data: rawKudos } = await supabase
           .from('kudos')
-          .select('id, kudos_type, created_at, giver:profiles!kudos_giver_id_fkey(display_name, zone)')
+          .select('id, kudos_type, created_at, giver_id')
           .eq('receiver_id', userId)
-          .order('created_at', { ascending: false })
-      ]);
+          .order('created_at', { ascending: false });
+
+        if (rawKudos && rawKudos.length > 0) {
+          const giverIds = Array.from(new Set(rawKudos.map((k) => k.giver_id).filter(Boolean)));
+          let giverMap = {};
+          if (giverIds.length > 0) {
+            const { data: givers } = await supabase
+              .from('profiles')
+              .select('id, display_name, zone')
+              .in('id', giverIds);
+            (givers || []).forEach((g) => {
+              giverMap[g.id] = g;
+            });
+          }
+          resolvedKudos = rawKudos.map((k) => ({
+            ...k,
+            giver: giverMap[k.giver_id] || null
+          }));
+        }
+      }
 
       if (!mounted) return;
       if (prof) {
@@ -50,7 +80,7 @@ export default function UserProfileModal({
         setEditBio(prof.bio || '');
         setEditCar(prof.car_info || '');
       }
-      setKudosList(kudosRows || []);
+      setKudosList(resolvedKudos);
       setLoading(false);
     })();
 
@@ -61,11 +91,19 @@ export default function UserProfileModal({
 
   if (!userId) return null;
 
-  const displayName = profileData?.display_name || initialName || 'Szentendrei lakos';
-  const displayZone = profileData?.zone || initialZone || 'Szentendre';
-  const rideKudosCount = kudosList.filter((k) => k.kudos_type === 'ride').length;
-  const favorKudosCount = kudosList.filter((k) => k.kudos_type === 'favor').length;
-  const totalKudos = kudosList.length;
+  const cleanInitialName = (initialName || '').split('•')[0].trim();
+  const displayName = profileData?.display_name || cleanInitialName || 'Szentendrei lakos';
+  const displayZone =
+    profileData?.zone ||
+    initialZone ||
+    ((initialName || '').includes('•') ? initialName.split('•')[1].trim() : 'Szentendre');
+
+  const listRideCount = kudosList.filter((k) => k.kudos_type === 'ride').length;
+  const listFavorCount = kudosList.filter((k) => k.kudos_type === 'favor').length;
+
+  const rideKudosCount = Math.max(profileData?.ride_hearts || 0, listRideCount);
+  const favorKudosCount = Math.max(profileData?.favor_hearts || 0, listFavorCount);
+  const totalKudos = rideKudosCount + favorKudosCount;
 
   const joinedLabel = profileData?.created_at
     ? new Date(profileData.created_at).toLocaleDateString('hu-HU', {
@@ -100,6 +138,12 @@ export default function UserProfileModal({
     setProfileData(data);
     setEditing(false);
     if (onProfileUpdated) onProfileUpdated(data);
+  };
+
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    onClose();
   };
 
   return (
@@ -194,14 +238,38 @@ export default function UserProfileModal({
               </div>
             )}
 
+            {isOwnProfile && profileData?.invite_code && (
+              <div className="pt-2 border-t border-[#ECE7DC] flex items-center justify-between text-xs">
+                <span className="font-semibold text-[#5C6B62]">Meghívókódod:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(profileData.invite_code);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2000);
+                  }}
+                  className="font-mono font-extrabold bg-[#ECE7DC] hover:bg-[#DFD9CE] px-2.5 py-1 rounded-lg text-xs transition"
+                >
+                  {copiedCode ? 'Másolva ✓' : profileData.invite_code}
+                </button>
+              </div>
+            )}
+
             {isOwnProfile && (
-              <div className="pt-2">
+              <div className="pt-2 flex gap-2">
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="w-full bg-limestone hover:bg-[#E5DFD3] text-[#18261F] font-bold text-xs py-2 rounded-xl border border-[#DFD9CE] transition"
+                  className="flex-1 bg-limestone hover:bg-[#E5DFD3] text-[#18261F] font-bold text-xs py-2.5 rounded-xl border border-[#DFD9CE] transition"
                 >
-                  Saját adatlap szerkesztése
+                  Adatlap szerkesztése
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-3.5 py-2.5 rounded-xl transition"
+                >
+                  Kilépés
                 </button>
               </div>
             )}
@@ -299,7 +367,9 @@ export default function UserProfileModal({
             <div className="text-xs text-[#7A867E]">Adatok betöltése...</div>
           ) : kudosList.length === 0 ? (
             <div className="text-xs text-[#7A867E]">
-              Még nincs lezárt visszaigazolása.
+              {totalKudos > 0
+                ? `${totalKudos} sikeres közösségi visszaigazolás rögzítve.`
+                : 'Még nincs lezárt visszaigazolása.'}
             </div>
           ) : (
             <div className="space-y-1.5">

@@ -2,6 +2,7 @@ import React from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function FavorCard({
+  hasExistingAgreement = false,
   kudosCount = 0,
   onInspectUser,
   favor,
@@ -87,7 +88,7 @@ export default function FavorCard({
           <div className="min-w-0">
             <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
               <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">
-                {favor.author_name} • {favor.author_zone}
+                {favor.author_name}{favor.author_zone ? ` • ${favor.author_zone}` : ''}
               </span>
               <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
                 ✓ {kudosCount} ajánlás
@@ -126,7 +127,7 @@ export default function FavorCard({
                 : 'bg-pilis hover:bg-pilis-light text-white'
             }`}
           >
-            {isLocked ? `Legalább ${minReq} segítés` : 'Segítek / Írok'}
+            {hasExistingAgreement ? 'Egyeztetés ›' : isLocked ? `Legalább ${minReq} segítés` : 'Segítek / Írok'}
           </button>
         )}
       </div>

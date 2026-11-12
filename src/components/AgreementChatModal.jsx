@@ -500,7 +500,37 @@ export default function AgreementChatModal({
           receiver_id: liveAgr.helper_id,
           kudos_type: isRide ? 'ride' : 'favor'
         });
-        if (error) throw error;
+        if (error && !String(error.message || '').includes('duplicate')) {
+          throw error;
+        }
+
+        await supabase
+          .from('agreements')
+          .update({ status: 'completed' })
+          .eq('id', liveAgr.id);
+
+        if (liveAgr.helper_id) {
+          const { data: helperProf } = await supabase
+            .from('profiles')
+            .select('ride_hearts, favor_hearts')
+            .eq('id', liveAgr.helper_id)
+            .maybeSingle();
+
+          const { count: exactCount } = await supabase
+            .from('kudos')
+            .select('id', { count: 'exact', head: true })
+            .eq('receiver_id', liveAgr.helper_id)
+            .eq('kudos_type', isRide ? 'ride' : 'favor');
+
+          if (helperProf) {
+            const col = isRide ? 'ride_hearts' : 'favor_hearts';
+            const nextVal = Math.max((helperProf[col] || 0) + 1, exactCount || 1);
+            await supabase
+              .from('profiles')
+              .update({ [col]: nextVal })
+              .eq('id', liveAgr.helper_id);
+          }
+        }
 
         await supabase.from('messages').insert({
           agreement_id: liveAgr.id,
@@ -575,6 +605,21 @@ export default function AgreementChatModal({
             <button onClick={onClose} className="text-2xl font-bold text-[#18261F] px-1">
               ‹
             </button>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                const partnerId =
+                  liveAgr.requester_id === currentUser?.id
+                    ? liveAgr.helper_id
+                    : liveAgr.requester_id;
+                if (onInspectUser && partnerId) {
+                  onInspectUser({ userId: partnerId, name: liveAgr.partner_name });
+                }
+              }}
+              className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition"
+              title="Adatlap megtekintése"
+            >
             <div className="w-9 h-9 rounded-full bg-pilis text-white font-bold text-sm grid place-items-center shrink-0">
               {liveAgr.partner_name?.[0] || 'S'}
             </div>
@@ -591,6 +636,7 @@ export default function AgreementChatModal({
                 {liveAgr.title}
                 {liveAgr.pickup_stop_name ? ` • ${liveAgr.pickup_stop_name}` : ''}
               </div>
+            </div>
             </div>
           </div>
 
@@ -750,7 +796,7 @@ export default function AgreementChatModal({
                 </button>
               )}
 
-              {status === 'agreed' && isHelper && (
+              {status === 'agreed' && isRideAgreement && isHelper && (
                 <button
                   disabled={busy}
                   onClick={() => handleUpdateStatus('started')}
@@ -784,7 +830,7 @@ export default function AgreementChatModal({
                 </>
               )}
 
-              {status === 'arrived' && isRequester && (
+              {(status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester && (
                 <button
                   disabled={busy}
                   onClick={handleGiveKudos}

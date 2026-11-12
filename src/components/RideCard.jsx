@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function RideCard({
+  hasExistingAgreement = false,
   kudosCount = 0,
   onInspectUser,
   ride,
@@ -129,7 +130,7 @@ export default function RideCard({
           <div className="min-w-0">
             <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
               <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">
-                {ride.author_name} • {ride.author_zone}
+                {ride.author_name}{ride.author_zone ? ` • ${ride.author_zone}` : ''}
               </span>
               <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
                 ✓ {kudosCount} ajánlás
@@ -162,9 +163,15 @@ export default function RideCard({
           <button
             type="button"
             onClick={() => onStartAgreement(ride, selectedStop)}
-            className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3.5 py-2 rounded-xl shrink-0 transition"
+            className={`${
+              hasExistingAgreement
+                ? 'bg-pilis-soft text-pilis border border-pilis/30'
+                : 'bg-pilis hover:bg-pilis-light text-white'
+            } font-bold text-xs px-3.5 py-2 rounded-xl shrink-0 transition`}
           >
-            {selectedStop
+            {hasExistingAgreement
+              ? 'Egyeztetés ›'
+              : selectedStop
               ? `Felszállok (${selectedStop.time})`
               : ride.kind === 'offer'
               ? 'Csatlakozom'
