@@ -93,6 +93,48 @@ function playSoftNotificationTone() {
   } catch {}
 }
 
+const BASE_QUICK_DESTINATIONS = [
+  'HÉV-végállomás',
+  'Újpest-Városkapu',
+  'Bükkös-part',
+  'Papírgyár',
+  'Pismány',
+  'Szarvashegy',
+  'Izbég',
+  'Pannóniatelep'
+];
+
+function getPersonalRoutines(userId) {
+  if (!userId) return [];
+  try {
+    return JSON.parse(localStorage.getItem(`kalaka_routines_${userId}`) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function recordPersonalRoutine(userId, origin, dest) {
+  if (!userId || !origin?.trim() || !dest?.trim()) return;
+  try {
+    const cleanO = origin.trim();
+    const cleanD = dest.trim();
+    if (cleanO.toLowerCase() === cleanD.toLowerCase()) return;
+    const list = getPersonalRoutines(userId);
+    const key = `${cleanO.toLowerCase()}->${cleanD.toLowerCase()}`;
+    const existing = list.find((x) => x.key === key);
+    if (existing) {
+      existing.count = (existing.count || 1) + 1;
+      existing.origin = cleanO;
+      existing.dest = cleanD;
+      existing.updatedAt = Date.now();
+    } else {
+      list.push({ key, origin: cleanO, dest: cleanD, count: 1, updatedAt: Date.now() });
+    }
+    list.sort((a, b) => (b.count - a.count) || (b.updatedAt - a.updatedAt));
+    localStorage.setItem(`kalaka_routines_${userId}`, JSON.stringify(list.slice(0, 4)));
+  } catch {}
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -136,6 +178,9 @@ export default function App() {
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
+  const [searchStatsMap, setSearchStatsMap] = useState({});
+  const [personalRoutines, setPersonalRoutines] = useState([]);
+  const [locatingOriginGps, setLocatingOriginGps] = useState(false);
   const [incomingToast, setIncomingToast] = useState(null);
   const [readVersion, setReadVersion] = useState(0);
   const [hiddenAgreementIds, setHiddenAgreementIds] = useState([]);
@@ -199,6 +244,7 @@ export default function App() {
     if (data) {
       setProfile(data);
       setHiddenAgreementIds(getHiddenAgreements(data.id));
+      setPersonalRoutines(getPersonalRoutines(data.id));
     }
   }, []);
 
@@ -239,6 +285,18 @@ export default function App() {
         };
       });
       setRides(mappedRides);
+      supabase
+        .from('route_search_stats')
+        .select('hub_label, search_count')
+        .then(({ data: statRows }) => {
+          if (statRows) {
+            const m = {};
+            statRows.forEach((s) => {
+              m[s.hub_label] = s.search_count || 0;
+            });
+            setSearchStatsMap(m);
+          }
+        });
 
       // Irányhelyes köztes megállók kiszámítása a tényleges útvonal alapján
       Promise.all(
@@ -940,6 +998,106 @@ export default function App() {
   };
 
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
+
+  const trackDestinationSearch = async (label) => {
+    const clean = (label || '').trim();
+    if (clean.length < 2) return;
+    const matchedHub = BASE_QUICK_DESTINATIONS.find(
+      (h) =>
+        clean.toLowerCase().includes(h.toLowerCase()) ||
+        h.toLowerCase().includes(clean.toLowerCase())
+    );
+    const hubToLog = matchedHub || clean;
+    setSearchStatsMap((prev) => ({
+      ...prev,
+      [hubToLog]: (prev[hubToLog] || 0) + 1
+    }));
+    if (supabase) {
+      await supabase.rpc('increment_route_search', { p_hub_label: hubToLog });
+    }
+  };
+
+  const handleSwapOriginDest = () => {
+    const prevO = fromQuery;
+    const prevD = toQuery;
+    const prevOCoord = originPinCoord;
+    const prevDCoord = destPinCoord;
+    setFromQuery(prevD);
+    setToQuery(prevO);
+    if (typeof setOriginPinCoord === 'function') setOriginPinCoord(prevDCoord || null);
+    if (typeof setDestPinCoord === 'function') setDestPinCoord(prevOCoord || null);
+  };
+
+  const handleFillOriginFromCurrentGps = () => {
+    if (!navigator.geolocation) return;
+    setLocatingOriginGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        if (typeof setOriginPinCoord === 'function') {
+          setOriginPinCoord({ lat, lng });
+        }
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const city = addr.city || addr.town || addr.village || 'Szentendre';
+          const road = addr.road || addr.pedestrian || addr.suburb || '';
+          const house = addr.house_number ? ` ${addr.house_number}.` : '';
+          setFromQuery(road ? `${city}, ${road}${house}` : `${city} (aktuális helyzet)`);
+        } catch {
+          setFromQuery('Szentendre (aktuális helyzet)');
+        }
+        setLocatingOriginGps(false);
+      },
+      () => {
+        setLocatingOriginGps(false);
+        alert('Engedélyezd a helymeghatározást a böngészőben.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  const smartQuickChips = (() => {
+    const hour = new Date().getHours();
+    const isMorning = hour >= 5 && hour < 12;
+    const morningHubs = new Set(['HÉV-végállomás', 'Újpest-Városkapu', 'Papírgyár', 'Bükkös-part']);
+    const afternoonHubs = new Set(['Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
+
+    const allLabels = Array.from(
+      new Set([...BASE_QUICK_DESTINATIONS, ...Object.keys(searchStatsMap)])
+    );
+
+    return allLabels
+      .map((label) => {
+        const needle = label.toLowerCase();
+        const liveCount = rides.filter((r) => {
+          const destMatch = (r.dest_text || '').toLowerCase().includes(needle);
+          const stopMatch = (r.stops || []).some((s) =>
+            (s.name || '').toLowerCase().includes(needle)
+          );
+          return destMatch || stopMatch;
+        }).length;
+
+        const searches = searchStatsMap[label] || 0;
+        const timeBoost = isMorning
+          ? morningHubs.has(label)
+            ? 8
+            : 0
+          : afternoonHubs.has(label)
+          ? 8
+          : 0;
+
+        const score = liveCount * 25 + searches + timeBoost;
+        return { label, liveCount, searches, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 7);
+  })();
+
+  const topPersonalRoutine = personalRoutines[0] || null;
 
   const visibleAgreements = myAgreements.filter(
     (a) => !hiddenAgreementIds.includes(a.id)
