@@ -45,11 +45,22 @@ export default function AgreementChatModal({
   const isRideAgreement = Boolean(liveAgr?.ride_id);
   const status = liveAgr?.status || 'chatting';
 
+  // Ki a hirdetés feladója (aki először hagyja jóvá a jelentkezést) és ki a csatlakozó fél?
+  const postOwnerId = liveAgr?.post_owner_id || liveAgr?.helper_id;
+  const isPostOwner = Boolean(currentUser?.id && postOwnerId === currentUser.id);
+  const ownerIsHelper = postOwnerId === liveAgr?.helper_id;
+
+  const ownerConfirmed = ownerIsHelper
+    ? Boolean(liveAgr?.helper_agreed)
+    : Boolean(liveAgr?.requester_agreed);
+  const joinerConfirmed = ownerIsHelper
+    ? Boolean(liveAgr?.requester_agreed)
+    : Boolean(liveAgr?.helper_agreed);
+
   useEffect(() => {
     setLiveAgr(agreement || null);
   }, [agreement]);
 
-  // Üzenetek és élő megállapodás-állapot (kölcsönös jóváhagyás + GPS pozíció) figyelése
   useEffect(() => {
     if (!agreement) return;
     setErrorBanner(null);
@@ -106,7 +117,7 @@ export default function AgreementChatModal({
     };
   }, [agreement?.id, isLiveDbAgreement]);
 
-  // Sofőr élő GPS-közvetítése (csak ha status === 'started' és ő a sofőr/segítő)
+  // Sofőr élő GPS-közvetítése (csak status === 'started' esetén és csak a sofőrnél)
   useEffect(() => {
     const shouldBroadcast =
       isLiveDbAgreement &&
@@ -163,7 +174,7 @@ export default function AgreementChatModal({
     };
   }, [isLiveDbAgreement, isRideAgreement, isHelper, status, liveAgr?.id]);
 
-  // Élő mini-térkép inicializálása útközben (status === 'started')
+  // Élő mini-térkép inicializálása útközben
   useEffect(() => {
     const showLiveMap = isRideAgreement && status === 'started';
     if (!showLiveMap || !liveMapContainerRef.current) {
@@ -191,7 +202,7 @@ export default function AgreementChatModal({
     }
   }, [isRideAgreement, status]);
 
-  // Élő térkép jelölők frissítése (sofőr autója + találkozási pont / utas helyzete)
+  // Élő jelölők frissítése
   useEffect(() => {
     const map = liveMapRef.current;
     const layer = liveLayerRef.current;
@@ -295,24 +306,33 @@ export default function AgreementChatModal({
     await sendMessage(msg);
   };
 
-  // Kölcsönös jóváhagyás: mindkét félnek el kell fogadnia, mielőtt elindulhat az út
-  const handleConfirmMutualAgreement = async () => {
+  // 1. lépés: Hirdetés feladója jóváhagyja -> 2. lépés: Csatlakozó fél véglegesíti
+  const handleSequentialApproval = async () => {
     if (!isLiveDbAgreement) return;
     setBusy(true);
     setErrorBanner(null);
 
     try {
-      const nextReqAgreed = isRequester ? true : Boolean(liveAgr.requester_agreed);
-      const nextHelperAgreed = isHelper ? true : Boolean(liveAgr.helper_agreed);
-      const bothAgreed = nextReqAgreed && nextHelperAgreed;
+      let nextReqAgreed = Boolean(liveAgr.requester_agreed);
+      let nextHelperAgreed = Boolean(liveAgr.helper_agreed);
 
+      if (isPostOwner && !ownerConfirmed) {
+        if (ownerIsHelper) nextHelperAgreed = true;
+        else nextReqAgreed = true;
+      } else if (!isPostOwner && ownerConfirmed && !joinerConfirmed) {
+        if (ownerIsHelper) nextReqAgreed = true;
+        else nextHelperAgreed = true;
+      } else {
+        setBusy(false);
+        return;
+      }
+
+      const bothConfirmed = nextReqAgreed && nextHelperAgreed;
       const patch = {
         requester_agreed: nextReqAgreed,
-        helper_agreed: nextHelperAgreed
+        helper_agreed: nextHelperAgreed,
+        status: bothConfirmed ? 'agreed' : 'chatting'
       };
-      if (bothAgreed) {
-        patch.status = 'agreed';
-      }
 
       const { data, error } = await supabase
         .from('agreements')
@@ -325,9 +345,9 @@ export default function AgreementChatModal({
       await supabase.from('messages').insert({
         agreement_id: liveAgr.id,
         sender_id: currentUser.id,
-        body: bothAgreed
-          ? 'Mindkét fél jóváhagyta – a megállapodás létrejött.'
-          : `${currentUser?.display_name || 'Az egyik fél'} jóváhagyta a megállapodást.`,
+        body: bothConfirmed
+          ? `${currentUser?.display_name || 'A csatlakozó'} véglegesítette – a megállapodás rögzítve.`
+          : `${currentUser?.display_name || 'A hirdető'} elfogadta a jelentkezést.`,
         is_system_event: true
       });
 
@@ -387,7 +407,6 @@ export default function AgreementChatModal({
     }
   };
 
-  // Utas pontos várakozási helyének megosztása a sofőrrel
   const handleSharePassengerLocation = () => {
     if (!navigator.geolocation || !isLiveDbAgreement) return;
     setSharingPassengerPin(true);
@@ -472,19 +491,6 @@ export default function AgreementChatModal({
     onClose();
   };
 
-  // Kölcsönös jóváhagyási állapotok kiszámítása
-  const myConfirmed = isRequester
-    ? Boolean(liveAgr.requester_agreed)
-    : isHelper
-    ? Boolean(liveAgr.helper_agreed)
-    : false;
-  const partnerConfirmed = isRequester
-    ? Boolean(liveAgr.helper_agreed)
-    : isHelper
-    ? Boolean(liveAgr.requester_agreed)
-    : false;
-
-  // Távolság és becsült érkezési idő az élő követéshez
   const etaSummary = (() => {
     if (status !== 'started' || !liveAgr.driver_lat || !liveAgr.driver_lng) return null;
     const pickupFallback = liveAgr.pickup_stop_name
@@ -556,16 +562,19 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        {/* Kölcsönös jóváhagyási és útkövetési állapotsáv */}
+        {/* Szekvenciális (1. Hirdető -> 2. Csatlakozó) jóváhagyási és útkövetési állapotsáv */}
         {!isProInquiry && (
           <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-[#18261F] min-w-0">
-              {status === 'chatting' && (
-                myConfirmed
-                  ? 'Jóváhagytad • Várakozás a másik félre'
-                  : partnerConfirmed
-                  ? 'A másik fél elfogadta – erősítsd meg te is'
-                  : 'Egyeztessetek, majd mindketten hagyjátok jóvá'
+              {status === 'chatting' && !ownerConfirmed && (
+                isPostOwner
+                  ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
+                  : 'Várakozás a hirdető jóváhagyására'
+              )}
+              {status === 'chatting' && ownerConfirmed && !joinerConfirmed && (
+                isPostOwner
+                  ? 'Elfogadtad • Várakozás a csatlakozó véglegesítésére'
+                  : 'A hirdető elfogadta • Véglegesítsd a csatlakozást'
               )}
               {status === 'agreed' && (
                 isHelper
@@ -587,13 +596,25 @@ export default function AgreementChatModal({
             </div>
 
             <div className="shrink-0 flex items-center gap-1.5">
-              {status === 'chatting' && !myConfirmed && (
+              {/* 1. lépés: Csak a hirdető látja az Elfogadom gombot */}
+              {status === 'chatting' && isPostOwner && !ownerConfirmed && (
                 <button
                   disabled={busy}
-                  onClick={handleConfirmMutualAgreement}
+                  onClick={handleSequentialApproval}
                   className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
                 >
-                  {partnerConfirmed ? 'Elfogadom' : 'Megállapodtunk'}
+                  Elfogadom
+                </button>
+              )}
+
+              {/* 2. lépés: Miután a hirdető elfogadta, a csatlakozó véglegesíti */}
+              {status === 'chatting' && !isPostOwner && ownerConfirmed && !joinerConfirmed && (
+                <button
+                  disabled={busy}
+                  onClick={handleSequentialApproval}
+                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
+                >
+                  Véglegesítem
                 </button>
               )}
 
@@ -642,7 +663,7 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        {/* Élő mini-térkép a chatben, amíg az autó úton van (status === 'started') */}
+        {/* Élő mini-térkép a chatben, amíg az autó úton van */}
         {isRideAgreement && status === 'started' && (
           <div className="relative bg-[#E8E4DA] border-b border-[#DFD9CE]">
             <div ref={liveMapContainerRef} className="w-full h-40" />
@@ -706,3 +727,4 @@ export default function AgreementChatModal({
     </div>
   );
 }
+

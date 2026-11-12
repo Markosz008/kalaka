@@ -257,7 +257,7 @@ export default function App() {
           *,
           requester:profiles!agreements_requester_id_fkey(display_name),
           helper:profiles!agreements_helper_id_fkey(display_name),
-          ride:rides(origin_text, dest_text),
+          ride:rides(origin_text, dest_text, kind, user_id),
           favor:favors(title),
           pro:local_pros(business_name, profession_name)
         `)
@@ -275,6 +275,7 @@ export default function App() {
                 : isReq
                 ? a.helper?.display_name || 'Szomszéd'
                 : a.requester?.display_name || 'Szomszéd',
+              post_owner_id: a.ride?.user_id || a.helper_id,
               title: a.ride
                 ? `${a.ride.origin_text} → ${a.ride.dest_text}`
                 : a.pro
@@ -662,6 +663,7 @@ export default function App() {
 
     setActiveAgreement({
       ...createdAgr,
+      post_owner_id: ride.user_id,
       partner_name: ride.author_name,
       title: `${ride.origin_text} → ${ride.dest_text}`
     });
