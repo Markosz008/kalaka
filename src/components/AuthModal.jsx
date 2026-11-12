@@ -13,7 +13,7 @@ export default function AuthModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [zone, setZone] = useState('Felső-Pismány');
+  const [zone, setZone] = useState('Pismány');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [adultConfirmed, setAdultConfirmed] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export default function AuthModal({
   useEffect(() => {
     if (session?.user && profile?.display_name && profile.display_name !== 'Belépés') {
       setDisplayName(profile.display_name);
-      setZone(profile.zone || 'Felső-Pismány');
+      setZone(profile.zone || 'Pismány');
     } else {
       setDisplayName('');
     }

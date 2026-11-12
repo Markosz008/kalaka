@@ -6,8 +6,7 @@ export const SZENTENDRE_ZONES = [
   { id: 'puspokmajor', name: 'Püspökmajor', lat: 47.6635, lng: 19.0645 },
   { id: 'kalvaria', name: 'Kálvária', lat: 47.6695, lng: 19.0630 },
   { id: 'szamarhegy', name: 'Szamárhegy', lat: 47.6715, lng: 19.0745 },
-  { id: 'pismany_also', name: 'Alsó-Pismány', lat: 47.6860, lng: 19.0620 },
-  { id: 'pismany_felso', name: 'Felső-Pismány', lat: 47.6918, lng: 19.0517 },
+  { id: 'pismany', name: 'Pismány', lat: 47.6895, lng: 19.0555 },
   { id: 'szarvashegy', name: 'Szarvashegy', lat: 47.6855, lng: 19.0268 },
   { id: 'izbeg', name: 'Izbég', lat: 47.6782, lng: 19.0485 },
   { id: 'sztaravoda', name: 'Sztaravoda', lat: 47.6880, lng: 19.0510 },
@@ -160,7 +159,7 @@ export async function searchAddressSuggestions(query) {
   if (raw.length < 2) return [];
 
   const qLower = raw.toLowerCase();
-  const houseMatch = raw.match(/(\d+[a-zA-Z/.-]*)\s*$/);
+  const houseMatch = raw.match(/(?:^|\s)(\d+[a-zA-Z/.-]*)\s*$/);
   const typedHouseNumber = houseMatch ? houseMatch[1].replace(/\.*$/, '') : null;
 
   const localMatches = LOCAL_PLACES.filter(

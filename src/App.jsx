@@ -49,7 +49,7 @@ export default function App() {
   const [profile, setProfile] = useState({
     id: 'guest-user',
     display_name: '',
-    zone: 'Felső-Pismány',
+    zone: 'Pismány',
     ride_hearts: 0,
     favor_hearts: 0
   });
@@ -119,7 +119,7 @@ export default function App() {
         authUser.user_metadata?.full_name ||
         authUser.email?.split('@')[0] ||
         'Szomszéd';
-      const cleanZone = (authUser.user_metadata?.zone || 'Felső-Pismány')
+      const cleanZone = (authUser.user_metadata?.zone || 'Pismány')
         .replace(/\s*\(.*?\)\s*/g, '')
         .trim();
       const { data: inserted } = await supabase
@@ -299,7 +299,7 @@ export default function App() {
         setProfile({
           id: 'guest-user',
           display_name: '',
-          zone: 'Felső-Pismány',
+          zone: 'Pismány',
           ride_hearts: 0,
           favor_hearts: 0
         });
@@ -515,7 +515,7 @@ export default function App() {
       const favPayload = {
         title: newFrom.trim(),
         description: newNote.trim(),
-        zone: profile.zone || 'Felső-Pismány',
+        zone: profile.zone || 'Pismány',
         min_favor_hearts: Number(newMinHearts) || 0,
         expires_at: expIso
       };
@@ -872,7 +872,7 @@ export default function App() {
                 'Szentendre HÉV-végállomás',
                 'Bükkös-part',
                 'Papírgyár',
-                'Felső-Pismány',
+                'Pismány',
                 'Szarvashegy',
                 'Izbég'
               ].map((chip) => {
