@@ -586,7 +586,9 @@ export default function AgreementChatModal({
                 </span>
               )}
               {status === 'arrived' && (
-                isRequester ? 'Megérkeztetek • Igazold vissza a segítséget' : 'Megérkezve • Várakozás a visszaigazolásra'
+                isRequester
+                  ? `Megérkeztetek • Igazold vissza: ${liveAgr.partner_name} elvitt`
+                  : 'Megérkezve • Várakozás az utas visszaigazolására'
               )}
               {status === 'completed' && 'Lezárva ✓'}
             </div>
@@ -636,13 +638,15 @@ export default function AgreementChatModal({
                       {sharingPassengerPin ? '...' : 'Itt állok'}
                     </button>
                   )}
-                  <button
-                    disabled={busy}
-                    onClick={() => handleUpdateStatus('arrived')}
-                    className="bg-terracotta text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                  >
-                    Megérkeztem
-                  </button>
+                  {isHelper && (
+                    <button
+                      disabled={busy}
+                      onClick={() => handleUpdateStatus('arrived')}
+                      className="bg-terracotta text-white text-xs font-bold px-3 py-1.5 rounded-xl"
+                    >
+                      Megérkeztem
+                    </button>
+                  )}
                 </>
               )}
 
