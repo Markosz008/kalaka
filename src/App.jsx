@@ -1723,7 +1723,15 @@ export default function App() {
             pros={pros}
             session={session}
             profile={profile}
-            onOpenAuthModal={() => setShowAuthModal(true)}
+            onOpenAuthModal={() =>
+          session?.user
+            ? setInspectedUser({
+                userId: session.user.id,
+                name: profile?.display_name,
+                zone: profile?.zone
+              })
+            : setShowAuthModal(true)
+        }
             onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
             onStartProAgreement={handleStartProAgreement}
           />
