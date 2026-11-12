@@ -126,7 +126,7 @@ export default function AgreementChatModal({
     const syncCoords = async () => {
       const { data } = await supabase
         .from('agreements')
-        .select('status, driver_lat, driver_lng, driver_updated_at, passenger_lat, passenger_lng, passenger_updated_at, pickup_stop_name')
+        .select('status, driver_lat, driver_lng, driver_updated_at, passenger_lat, passenger_lng, passenger_updated_at')
         .eq('id', liveAgr.id)
         .maybeSingle();
       if (data) {
