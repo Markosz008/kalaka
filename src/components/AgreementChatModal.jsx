@@ -213,8 +213,6 @@ export default function AgreementChatModal({
 
     const pickupFallback = liveAgr?.pickup_stop_name
       ? resolveCoordsFromText(liveAgr.pickup_stop_name.replace(/^\d{2}:\d{2}\s*/, ''))
-      : liveAgr?.title
-      ? resolveCoordsFromText(liveAgr.title.split('→')[0])
       : null;
 
     const passengerCoord =
@@ -495,8 +493,6 @@ export default function AgreementChatModal({
     if (status !== 'started' || !liveAgr.driver_lat || !liveAgr.driver_lng) return null;
     const pickupFallback = liveAgr.pickup_stop_name
       ? resolveCoordsFromText(liveAgr.pickup_stop_name.replace(/^\d{2}:\d{2}\s*/, ''))
-      : liveAgr.title
-      ? resolveCoordsFromText(liveAgr.title.split('→')[0])
       : null;
     const target =
       liveAgr.passenger_lat && liveAgr.passenger_lng

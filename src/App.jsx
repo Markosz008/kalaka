@@ -942,7 +942,7 @@ export default function App() {
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
 
   const visibleAgreements = myAgreements.filter(
-    (a) => !hiddenAgreementIds.includes(a.id) || a.has_unread
+    (a) => !hiddenAgreementIds.includes(a.id)
   );
   const unreadCount = visibleAgreements.filter((a) => a.has_unread).length;
 
@@ -961,9 +961,14 @@ export default function App() {
   };
 
   const handleHideCompletedAgreement = (e, agrId) => {
+    e.preventDefault();
     e.stopPropagation();
     const uid = session?.user?.id;
     if (!uid) return;
+    markAgreementReadStorage(uid, agrId);
+    setMyAgreements((prev) =>
+      prev.map((item) => (item.id === agrId ? { ...item, has_unread: false } : item))
+    );
     const next = Array.from(new Set([...hiddenAgreementIds, agrId]));
     setHiddenAgreementIds(next);
     localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
