@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef} from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase.js';
 import { computeStopsAlongRoute } from './lib/routing.js';
 import {
@@ -153,6 +153,33 @@ function isPastTimeToday(hhmm) {
   return target.getTime() < now.getTime() - 60000;
 }
 
+function resolveAutoDayForTime(hhmm, isRecurring = false) {
+  if (isRecurring) return 'Munkanapokon (H–P)';
+  if (!hhmm || !hhmm.includes(':')) return 'Ma';
+  const [hh, mm] = hhmm.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return 'Ma';
+  const now = new Date();
+  const target = new Date();
+  target.setHours(hh, mm, 0, 0);
+  return target.getTime() < now.getTime() - 60000 ? 'Holnap' : 'Ma';
+}
+
+function resolveAutoExpiresAt(hhmm, isRecurring = false, fallbackHours = 12) {
+  if (isRecurring) {
+    return new Date(Date.now() + 30 * 24 * 3600000).toISOString();
+  }
+  const day = resolveAutoDayForTime(hhmm, false);
+  const [hh, mm] = (hhmm || '12:00').split(':').map(Number);
+  const target = new Date();
+  target.setHours(isNaN(hh) ? 12 : hh, isNaN(mm) ? 0 : mm, 0, 0);
+  if (day === 'Holnap') {
+    target.setDate(target.getDate() + 1);
+  }
+  const byTarget = target.getTime() + 2 * 3600000;
+  const byHours = Date.now() + Number(fallbackHours || 12) * 3600000;
+  return new Date(Math.max(byTarget, byHours)).toISOString();
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -196,6 +223,7 @@ export default function App() {
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
+  const notifiedMsgKeysRef = useRef(new Set());
   const [inspectedUser, setInspectedUser] = useState(null);
   const [kudosCountByUser, setKudosCountByUser] = useState({});
   const [selectedStopByRide, setSelectedStopByRide] = useState({});
@@ -1405,6 +1433,11 @@ export default function App() {
                         onChange={(e) => setInlineTime(e.target.value)}
                         className="text-sm font-bold focus:outline-none bg-transparent"
                       />
+                  {!inlineRecurring && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis shrink-0">
+                      {resolveAutoDayForTime(inlineTime, false)}
+                    </span>
+                  )}
                     </div>
 
                     <select
