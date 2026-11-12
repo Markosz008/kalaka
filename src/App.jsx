@@ -1616,6 +1616,8 @@ export default function App() {
                 <FavorCard
                   key={fav.id}
                   favor={fav}
+                  kudosCount={kudosCountByUser[fav.user_id] || 0}
+                  onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}
                   userFavorHearts={profile.favor_hearts}
                   onStartFavorAgreement={handleStartFavorAgreement}
@@ -2055,6 +2057,7 @@ export default function App() {
       />
 
       <AgreementChatModal
+          onInspectUser={setInspectedUser}
         agreement={activeAgreement}
         currentUser={profile}
         onClose={() => {

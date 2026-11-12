@@ -15,6 +15,7 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
 }
 
 export default function AgreementChatModal({
+  onInspectUser,
   agreement,
   currentUser,
   onClose,
