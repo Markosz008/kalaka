@@ -12,6 +12,7 @@ import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
 import ProsDirectoryView from './components/ProsDirectoryView.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
+import UserProfileModal from './components/UserProfileModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 
 function addMinutesToTime(timeStr, minsToAdd) {
@@ -178,6 +179,8 @@ export default function App() {
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
+  const [inspectedUser, setInspectedUser] = useState(null);
+  const [kudosCountByUser, setKudosCountByUser] = useState({});
   const [selectedStopByRide, setSelectedStopByRide] = useState({});
   const [inlineCarInfo, setInlineCarInfo] = useState('');
   const [searchStatsMap, setSearchStatsMap] = useState({});
