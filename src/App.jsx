@@ -661,11 +661,17 @@ export default function App() {
       dep.setHours(hh || 5, mm || 50, 0, 0);
       if (dep < new Date()) dep.setDate(dep.getDate() + 1);
 
-      const validMinutes = Number(inlineValidMins) || 720;
-      const exp = new Date(Math.max(Date.now() + validMinutes * 60 * 1000, dep.getTime() + 2 * 3600000));
-
       const isRec = inlineComposerMode === 'recurring';
       const dbKind = inlineComposerMode === 'ask' ? 'ask' : 'offer';
+
+      let exp;
+      if (isRec) {
+        exp = new Date(Date.now() + 30 * 24 * 3600000);
+      } else if (dbKind === 'ask') {
+        exp = new Date(dep.getTime() + 30 * 60000);
+      } else {
+        exp = new Date(dep.getTime() + 45 * 60000);
+      }
 
       const startPt = fromCoords || resolveCoordsFromText(filterFrom);
       const endPt = toCoords || resolveCoordsFromText(filterTo);
@@ -765,10 +771,10 @@ export default function App() {
       return;
     }
 
-    const validMinutes = Number(newValidMins) || 720;
-    const expIso = new Date(Date.now() + validMinutes * 60 * 1000).toISOString();
-
     if (newKind === 'favor') {
+      const validMinutes = Number(newValidMins) || 1440;
+      const expIso = new Date(Date.now() + validMinutes * 60 * 1000).toISOString();
+
       if (!newFrom.trim()) return;
       const favPayload = {
         title: newFrom.trim(),
@@ -803,11 +809,24 @@ export default function App() {
       const dep = new Date();
       dep.setHours(hh || 5, mm || 50, 0, 0);
 
+      const isRec = newKind === 'recurring';
+      const actualKind = isRec ? 'offer' : newKind;
+
+      let expDate;
+      if (isRec) {
+        expDate = new Date(Date.now() + 30 * 24 * 3600000);
+      } else if (actualKind === 'ask') {
+        expDate = new Date(dep.getTime() + 30 * 60000);
+      } else {
+        expDate = new Date(dep.getTime() + 45 * 60000);
+      }
+      const expIso = expDate.toISOString();
+
       const startPt = newFromCoords || resolveCoordsFromText(newFrom);
       const endPt = newToCoords || resolveCoordsFromText(newTo);
 
       const ridePayload = {
-        kind: newKind === 'recurring' ? 'offer' : newKind,
+        kind: actualKind,
         origin_text: newFrom.trim(),
         dest_text: newTo.trim(),
         departure_at: dep.toISOString(),
@@ -815,7 +834,7 @@ export default function App() {
         seats: Number(newSeats) || 3,
         is_confirmed_today: true,
         note:
-          newKind === 'recurring'
+          isRec
             ? `[Rendszeres: ${newScheduleText}] ${newNote.trim()}`.trim()
             : newNote.trim()
       };
@@ -1532,17 +1551,19 @@ export default function App() {
                       </select>
                     )}
 
-                    <select
-                      value={inlineValidMins}
-                      onChange={(e) => setInlineValidMins(Number(e.target.value))}
-                      className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold text-pilis"
-                    >
-                      {VALIDITY_OPTIONS.map((opt) => (
-                        <option key={opt.minutes} value={opt.minutes}>
-                          Érvényes: {opt.label}
-                        </option>
-                      ))}
-                    </select>
+                    {inlineComposerMode === 'recurring' && (
+                      <select
+                        value={inlineValidMins}
+                        onChange={(e) => setInlineValidMins(Number(e.target.value))}
+                        className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold text-pilis"
+                      >
+                        {VALIDITY_OPTIONS.map((opt) => (
+                          <option key={opt.minutes} value={opt.minutes}>
+                            Érvényes: {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="flex gap-2">
@@ -2029,22 +2050,24 @@ export default function App() {
               </div>
             )}
 
-            <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-[#18261F]">
-                Érvényesség
-              </span>
-              <select
-                value={newValidMins}
-                onChange={(e) => setNewValidMins(Number(e.target.value))}
-                className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
-              >
-                {VALIDITY_OPTIONS.map((opt) => (
-                  <option key={opt.minutes} value={opt.minutes}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {newKind === 'favor' && (
+              <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-[#18261F]">
+                  Érvényesség
+                </span>
+                <select
+                  value={newValidMins}
+                  onChange={(e) => setNewValidMins(Number(e.target.value))}
+                  className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
+                >
+                  {VALIDITY_OPTIONS.map((opt) => (
+                    <option key={opt.minutes} value={opt.minutes}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <input
               type="text"

@@ -18,6 +18,11 @@ export default function RideCard({
     ? ride.schedule_text || 'Munkanapokon (H–P)'
     : ride.date_label || 'Ma';
 
+  const now = Date.now();
+  const depTime = ride.departure_at ? new Date(ride.departure_at).getTime() : 0;
+  const expTime = ride.expires_at ? new Date(ride.expires_at).getTime() : 0;
+  const showRecentlyStarted = !ride.is_recurring && depTime > 0 && depTime < now && expTime > now;
+
   const activeBadge = formatRemainingTime(ride.expires_at);
 
   return (
@@ -30,6 +35,11 @@ export default function RideCard({
           <span className="text-[11px] font-semibold text-pilis bg-pilis-soft px-2 py-0.5 rounded-full truncate">
             {scheduleSubtitle}
           </span>
+          {showRecentlyStarted && (
+            <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+              Mostanában indul
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
