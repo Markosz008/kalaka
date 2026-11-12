@@ -136,6 +136,23 @@ function recordPersonalRoutine(userId, origin, dest) {
   } catch {}
 }
 
+function getNextQuarterHourHHMM() {
+  const d = new Date(Date.now() + 15 * 60000);
+  const mins = Math.ceil(d.getMinutes() / 15) * 15;
+  d.setMinutes(mins, 0, 0);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function isPastTimeToday(hhmm) {
+  if (!hhmm || !hhmm.includes(':')) return false;
+  const [hh, mm] = hhmm.split(':').map(Number);
+  if (isNaN(hh) || isNaN(mm)) return false;
+  const now = new Date();
+  const target = new Date();
+  target.setHours(hh, mm, 0, 0);
+  return target.getTime() < now.getTime() - 60000;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -171,7 +188,7 @@ export default function App() {
   const [selectedRideForMap, setSelectedRideForMap] = useState(null);
 
   const [inlineComposerMode, setInlineComposerMode] = useState(null);
-  const [inlineTime, setInlineTime] = useState('05:50');
+  const [inlineTime, setInlineTime] = useState(() => getNextQuarterHourHHMM());
   const [inlineSchedule, setInlineSchedule] = useState('Munkanapokon (H–P)');
   const [inlineSeats, setInlineSeats] = useState(3);
   const [inlineValidMins, setInlineValidMins] = useState(720);
@@ -436,6 +453,19 @@ export default function App() {
           (x, y) => new Date(y.last_activity_at) - new Date(x.last_activity_at)
         );
         setMyAgreements(mappedAgrs);
+        mappedAgrs.forEach((item) => {
+          if (item.has_unread && item.last_activity_at) {
+            const notifKey = `${item.id}_${item.last_activity_at}`;
+            if (!notifiedMsgKeysRef.current.has(notifKey)) {
+              notifiedMsgKeysRef.current.add(notifKey);
+              playSoftNotificationTone();
+              setIncomingToast({
+                agreement_id: item.id,
+                body: `${item.partner_name}: ${item.last_message_body || 'Új üzenet / jelentkezés'}`
+              });
+            }
+          }
+        });
       }
     }
   }, []);
