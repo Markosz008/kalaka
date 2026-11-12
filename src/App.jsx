@@ -1119,9 +1119,8 @@ export default function App() {
             pros={pros}
             session={session}
             profile={profile}
-            onCheckInProZone={handleCheckInProZone}
-            onEndorsePro={handleEndorsePro}
-            onRegisterNewPro={handleRegisterNewPro}
+            onOpenAuthModal={() => setShowAuthModal(true)}
+            onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
           />
         )}
       </main>

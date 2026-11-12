@@ -17,6 +17,49 @@ export const SZENTENDRE_ZONES = [
   { id: 'derecske', name: 'Derecske', lat: 47.6560, lng: 19.0540 }
 ];
 
+// Fő szolgáltatási és szakmai területek (fizikai szakik + helyi szolgáltatók együtt)
+export const SERVICE_GROUPS = [
+  { id: 'all', label: 'Összes' },
+  { id: 'otthon', label: 'Otthon és szerelés' },
+  { id: 'szepseg_egeszseg', label: 'Szépség és egészség' },
+  { id: 'auto_muhely', label: 'Autó és műhely' },
+  { id: 'kezmuves_gasztro', label: 'Kézműves és gasztro' },
+  { id: 'mozgas_oktatas', label: 'Edzés és oktatás' }
+];
+
+// Induló szakmalista (bármikor bővíthető új szakmával az űrlapból!)
+export const DEFAULT_PROFESSIONS = [
+  { name: 'Villanyszerelő', group: 'otthon' },
+  { name: 'Víz- és fűtésszerelő', group: 'otthon' },
+  { name: 'Klímaszerelő', group: 'otthon' },
+  { name: 'Kertész', group: 'otthon' },
+  { name: 'Asztalos', group: 'otthon' },
+  { name: 'Fodrász', group: 'szepseg_egeszseg' },
+  { name: 'Kozmetikus', group: 'szepseg_egeszseg' },
+  { name: 'Masszőr', group: 'szepseg_egeszseg' },
+  { name: 'Pszichológus', group: 'szepseg_egeszseg' },
+  { name: 'Fogorvos', group: 'szepseg_egeszseg' },
+  { name: 'Gyógytornász', group: 'szepseg_egeszseg' },
+  { name: 'Autószerelő', group: 'auto_muhely' },
+  { name: 'Gumiszerviz', group: 'auto_muhely' },
+  { name: 'Autóvillamosság', group: 'auto_muhely' },
+  { name: 'Ötvös', group: 'kezmuves_gasztro' },
+  { name: 'Cukrász', group: 'kezmuves_gasztro' },
+  { name: 'Varrónő / Szabó', group: 'kezmuves_gasztro' },
+  { name: 'Személyi edző', group: 'mozgas_oktatas' },
+  { name: 'Jóga / Pilates oktató', group: 'mozgas_oktatas' },
+  { name: 'Nyelvtanár / Korrepetálás', group: 'mozgas_oktatas' }
+];
+
+export function normalizeServiceGroup(cat) {
+  if (['villany', 'viz_futes', 'klima', 'kert_haz', 'otthon'].includes(cat)) {
+    return 'otthon';
+  }
+  return cat || 'otthon';
+}
+
+export const PRO_CATEGORIES = SERVICE_GROUPS;
+
 // Valós szentendrei közlekedési csomópontok és buszöblök
 export const LOCAL_PLACES = [
   { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.6918, lng: 19.0517 },
@@ -38,6 +81,8 @@ export const LOCAL_PLACES = [
   { name: 'Budapest, Batthyány tér', subtitle: 'Budapest, I. kerület (H5 HÉV)', lat: 47.5065, lng: 19.0399 },
   { name: 'Budapest, Göncz Árpád városközpont', subtitle: 'Budapest, Árpád híd', lat: 47.5325, lng: 19.0660 }
 ];
+
+export const PRESET_LOCATIONS = LOCAL_PLACES;
 
 export const MAP_TRANSIT_POINTS = LOCAL_PLACES.slice(1, 13).map((p, idx) => ({
   id: `pt_${idx}`,
@@ -66,6 +111,16 @@ export function formatRemainingTime(expiresAtIso) {
   if (hours < 24) return `${hours} óráig aktív`;
   const days = Math.ceil(hours / 24);
   return `${days} napig aktív`;
+}
+
+export function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const diffSec = Math.max(1, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
+  if (diffSec < 60) return 'most';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} perce`;
+  const diffHour = Math.floor(diffMin / 60);
+  return `${diffHour} órája`;
 }
 
 export function resolveCoordsFromText(text) {
@@ -105,7 +160,7 @@ export async function searchAddressSuggestions(query) {
   if (raw.length < 2) return [];
 
   const qLower = raw.toLowerCase();
-  const houseMatch = raw.match(/\b(\d+[a-zA-Z/.-]*)\s*$/);
+  const houseMatch = raw.match(/(\d+[a-zA-Z/.-]*)\s*$/);
   const typedHouseNumber = houseMatch ? houseMatch[1].replace(/\.*$/, '') : null;
 
   const localMatches = LOCAL_PLACES.filter(
@@ -187,23 +242,3 @@ export async function searchAddressSuggestions(query) {
   }
 }
 
-
-export function formatRelativeTime(isoString) {
-  if (!isoString) return '';
-  const diffSec = Math.max(1, Math.floor((Date.now() - new Date(isoString).getTime()) / 1000));
-  if (diffSec < 60) return 'most';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} perce`;
-  const diffHour = Math.floor(diffMin / 60);
-  return `${diffHour} órája`;
-}
-
-export const PRESET_LOCATIONS = LOCAL_PLACES;
-
-export const PRO_CATEGORIES = [
-  { id: 'all', label: 'Összes' },
-  { id: 'villany', label: 'Villanyszerelés' },
-  { id: 'viz_futes', label: 'Víz és fűtés' },
-  { id: 'klima', label: 'Klíma' },
-  { id: 'kert_haz', label: 'Kert és ház' }
-];
