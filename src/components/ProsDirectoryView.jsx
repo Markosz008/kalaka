@@ -34,6 +34,21 @@ function formatRemainingLiveTime(liveUntil) {
   return `${mins} perc`;
 }
 
+function buildNavigationUrl(pro) {
+  if (!pro) return null;
+  const liveNow = isLivePresenceActive(pro);
+  if (liveNow) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${pro.live_lat},${pro.live_lng}`;
+  }
+  if (pro.lat && pro.lng) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${pro.lat},${pro.lng}`;
+  }
+  if (pro.address_text && pro.address_text.trim()) {
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pro.address_text.trim())}`;
+  }
+  return null;
+}
+
 export default function ProsDirectoryView({
   pros,
   session,
@@ -765,13 +780,27 @@ export default function ProsDirectoryView({
                       </span>
                     )}
                     {liveNow ? (
-                      <span className="text-[11px] font-bold bg-emerald-700 text-white px-2.5 py-0.5 rounded-full">
-                        ● Most a közelben ({formatRemainingLiveTime(pro.live_until)})
-                      </span>
+                      <a
+                        href={buildNavigationUrl(pro)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[11px] font-bold bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-0.5 rounded-full inline-flex items-center gap-1"
+                      >
+                        <span>● Most a közelben ({formatRemainingLiveTime(pro.live_until)})</span>
+                        <span>↗</span>
+                      </a>
                     ) : pro.address_text ? (
-                      <span className="text-[11px] font-medium bg-limestone text-[#5C6B62] px-2.5 py-0.5 rounded-full">
-                        {pro.address_text}
-                      </span>
+                      <a
+                        href={buildNavigationUrl(pro)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[11px] font-semibold bg-limestone hover:bg-[#E5DFD3] text-[#18261F] px-2.5 py-0.5 rounded-full border border-[#DFD9CE] inline-flex items-center gap-1"
+                      >
+                        <span>{pro.address_text}</span>
+                        <span className="text-pilis font-bold">↗</span>
+                      </a>
                     ) : pro.active_zone_today ? (
                       <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full">
                         Ma itt: {pro.active_zone_today}
@@ -943,6 +972,29 @@ export default function ProsDirectoryView({
                   </div>
                 )}
               </div>
+
+              {buildNavigationUrl(selectedPro) && (
+                <a
+                  href={buildNavigationUrl(selectedPro)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between gap-2 bg-white hover:bg-pilis-soft/40 border border-[#DFD9CE] rounded-2xl px-3.5 py-2.5 transition"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-[#5C6B62] uppercase tracking-wide">
+                      {liveNow ? 'Élő helyszín (4 órás jelenlét)' : 'Telephely / cím'}
+                    </div>
+                    <div className="text-xs font-bold text-[#18261F] truncate">
+                      {liveNow
+                        ? `Szentendre • Most a közelben (${formatRemainingLiveTime(selectedPro.live_until)})`
+                        : selectedPro.address_text || selectedPro.base_zone}
+                    </div>
+                  </div>
+                  <span className="shrink-0 bg-pilis-soft text-pilis font-bold text-xs px-3 py-1.5 rounded-xl">
+                    Navigáció ↗
+                  </span>
+                </a>
+              )}
 
               {!isOwner ? (
                 <div className="grid grid-cols-2 gap-2">
