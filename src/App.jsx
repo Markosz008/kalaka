@@ -285,7 +285,7 @@ export default function App() {
           author_favor_hearts: r.author?.favor_hearts || 0,
           is_recurring: isRec,
           schedule_text: scheduleLabel,
-          time_label: timeStr,
+          depart_time: timeStr,
           date_label: 'Ma',
           stops: []
         };
