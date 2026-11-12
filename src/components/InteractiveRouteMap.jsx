@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { MAP_TRANSIT_POINTS, resolveCoordsFromText } from '../constants/szentendreData.js';
+import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
 const MAP_STYLES = {
   topo: {
@@ -21,11 +21,13 @@ const MAP_STYLES = {
 };
 
 export default function InteractiveRouteMap({
+  rides = [],
   fromText,
   toText,
   fromCoords,
   toCoords,
   selectedRide,
+  onSelectRideOnMap,
   onPickLocation,
   onUpdatePinCoords
 }) {
@@ -36,6 +38,18 @@ export default function InteractiveRouteMap({
 
   const [mapStyle, setMapStyle] = useState('topo');
   const [routeMeta, setRouteMeta] = useState(null);
+  const [locating, setLocating] = useState(false);
+
+  // Legfrissebb callback referenciák, hogy ne kelljen újrainicializálni a térképet
+  const onPickRef = useRef(onPickLocation);
+  const onSelectRideRef = useRef(onSelectRideOnMap);
+  const onUpdatePinRef = useRef(onUpdatePinCoords);
+
+  useEffect(() => {
+    onPickRef.current = onPickLocation;
+    onSelectRideRef.current = onSelectRideOnMap;
+    onUpdatePinRef.current = onUpdatePinCoords;
+  }, [onPickLocation, onSelectRideOnMap, onUpdatePinCoords]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -58,7 +72,6 @@ export default function InteractiveRouteMap({
     tileLayerRef.current = initialTile;
     layerGroupRef.current = group;
 
-    // Mobilon gyakori félig szürke térkép-betöltés megelőzése
     const t1 = setTimeout(() => map.invalidateSize(), 120);
     const t2 = setTimeout(() => map.invalidateSize(), 450);
 
@@ -77,9 +90,9 @@ export default function InteractiveRouteMap({
         const label = road
           ? `${city === 'Szentendre' ? 'Szentendre, ' : city + ', '}${road}${house}`
           : `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-        onPickLocation(label, { lat, lng });
+        if (onPickRef.current) onPickRef.current(label, { lat, lng });
       } catch {
-        onPickLocation(`${lat.toFixed(4)}, ${lng.toFixed(4)}`, { lat, lng });
+        if (onPickRef.current) onPickRef.current(`${lat.toFixed(4)}, ${lng.toFixed(4)}`, { lat, lng });
       }
     });
 
@@ -98,6 +111,40 @@ export default function InteractiveRouteMap({
     tileLayerRef.current.setUrl(cfg.url);
   }, [mapStyle]);
 
+  // Saját GPS helyzet lekérése és beírása indulási pontnak
+  const handleLocateMe = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.setView([lat, lng], 15);
+        }
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const city = addr.city || addr.town || addr.village || 'Szentendre';
+          const road = addr.road || addr.pedestrian || addr.suburb || 'Jelenlegi helyzetem';
+          const house = addr.house_number ? ` ${addr.house_number}.` : '';
+          const label = `${city === 'Szentendre' ? 'Szentendre, ' : city + ', '}${road}${house}`;
+          if (onPickRef.current) onPickRef.current(label, { lat, lng }, 'from');
+        } catch {
+          if (onPickRef.current) onPickRef.current('Jelenlegi helyzetem', { lat, lng }, 'from');
+        } finally {
+          setLocating(false);
+        }
+      },
+      () => {
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   useEffect(() => {
     const map = mapInstanceRef.current;
     const group = layerGroupRef.current;
@@ -105,29 +152,6 @@ export default function InteractiveRouteMap({
 
     group.clearLayers();
     setRouteMeta(null);
-
-    MAP_TRANSIT_POINTS.forEach((pt) => {
-      const marker = L.circleMarker([pt.lat, pt.lng], {
-        radius: 5,
-        fillColor: '#FFFFFF',
-        color: '#1E4635',
-        weight: 2,
-        fillOpacity: 0.95
-      });
-
-      marker.bindTooltip(pt.short, {
-        direction: 'top',
-        offset: [0, -5],
-        className: 'text-xs font-semibold'
-      });
-
-      marker.on('click', (ev) => {
-        L.DomEvent.stopPropagation(ev);
-        onPickLocation(pt.name, { lat: pt.lat, lng: pt.lng });
-      });
-
-      marker.addTo(group);
-    });
 
     const effectiveFromText = selectedRide ? selectedRide.origin_text : fromText;
     const effectiveToText = selectedRide ? selectedRide.dest_text : toText;
@@ -144,6 +168,73 @@ export default function InteractiveRouteMap({
         : resolveCoordsFromText(selectedRide.dest_text)
       : toCoords || resolveCoordsFromText(effectiveToText);
 
+    // 1. HA NINCS KIVÁLASZTOTT ÚTVONAL: Élő aktív kiírások jelvényei jelennek meg a térképen (statikus üres pöttyök helyett!)
+    if (!selectedRide && !startCoord && !endCoord && Array.isArray(rides) && rides.length > 0) {
+      const boundsPoints = [];
+      rides.forEach((r, idx) => {
+        const c =
+          r.origin_lat && r.origin_lng
+            ? { lat: r.origin_lat, lng: r.origin_lng }
+            : resolveCoordsFromText(r.origin_text);
+        if (!c) return;
+
+        // Ha ketten ugyanabból az utcából indulnak, enyhén eltoljuk a jelvényt
+        const lat = c.lat + ((idx % 3) - 1) * 0.0005;
+        const lng = c.lng + ((idx % 2) - 0.5) * 0.0005;
+        boundsPoints.push([lat, lng]);
+
+        const isOffer = r.kind === 'offer';
+        const bg = isOffer ? '#1E4635' : '#C86446';
+        const badgeText = isOffer
+          ? `${r.time_label} • ${r.seats} hely`
+          : `${r.time_label} • Utat keres`;
+
+        const liveIcon = L.divIcon({
+          className: '',
+          html: `<div style="background:${bg};color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.35);white-space:nowrap;cursor:pointer">${badgeText}</div>`,
+          iconSize: [110, 26],
+          iconAnchor: [55, 13]
+        });
+
+        const marker = L.marker([lat, lng], { icon: liveIcon });
+        marker.on('click', (ev) => {
+          L.DomEvent.stopPropagation(ev);
+          if (onSelectRideRef.current) onSelectRideRef.current(r);
+        });
+        marker.addTo(group);
+      });
+
+      if (boundsPoints.length === 1) {
+        map.setView(boundsPoints[0], 14);
+      } else if (boundsPoints.length > 1) {
+        map.fitBounds(L.latLngBounds(boundsPoints), { padding: [36, 36], maxZoom: 14 });
+      }
+    }
+
+    // 2. HA KONKRÉT ÚT VAN KIVÁLASZTVA: A köztes megállók névvel és időponttal jelennek meg az útvonalon
+    if (selectedRide && Array.isArray(selectedRide.stops) && selectedRide.stops.length > 0) {
+      selectedRide.stops.forEach((st) => {
+        const stopCoord = resolveCoordsFromText(st.name);
+        if (!stopCoord) return;
+
+        const stopDot = L.circleMarker([stopCoord.lat, stopCoord.lng], {
+          radius: 5,
+          fillColor: '#FFFFFF',
+          color: '#1E4635',
+          weight: 2.5,
+          fillOpacity: 1
+        });
+
+        stopDot.bindTooltip(`${st.time} • ${st.name}`, {
+          direction: 'top',
+          offset: [0, -6],
+          className: 'text-xs font-bold'
+        });
+        stopDot.addTo(group);
+      });
+    }
+
+    // 3. A (Indulás) és B (Érkezés) jelölők
     if (startCoord) {
       const startIcon = L.divIcon({
         className: '',
@@ -158,7 +249,7 @@ export default function InteractiveRouteMap({
 
       mStart.on('dragend', (ev) => {
         const pos = ev.target.getLatLng();
-        if (onUpdatePinCoords) onUpdatePinCoords('from', { lat: pos.lat, lng: pos.lng });
+        if (onUpdatePinRef.current) onUpdatePinRef.current('from', { lat: pos.lat, lng: pos.lng });
       });
       mStart.addTo(group);
     }
@@ -177,11 +268,12 @@ export default function InteractiveRouteMap({
 
       mEnd.on('dragend', (ev) => {
         const pos = ev.target.getLatLng();
-        if (onUpdatePinCoords) onUpdatePinCoords('to', { lat: pos.lat, lng: pos.lng });
+        if (onUpdatePinRef.current) onUpdatePinRef.current('to', { lat: pos.lat, lng: pos.lng });
       });
       mEnd.addTo(group);
     }
 
+    // 4. Valós útvonal kirajzolása OSRM-mel
     if (startCoord && endCoord) {
       (async () => {
         try {
@@ -205,7 +297,7 @@ export default function InteractiveRouteMap({
             return;
           }
         } catch {
-          // Fallback
+          // Fallback egyenes vonal
         }
         const fallbackLine = L.polyline(
           [
@@ -221,12 +313,13 @@ export default function InteractiveRouteMap({
     } else if (endCoord) {
       map.setView([endCoord.lat, endCoord.lng], 15);
     }
-  }, [fromText, toText, fromCoords, toCoords, selectedRide, mapStyle]);
+  }, [rides, fromText, toText, fromCoords, toCoords, selectedRide, mapStyle]);
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#E8E4DA]">
       <div ref={mapContainerRef} className="w-full h-52 sm:h-64" />
 
+      {/* Bal felül: Térképréteg-választó */}
       <div className="absolute top-2 left-2 z-[400] flex bg-white/95 backdrop-blur p-0.5 rounded-lg shadow border border-[#DFD9CE] text-[11px] font-bold">
         {Object.entries(MAP_STYLES).map(([key, cfg]) => (
           <button
@@ -244,13 +337,22 @@ export default function InteractiveRouteMap({
         ))}
       </div>
 
-      {routeMeta && (
-        <div className="absolute top-2 right-2 pointer-events-none z-[400]">
-          <span className="bg-pilis text-white px-2 py-1 rounded-lg text-[11px] font-bold shadow">
+      {/* Jobb felül: Távolság jelvény VAGY Saját helyzet gomb */}
+      <div className="absolute top-2 right-2 z-[400] flex items-center gap-1.5">
+        {routeMeta && (
+          <span className="bg-pilis text-white px-2 py-1 rounded-lg text-[11px] font-bold shadow pointer-events-none">
             {routeMeta.km} km • ~{routeMeta.min} p
           </span>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={handleLocateMe}
+          disabled={locating}
+          className="bg-white/95 hover:bg-white text-[#18261F] px-2.5 py-1 rounded-lg text-[11px] font-bold shadow border border-[#DFD9CE] transition"
+        >
+          {locating ? 'Helyzet...' : 'Saját helyzet'}
+        </button>
+      </div>
     </div>
   );
 }

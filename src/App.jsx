@@ -364,7 +364,7 @@ export default function App() {
     return matchFrom && matchTo;
   });
 
-  const handleSelectQuickLocation = (locName, coordsObj = null) => {
+  const handleSelectQuickLocation = (locName, coordsObj = null, forcedField = null) => {
     setSelectedRideForMap(null);
     if (locName === 'Mind') {
       setFilterFrom('');
@@ -375,7 +375,8 @@ export default function App() {
       return;
     }
 
-    if (activeSearchField === 'to' || (filterFrom && !filterTo)) {
+    const targetField = forcedField || ((activeSearchField === 'to' || (filterFrom && !filterTo)) ? 'to' : 'from');
+    if (targetField === 'to') {
       setFilterTo(locName);
       setToCoords(coordsObj || resolveCoordsFromText(locName));
       setActiveSearchField('to');
@@ -907,13 +908,17 @@ export default function App() {
 
           {showMap && (
             <InteractiveRouteMap
+              rides={filteredRides}
               fromText={filterFrom}
               toText={filterTo}
               fromCoords={fromCoords}
               toCoords={toCoords}
               selectedRide={selectedRideForMap}
-              onPickLocation={(label, coordsObj) =>
-                handleSelectQuickLocation(label, coordsObj)
+              onSelectRideOnMap={(rideObj) => {
+                setSelectedRideForMap(rideObj);
+              }}
+              onPickLocation={(label, coordsObj, forcedField) =>
+                handleSelectQuickLocation(label, coordsObj, forcedField)
               }
               onUpdatePinCoords={(which, coordsObj) => {
                 if (which === 'from') setFromCoords(coordsObj);
