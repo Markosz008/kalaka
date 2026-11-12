@@ -1433,7 +1433,7 @@ export default function App() {
                         onChange={(e) => setInlineTime(e.target.value)}
                         className="text-sm font-bold focus:outline-none bg-transparent"
                       />
-                  {!inlineRecurring && (
+                  {!false && (
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis shrink-0">
                       {resolveAutoDayForTime(inlineTime, false)}
                     </span>
