@@ -228,6 +228,7 @@ export default function ProsDirectoryView({
     if (!group || !showMap) return;
     group.clearLayers();
 
+    const boundsPoints = [];
     filteredPros.forEach((p, idx) => {
       const liveNow = isLivePresenceActive(p);
       let coord = null;
@@ -250,15 +251,14 @@ export default function ProsDirectoryView({
       if (!coord) return;
 
       const badgeBg = liveNow ? '#047857' : p.lat && p.lng ? '#1E4635' : '#5C6B62';
-      const labelText = liveNow
-        ? `● ${p.profession_name || p.business_name}`
-        : p.profession_name || p.business_name;
+      const shortProf = (p.profession_name || p.business_name || '').slice(0, 14);
+      const labelText = liveNow ? `● ${shortProf}` : shortProf;
 
       const pin = L.divIcon({
         className: '',
-        html: `<div style="background:${badgeBg};color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;cursor:pointer">${labelText}</div>`,
-        iconSize: [126, 24],
-        iconAnchor: [63, 12]
+        html: `<div style="display:inline-flex;align-items:center;justify-content:center;background:${badgeBg};color:#fff;font-weight:700;font-size:10px;line-height:1;padding:4px 7px;border-radius:99px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.32);white-space:nowrap;cursor:pointer;transform:translate(-50%,-50%)">${labelText}</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
       });
 
       const subLabel = liveNow
@@ -267,11 +267,23 @@ export default function ProsDirectoryView({
 
       const marker = L.marker([coord.lat, coord.lng], { icon: pin }).bindTooltip(
         `${p.business_name} • ${subLabel}`,
-        { direction: 'top' }
+        { direction: 'top', offset: [0, -10] }
       );
       marker.on('click', () => setSelectedPro(p));
       marker.addTo(group);
+      boundsPoints.push([coord.lat, coord.lng]);
     });
+
+    if (mapInstance.current && boundsPoints.length > 0) {
+      if (boundsPoints.length === 1) {
+        mapInstance.current.setView(boundsPoints[0], 15);
+      } else {
+        mapInstance.current.fitBounds(L.latLngBounds(boundsPoints), {
+          padding: [28, 28],
+          maxZoom: 14
+        });
+      }
+    }
   }, [filteredPros, showMap]);
 
   const handleToggleLivePresence = async (pro) => {
@@ -693,7 +705,7 @@ export default function ProsDirectoryView({
 
         {showMap && (
           <div className="rounded-xl overflow-hidden border border-[#DFD9CE]">
-            <div ref={mapRef} className="w-full h-44" />
+            <div ref={mapRef} className="w-full h-48 sm:h-60" />
           </div>
         )}
 
