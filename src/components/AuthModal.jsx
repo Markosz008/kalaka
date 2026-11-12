@@ -144,12 +144,16 @@ export default function AuthModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 border border-[#DFD9CE] shadow-2xl max-h-[92vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display font-extrabold text-lg text-[#18261F]">
+      <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <h3 className="font-display font-extrabold text-lg text-[#18261F] truncate">
             {session?.user ? 'Profilom' : 'Belépés / Regisztráció'}
           </h3>
-          <button onClick={onClose} className="text-sm font-bold text-[#5C6B62]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm font-bold text-[#5C6B62] hover:text-black shrink-0 px-2 py-1"
+          >
             Bezárás ✕
           </button>
         </div>
@@ -195,7 +199,7 @@ export default function AuthModal({
                 required
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm font-semibold"
+                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base font-semibold box-border"
               />
             </div>
 
@@ -204,7 +208,7 @@ export default function AuthModal({
               <select
                 value={zone}
                 onChange={(e) => setZone(e.target.value)}
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm font-semibold"
+                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base font-semibold box-border"
               >
                 {SZENTENDRE_ZONES.map((z) => (
                   <option key={z.id} value={z.name}>{z.name}</option>
@@ -253,12 +257,12 @@ export default function AuthModal({
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     placeholder="Keresztneved vagy beceneved"
-                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm"
+                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
                   />
                   <select
                     value={zone}
                     onChange={(e) => setZone(e.target.value)}
-                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm font-medium"
+                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base font-medium box-border"
                   >
                     {SZENTENDRE_ZONES.map((z) => (
                       <option key={z.id} value={z.name}>{z.name}</option>
@@ -273,7 +277,7 @@ export default function AuthModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="E-mail címed"
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm"
+                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
               />
 
               {mode !== 'magic' && (
@@ -284,7 +288,7 @@ export default function AuthModal({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Jelszó (min. 6 karakter)"
-                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm"
+                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
                 />
               )}
 
@@ -295,14 +299,14 @@ export default function AuthModal({
                     value={inviteCodeInput}
                     onChange={(e) => setInviteCodeInput(e.target.value)}
                     placeholder="Meghívókód (opcionális)"
-                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2 text-xs font-mono uppercase"
+                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2 text-base font-mono uppercase box-border"
                   />
                   <label className="flex items-center gap-2 text-xs text-[#5C6B62] pt-1 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={adultConfirmed}
                       onChange={(e) => setAdultConfirmed(e.target.checked)}
-                      className="accent-pilis w-4 h-4"
+                      className="accent-pilis w-4 h-4 shrink-0"
                     />
                     <span>Elmúltam 18 éves, és elfogadom a házirendet.</span>
                   </label>
@@ -331,3 +335,4 @@ export default function AuthModal({
     </div>
   );
 }
+

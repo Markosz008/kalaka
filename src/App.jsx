@@ -762,7 +762,7 @@ export default function App() {
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
 
   return (
-    <div className="max-w-xl mx-auto min-h-screen pb-28">
+    <div className="w-full max-w-xl mx-auto min-h-screen pb-28 overflow-x-hidden">
       <HeaderRoadBar
         session={session}
         profile={profile}
@@ -772,8 +772,8 @@ export default function App() {
       />
 
       {activeTab === 'rides' && (
-        <section className="mx-4 -mt-3 bg-white rounded-2xl p-3.5 shadow-lg border border-[#DFD9CE] relative z-20 space-y-2.5">
-          <div className="space-y-1.5">
+        <section className="mx-3 sm:mx-4 -mt-3 bg-white rounded-2xl p-3 sm:p-3.5 shadow-lg border border-[#DFD9CE] relative z-20 space-y-2.5 box-border">
+          <div className="space-y-1">
             <AddressAutocompleteInput
               value={filterFrom}
               onFocus={() => setActiveSearchField('from')}
@@ -785,11 +785,11 @@ export default function App() {
                 setFromCoords(place ? { lat: place.lat, lng: place.lng } : null);
                 setActiveSearchField('to');
               }}
-              placeholder="Honnan indulsz? (pl. Fogoly utca 7.)"
+              placeholder="Honnan indulsz?"
               dotColor="border-pilis"
             />
 
-            <div className="border-t border-[#ECE7DC] pt-1.5">
+            <div className="border-t border-[#ECE7DC] pt-1">
               <AddressAutocompleteInput
                 value={filterTo}
                 onFocus={() => setActiveSearchField('to')}
@@ -800,14 +800,14 @@ export default function App() {
                 onSelectPlace={(place) => {
                   setToCoords(place ? { lat: place.lat, lng: place.lng } : null);
                 }}
-                placeholder="Hová tartasz? (pl. Szentendre HÉV, Újpest)"
+                placeholder="Hová tartasz?"
                 isSolidDot
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#ECE7DC]">
-            <div className="flex gap-1.5 overflow-x-auto py-0.5">
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#ECE7DC] min-w-0">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0 flex-1">
               {[
                 'Mind',
                 'Szentendre HÉV-végállomás',
@@ -843,7 +843,7 @@ export default function App() {
               onClick={() => setShowMap((v) => !v)}
               className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg"
             >
-              {showMap ? 'Térkép bezárása' : 'Térkép'}
+              {showMap ? 'Térkép elrejtése' : 'Térkép'}
             </button>
           </div>
 
@@ -871,7 +871,7 @@ export default function App() {
                   <span className="text-xs font-bold text-[#18261F] px-1">
                     Kiírod ezt az útvonalat?
                   </span>
-                  <div className="flex gap-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
                       onClick={() => {
@@ -879,7 +879,7 @@ export default function App() {
                         setInlineValidMins(720);
                         setInlineComposerMode('offer');
                       }}
-                      className="flex-1 sm:flex-initial bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3 py-2 rounded-lg transition"
+                      className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-2.5 py-2 rounded-lg transition"
                     >
                       Van helyem
                     </button>
@@ -890,7 +890,7 @@ export default function App() {
                         setInlineValidMins(10080);
                         setInlineComposerMode('recurring');
                       }}
-                      className="flex-1 sm:flex-initial bg-white hover:border-pilis text-pilis border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-lg transition"
+                      className="bg-white hover:border-pilis text-pilis border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-lg transition"
                     >
                       Rendszeres
                     </button>
@@ -901,7 +901,7 @@ export default function App() {
                         setInlineValidMins(180);
                         setInlineComposerMode('ask');
                       }}
-                      className="flex-1 sm:flex-initial bg-terracotta hover:bg-[#b55538] text-white font-bold text-xs px-3 py-2 rounded-lg transition"
+                      className="bg-terracotta hover:bg-[#b55538] text-white font-bold text-xs px-2.5 py-2 rounded-lg transition"
                     >
                       Utat keresek
                     </button>
@@ -927,7 +927,7 @@ export default function App() {
                             if (m === 'ask') setInlineSeats(1);
                             else if (inlineSeats === 1) setInlineSeats(3);
                           }}
-                          className={`px-2.5 py-1 rounded-md transition ${
+                          className={`px-2 py-1 rounded-md transition ${
                             inlineComposerMode === m
                               ? 'bg-pilis text-white'
                               : 'text-[#5C6B62]'
@@ -947,8 +947,8 @@ export default function App() {
                     </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center justify-between bg-white border border-[#DFD9CE] rounded-xl px-3 py-2">
                       <span className="text-xs text-[#5C6B62] font-semibold">Indulás:</span>
                       <input
                         type="time"
@@ -957,20 +957,6 @@ export default function App() {
                         className="text-sm font-bold focus:outline-none bg-transparent"
                       />
                     </div>
-
-                    {inlineComposerMode === 'recurring' && (
-                      <select
-                        value={inlineSchedule}
-                        onChange={(e) => setInlineSchedule(e.target.value)}
-                        className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold"
-                      >
-                        <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
-                        <option value="Minden nap">Minden nap</option>
-                        <option value="Hétvégén (Szo–V)">Hétvégén (Szo–V)</option>
-                        <option value="Hétfő, Szerda, Péntek">Hétfő, Szerda, Péntek</option>
-                        <option value="Kedd, Csütörtök">Kedd, Csütörtök</option>
-                      </select>
-                    )}
 
                     <select
                       value={inlineSeats}
@@ -984,10 +970,24 @@ export default function App() {
                       ))}
                     </select>
 
+                    {inlineComposerMode === 'recurring' && (
+                      <select
+                        value={inlineSchedule}
+                        onChange={(e) => setInlineSchedule(e.target.value)}
+                        className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold"
+                      >
+                        <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
+                        <option value="Minden nap">Minden nap</option>
+                        <option value="Hétvégén (Szo–V)">Hétvégén (Szo–V)</option>
+                        <option value="Hétfő, Szerda, Péntek">Hétfő, Szerda, Péntek</option>
+                        <option value="Kedd, Csütörtök">Kedd, Csütörtök</option>
+                      </select>
+                    )}
+
                     <select
                       value={inlineValidMins}
                       onChange={(e) => setInlineValidMins(Number(e.target.value))}
-                      className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold text-pilis"
+                      className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold text-pilis"
                     >
                       {VALIDITY_OPTIONS.map((opt) => (
                         <option key={opt.minutes} value={opt.minutes}>
@@ -1002,8 +1002,8 @@ export default function App() {
                       type="text"
                       value={inlineNote}
                       onChange={(e) => setInlineNote(e.target.value)}
-                      placeholder="Megjegyzés (pl. 11-es úti megállókban megállok)..."
-                      className="flex-1 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-pilis"
+                      placeholder="Megjegyzés (nem kötelező)..."
+                      className="flex-1 min-w-0 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-pilis"
                     />
                     <button
                       type="submit"
@@ -1020,7 +1020,7 @@ export default function App() {
         </section>
       )}
 
-      <main className="px-4 mt-4 space-y-3">
+      <main className="px-3 sm:px-4 mt-4 space-y-3">
         {activeTab === 'rides' && (
           <>
             {filteredRides.length === 0 ? (
@@ -1101,11 +1101,11 @@ export default function App() {
                   onClick={() => setActiveAgreement(agr)}
                   className="bg-white rounded-2xl p-4 border border-[#DFD9CE] shadow-sm flex items-center justify-between gap-3 cursor-pointer hover:border-pilis transition"
                 >
-                  <div>
-                    <div className="font-bold text-sm">{agr.partner_name}</div>
-                    <div className="text-xs text-[#5C6B62]">{agr.title}</div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm truncate">{agr.partner_name}</div>
+                    <div className="text-xs text-[#5C6B62] truncate">{agr.title}</div>
                   </div>
-                  <span className="text-xs font-bold bg-pilis-soft text-pilis px-3 py-1 rounded-full">
+                  <span className="shrink-0 text-xs font-bold bg-pilis-soft text-pilis px-3 py-1 rounded-full">
                     Megnyitás ›
                   </span>
                 </div>
@@ -1126,65 +1126,95 @@ export default function App() {
         )}
       </main>
 
-      <button
-        onClick={() => {
-          setEditingItemId(null);
-          setNewFrom(filterFrom);
-          setNewTo(filterTo);
-          setNewFromCoords(fromCoords);
-          setNewToCoords(toCoords);
-          setShowNewModal(true);
-        }}
-        className="fixed right-5 bottom-20 bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-sm px-5 py-3.5 rounded-full shadow-xl z-30"
-      >
-        + Új kiírás
-      </button>
+      {/* Alsó navigációs sáv: beépített középső "+ Új" gombbal, így SOHA nem takarja el a kártyák gombjait mobilon */}
+      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#DFD9CE] pb-[env(safe-area-inset-bottom)] z-30">
+        <div className="max-w-xl mx-auto grid grid-cols-5 items-center">
+          <button
+            onClick={() => setActiveTab('rides')}
+            className={`py-3 text-xs font-bold border-t-2 transition ${
+              activeTab === 'rides'
+                ? 'border-pilis text-pilis'
+                : 'border-transparent text-[#5C6B62]'
+            }`}
+          >
+            Utak
+          </button>
 
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-[#DFD9CE] z-20">
-        <div className="max-w-xl mx-auto flex">
-          {[
-            ['rides', 'Utak'],
-            ['favors', 'Kaláka'],
-            ['messages', `Üzenetek${myAgreements.length ? ` (${myAgreements.length})` : ''}`],
-            ['pros', 'Szakik']
-          ].map(([key, label]) => (
+          <button
+            onClick={() => setActiveTab('favors')}
+            className={`py-3 text-xs font-bold border-t-2 transition ${
+              activeTab === 'favors'
+                ? 'border-pilis text-pilis'
+                : 'border-transparent text-[#5C6B62]'
+            }`}
+          >
+            Kaláka
+          </button>
+
+          <div className="flex justify-center py-1.5">
             <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex-1 py-3.5 text-xs font-bold border-t-2 transition ${
-                activeTab === key
-                  ? 'border-pilis text-pilis bg-pilis-soft/20'
-                  : 'border-transparent text-[#5C6B62]'
-              }`}
+              onClick={() => {
+                setEditingItemId(null);
+                setNewFrom(filterFrom);
+                setNewTo(filterTo);
+                setNewFromCoords(fromCoords);
+                setNewToCoords(toCoords);
+                if (activeTab === 'favors') setNewKind('favor');
+                else if (newKind === 'favor') setNewKind('offer');
+                setShowNewModal(true);
+              }}
+              className="bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-xs px-3.5 py-2 rounded-full shadow-md transition"
             >
-              {label}
+              + Új
             </button>
-          ))}
+          </div>
+
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`py-3 text-xs font-bold border-t-2 transition truncate px-1 ${
+              activeTab === 'messages'
+                ? 'border-pilis text-pilis'
+                : 'border-transparent text-[#5C6B62]'
+            }`}
+          >
+            Üzenet{myAgreements.length ? ` (${myAgreements.length})` : ''}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('pros')}
+            className={`py-3 text-xs font-bold border-t-2 transition ${
+              activeTab === 'pros'
+                ? 'border-pilis text-pilis'
+                : 'border-transparent text-[#5C6B62]'
+            }`}
+          >
+            Szakik
+          </button>
         </div>
       </nav>
 
       {showRoadModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
             <div className="flex justify-between items-center">
               <h3 className="font-display font-extrabold text-lg">
                 11-es út és hegyi útinfó ({roadAlerts.length})
               </h3>
               <button
                 onClick={() => setShowRoadModal(false)}
-                className="text-sm font-bold text-[#5C6B62]"
+                className="text-sm font-bold text-[#5C6B62] px-2 py-1"
               >
                 Bezárás ✕
               </button>
             </div>
 
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {roadAlerts.map((al) => (
                 <div
                   key={al.id}
                   className="bg-white rounded-xl p-3 border border-[#DFD9CE] text-xs space-y-1 flex items-start justify-between gap-2"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 text-[11px] text-[#5C6B62]">
                       <span className="font-bold text-[#18261F]">
                         {al.author_name || 'Helyi autós'}
@@ -1196,7 +1226,7 @@ export default function App() {
                         })}
                       </span>
                     </div>
-                    <div className="font-semibold text-[#18261F] mt-0.5">{al.message}</div>
+                    <div className="font-semibold text-[#18261F] mt-0.5 break-words">{al.message}</div>
                   </div>
                   {session?.user && al.reporter_id === session.user.id && (
                     <button
@@ -1245,7 +1275,7 @@ export default function App() {
                 value={customRoadText}
                 onChange={(e) => setCustomRoadText(e.target.value)}
                 placeholder="Írd le, hol és mi történik..."
-                className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs"
+                className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
               />
               <button
                 type="submit"
@@ -1262,7 +1292,7 @@ export default function App() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
             onSubmit={handleSaveModalPost}
-            className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-3 border border-[#DFD9CE]"
+            className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] max-h-[90vh] overflow-y-auto box-border"
           >
             <div className="flex justify-between items-center">
               <h3 className="font-display font-extrabold text-lg">
@@ -1274,13 +1304,13 @@ export default function App() {
                   setShowNewModal(false);
                   setEditingItemId(null);
                 }}
-                className="text-sm font-bold text-[#5C6B62]"
+                className="text-sm font-bold text-[#5C6B62] px-2 py-1"
               >
                 Bezárás ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-1 bg-[#ECE7DC] p-1 rounded-xl text-xs font-bold">
+            <div className="grid grid-cols-4 gap-1 bg-[#ECE7DC] p-1 rounded-xl text-[11px] sm:text-xs font-bold">
               {[
                 ['offer', 'Van helyem'],
                 ['recurring', 'Rendszeres'],
@@ -1291,7 +1321,7 @@ export default function App() {
                   key={k}
                   type="button"
                   onClick={() => setNewKind(k)}
-                  className={`py-2 rounded-lg ${
+                  className={`py-2 rounded-lg truncate px-1 ${
                     newKind === k ? 'bg-white text-pilis shadow-sm' : 'text-[#5C6B62]'
                   }`}
                 >
@@ -1307,7 +1337,7 @@ export default function App() {
                 value={newFrom}
                 onChange={(e) => setNewFrom(e.target.value)}
                 placeholder="Miben kérsz vagy ajánlasz segítséget?"
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm"
+                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
               />
             ) : (
               <div className="bg-white rounded-xl p-2 border border-[#DFD9CE] space-y-1.5">
@@ -1317,7 +1347,7 @@ export default function App() {
                   onSelectPlace={(pl) =>
                     setNewFromCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
                   }
-                  placeholder="Honnan indulsz? (pl. Fogoly utca 7.)"
+                  placeholder="Honnan indulsz?"
                 />
                 <div className="border-t border-[#ECE7DC] pt-1.5">
                   <AddressAutocompleteInput
@@ -1326,7 +1356,7 @@ export default function App() {
                     onSelectPlace={(pl) =>
                       setNewToCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
                     }
-                    placeholder="Hová mész? (pl. Újpest-Városkapu)"
+                    placeholder="Hová mész?"
                     isSolidDot
                   />
                 </div>
@@ -1334,18 +1364,29 @@ export default function App() {
             )}
 
             {newKind !== 'favor' ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <input
                   type="time"
                   value={newTime}
                   onChange={(e) => setNewTime(e.target.value)}
-                  className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm font-bold"
+                  className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base font-bold box-border"
                 />
+                <select
+                  value={newSeats}
+                  onChange={(e) => setNewSeats(e.target.value)}
+                  className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <option key={n} value={n}>
+                      {newKind === 'ask' ? `${n} utas` : `${n} szabad hely`}
+                    </option>
+                  ))}
+                </select>
                 {newKind === 'recurring' && (
                   <select
                     value={newScheduleText}
                     onChange={(e) => setNewScheduleText(e.target.value)}
-                    className="flex-1 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold"
+                    className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
                   >
                     <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
                     <option value="Minden nap">Minden nap</option>
@@ -1354,17 +1395,6 @@ export default function App() {
                     <option value="Kedd, Csütörtök">Kedd, Csütörtök</option>
                   </select>
                 )}
-                <select
-                  value={newSeats}
-                  onChange={(e) => setNewSeats(e.target.value)}
-                  className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold"
-                >
-                  {[1, 2, 3, 4].map((n) => (
-                    <option key={n} value={n}>
-                      {newKind === 'ask' ? `${n} utas` : `${n} szabad hely`}
-                    </option>
-                  ))}
-                </select>
               </div>
             ) : (
               <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
@@ -1384,7 +1414,7 @@ export default function App() {
 
             <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
               <span className="text-xs font-bold text-[#18261F]">
-                Érvényesség időtartama
+                Érvényesség
               </span>
               <select
                 value={newValidMins}
@@ -1404,7 +1434,7 @@ export default function App() {
               value={newNote}
               onChange={(e) => setNewNote(e.target.value)}
               placeholder="Megjegyzés (nem kötelező)"
-              className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-sm"
+              className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
             />
 
             <button

@@ -58,6 +58,10 @@ export default function InteractiveRouteMap({
     tileLayerRef.current = initialTile;
     layerGroupRef.current = group;
 
+    // Mobilon gyakori félig szürke térkép-betöltés megelőzése
+    const t1 = setTimeout(() => map.invalidateSize(), 120);
+    const t2 = setTimeout(() => map.invalidateSize(), 450);
+
     map.on('click', async (e) => {
       const { lat, lng } = e.latlng;
       try {
@@ -80,6 +84,8 @@ export default function InteractiveRouteMap({
     });
 
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -191,7 +197,7 @@ export default function InteractiveRouteMap({
               opacity: 0.92
             }).addTo(group);
 
-            map.fitBounds(poly.getBounds(), { padding: [32, 32], maxZoom: 15 });
+            map.fitBounds(poly.getBounds(), { padding: [28, 28], maxZoom: 15 });
             setRouteMeta({
               km: (route.distance / 1000).toFixed(1),
               min: Math.max(2, Math.round(route.duration / 60))
@@ -208,7 +214,7 @@ export default function InteractiveRouteMap({
           ],
           { color: '#1E4635', weight: 3, dashArray: '6 6' }
         ).addTo(group);
-        map.fitBounds(fallbackLine.getBounds(), { padding: [32, 32], maxZoom: 15 });
+        map.fitBounds(fallbackLine.getBounds(), { padding: [28, 28], maxZoom: 15 });
       })();
     } else if (startCoord) {
       map.setView([startCoord.lat, startCoord.lng], 15);
@@ -218,16 +224,16 @@ export default function InteractiveRouteMap({
   }, [fromText, toText, fromCoords, toCoords, selectedRide, mapStyle]);
 
   return (
-    <div className="relative rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#E8E4DA]">
-      <div ref={mapContainerRef} className="w-full h-60 sm:h-68" />
+    <div className="relative w-full rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#E8E4DA]">
+      <div ref={mapContainerRef} className="w-full h-52 sm:h-64" />
 
-      <div className="absolute top-2.5 left-2.5 z-[400] flex bg-white/95 backdrop-blur p-0.5 rounded-lg shadow border border-[#DFD9CE] text-[11px] font-bold">
+      <div className="absolute top-2 left-2 z-[400] flex bg-white/95 backdrop-blur p-0.5 rounded-lg shadow border border-[#DFD9CE] text-[11px] font-bold">
         {Object.entries(MAP_STYLES).map(([key, cfg]) => (
           <button
             key={key}
             type="button"
             onClick={() => setMapStyle(key)}
-            className={`px-2.5 py-1 rounded-md transition ${
+            className={`px-2 py-1 rounded-md transition ${
               mapStyle === key
                 ? 'bg-pilis text-white'
                 : 'text-[#5C6B62] hover:text-black'
@@ -239,9 +245,9 @@ export default function InteractiveRouteMap({
       </div>
 
       {routeMeta && (
-        <div className="absolute top-2.5 right-2.5 pointer-events-none z-[400]">
-          <span className="bg-pilis text-white px-2.5 py-1 rounded-lg text-xs font-bold shadow">
-            {routeMeta.km} km • ~{routeMeta.min} perc
+        <div className="absolute top-2 right-2 pointer-events-none z-[400]">
+          <span className="bg-pilis text-white px-2 py-1 rounded-lg text-[11px] font-bold shadow">
+            {routeMeta.km} km • ~{routeMeta.min} p
           </span>
         </div>
       )}
