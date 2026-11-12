@@ -217,7 +217,10 @@ export default function InteractiveRouteMap({
     // 2. HA KONKRÉT ÚT VAN KIVÁLASZTVA: A köztes megállók névvel és időponttal jelennek meg az útvonalon
     if (selectedRide && Array.isArray(selectedRide.stops) && selectedRide.stops.length > 0) {
       selectedRide.stops.forEach((st) => {
-        const stopCoord = resolveCoordsFromText(st.name);
+        const stopCoord =
+          st.lat && st.lng
+            ? { lat: st.lat, lng: st.lng }
+            : resolveCoordsFromText(st.name);
         if (!stopCoord) return;
 
         const stopDot = L.circleMarker([stopCoord.lat, stopCoord.lng], {

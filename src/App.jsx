@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase.js';
+import { computeStopsAlongRoute } from './lib/routing.js';
 import {
   VALIDITY_OPTIONS,
   resolveCoordsFromText
@@ -179,13 +180,24 @@ export default function App() {
           schedule_text: scheduleLabel,
           time_label: timeStr,
           date_label: 'Ma',
-          stops:
-            r.kind === 'offer'
-              ? buildIntermediateStops(timeStr, r.origin_text, r.dest_text)
-              : []
+          stops: []
         };
       });
       setRides(mappedRides);
+
+      // Irányhelyes köztes megállók kiszámítása a tényleges útvonal alapján
+      Promise.all(
+        mappedRides.map(async (rideItem) => {
+          if (rideItem.kind !== 'offer') return rideItem;
+          const computedStops = await computeStopsAlongRoute(rideItem);
+          return { ...rideItem, stops: computedStops };
+        })
+      ).then((enrichedRides) => {
+        setRides(enrichedRides);
+        setSelectedRideForMap((prev) =>
+          prev ? enrichedRides.find((x) => x.id === prev.id) || prev : null
+        );
+      });
     }
 
     const { data: favorRows } = await supabase
