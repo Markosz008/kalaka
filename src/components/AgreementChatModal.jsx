@@ -24,6 +24,7 @@ export default function AgreementChatModal({
   const [text, setText] = useState('');
   const [liveAgr, setLiveAgr] = useState(agreement || null);
   const [busy, setBusy] = useState(false);
+  const [gpsErrorMsg, setGpsErrorMsg] = useState(null);
   const [errorBanner, setErrorBanner] = useState(null);
   const [gpsActive, setGpsActive] = useState(false);
   const [sharingPassengerPin, setSharingPassengerPin] = useState(false);
@@ -116,6 +117,27 @@ export default function AgreementChatModal({
       if (channel && supabase) supabase.removeChannel(channel);
     };
   }, [agreement?.id, isLiveDbAgreement]);
+
+  // Élő koordináták (driver_lat/lng, passenger_lat/lng) 3 másodperces frissítése aktív út alatt
+  useEffect(() => {
+    if (!isRideAgreement || !liveAgr?.id || !supabase) return;
+    if (!['agreed', 'started', 'arrived'].includes(status)) return;
+
+    const syncCoords = async () => {
+      const { data } = await supabase
+        .from('agreements')
+        .select('status, driver_lat, driver_lng, driver_updated_at, passenger_lat, passenger_lng, passenger_updated_at, pickup_stop_name')
+        .eq('id', liveAgr.id)
+        .maybeSingle();
+      if (data) {
+        setLiveAgr((prev) => ({ ...prev, ...data }));
+      }
+    };
+
+    syncCoords();
+    const timer = setInterval(syncCoords, 3000);
+    return () => clearInterval(timer);
+  }, [isRideAgreement, liveAgr?.id, status]);
 
   // Screen Wake Lock: ébren tartja a kijelzőt, amíg az élő GPS-követés ('started') fut
   useEffect(() => {
@@ -789,6 +811,41 @@ export default function AgreementChatModal({
         )}
 
         {/* Üzenetek */}
+        {isRideAgreement && ['agreed', 'started'].includes(status) && gpsErrorMsg && (
+          <div className="bg-amber-50 border-b border-amber-200 px-3.5 py-2 flex items-center justify-between gap-2 text-[11px] text-amber-950">
+            <span className="leading-tight">{gpsErrorMsg}</span>
+            <button
+              type="button"
+              onClick={async () => {
+                const fallbackLat = isHelper ? 47.6842 : 47.6768;
+                const fallbackLng = isHelper ? 19.0628 : 19.0705;
+                const patch = isHelper
+                  ? {
+                      driver_lat: fallbackLat,
+                      driver_lng: fallbackLng,
+                      driver_updated_at: new Date().toISOString()
+                    }
+                  : {
+                      passenger_lat: fallbackLat,
+                      passenger_lng: fallbackLng,
+                      passenger_updated_at: new Date().toISOString()
+                    };
+                const { data } = await supabase
+                  .from('agreements')
+                  .update(patch)
+                  .eq('id', liveAgr.id)
+                  .select('*')
+                  .single();
+                if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
+                setGpsErrorMsg(null);
+              }}
+              className="shrink-0 bg-amber-900 text-white font-bold px-2.5 py-1 rounded-lg"
+            >
+              Pozíció küldése
+            </button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {messages.map((m) => (
             <div
