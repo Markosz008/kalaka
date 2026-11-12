@@ -16,6 +16,24 @@ const ENDORSEMENT_STRENGTH_TAGS = [
   'Segítőkész'
 ];
 
+function isLivePresenceActive(pro) {
+  if (!pro?.live_until || !pro?.live_lat || !pro?.live_lng) return false;
+  return new Date(pro.live_until).getTime() > Date.now();
+}
+
+function formatRemainingLiveTime(liveUntil) {
+  if (!liveUntil) return '';
+  const diffMs = new Date(liveUntil).getTime() - Date.now();
+  if (diffMs <= 0) return '';
+  const mins = Math.ceil(diffMs / 60000);
+  if (mins >= 60) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h} óra ${m} p` : `${h} óra`;
+  }
+  return `${mins} perc`;
+}
+
 export default function ProsDirectoryView({
   pros,
   session,
@@ -26,26 +44,24 @@ export default function ProsDirectoryView({
 }) {
   const currentUserId = session?.user?.id || null;
 
-  // Szűrők
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [professionFilter, setProfessionFilter] = useState('all');
   const [showMap, setShowMap] = useState(true);
 
-  // Kiválasztott szakember részletes névjegykártyája (Bottom Sheet)
   const [selectedPro, setSelectedPro] = useState(null);
 
-  // Felhasználó interakciói és leadott ajánlásai
-  const [interactedProIds, setInteractedProIds] = useState(new Set());
+  const [interactionsByPro, setInteractionsByPro] = useState({});
+  const [agreementsByPro, setAgreementsByPro] = useState({});
   const [endorsedProIds, setEndorsedProIds] = useState(new Set());
   const [endorsementsByPro, setEndorsementsByPro] = useState({});
 
-  // Ajánlás-küldő állapot a részletlapon
   const [selectedTags, setSelectedTags] = useState([]);
   const [endorseNote, setEndorseNote] = useState('');
   const [endorseSaving, setEndorseSaving] = useState(false);
 
-  // Új szakember / szolgáltató felvétele és szerkesztése
+  const [togglingLiveId, setTogglingLiveId] = useState(null);
+
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingProId, setEditingProId] = useState(null);
   const [bizName, setBizName] = useState('');
@@ -57,6 +73,9 @@ export default function ProsDirectoryView({
   const [bizBio, setBizBio] = useState('');
   const [bizPhone, setBizPhone] = useState('');
   const [bizBaseZone, setBizBaseZone] = useState(profile?.zone || 'Belváros');
+  const [bizAddress, setBizAddress] = useState('');
+  const [bizCoords, setBizCoords] = useState(null);
+  const [locatingAddress, setLocatingAddress] = useState(false);
   const [bizActiveToday, setBizActiveToday] = useState(true);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -122,15 +141,31 @@ export default function ProsDirectoryView({
 
     if (currentUserId) {
       const [{ data: myInts }, { data: myAgrs }] = await Promise.all([
-        supabase.from('pro_interactions').select('pro_id').eq('user_id', currentUserId),
-        supabase.from('agreements').select('pro_id').eq('requester_id', currentUserId).not('pro_id', 'is', null)
+        supabase
+          .from('pro_interactions')
+          .select('pro_id, interaction_type, created_at')
+          .eq('user_id', currentUserId),
+        supabase
+          .from('agreements')
+          .select('id, pro_id, status, created_at')
+          .eq('requester_id', currentUserId)
+          .not('pro_id', 'is', null)
       ]);
-      const combined = new Set();
-      (myInts || []).forEach((i) => combined.add(i.pro_id));
-      (myAgrs || []).forEach((a) => combined.add(a.pro_id));
-      setInteractedProIds(combined);
+
+      const intMap = {};
+      (myInts || []).forEach((i) => {
+        intMap[i.pro_id] = i;
+      });
+      setInteractionsByPro(intMap);
+
+      const agrMap = {};
+      (myAgrs || []).forEach((a) => {
+        agrMap[a.pro_id] = a;
+      });
+      setAgreementsByPro(agrMap);
     } else {
-      setInteractedProIds(new Set());
+      setInteractionsByPro({});
+      setAgreementsByPro({});
       setEndorsedProIds(new Set());
     }
   };
@@ -139,7 +174,6 @@ export default function ProsDirectoryView({
     loadInteractionAndEndorsementState();
   }, [currentUserId, pros?.length]);
 
-  // Frissítjük a kiválasztott kártya adatait is, ha a háttérben változott (pl. új ajánlás)
   useEffect(() => {
     if (!selectedPro) return;
     const updated = (pros || []).find((p) => p.id === selectedPro.id);
@@ -158,7 +192,7 @@ export default function ProsDirectoryView({
         return false;
       }
       if (q) {
-        const hay = `${p.business_name} ${p.profession_name || ''} ${p.specialty || ''} ${p.bio || ''} ${p.base_zone || ''} ${p.active_zone_today || ''}`.toLowerCase();
+        const hay = `${p.business_name} ${p.profession_name || ''} ${p.specialty || ''} ${p.bio || ''} ${p.address_text || ''} ${p.base_zone || ''} ${p.active_zone_today || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -168,7 +202,7 @@ export default function ProsDirectoryView({
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
     const map = L.map(mapRef.current, {
-      center: [47.674, 19.064],
+      center: [47.674, 19.066],
       zoom: 13,
       zoomControl: false
     });
@@ -195,28 +229,44 @@ export default function ProsDirectoryView({
     group.clearLayers();
 
     filteredPros.forEach((p, idx) => {
-      const zoneLabel = p.active_zone_today || p.base_zone;
-      if (!zoneLabel) return;
-      const coord = resolveCoordsFromText(zoneLabel);
+      const liveNow = isLivePresenceActive(p);
+      let coord = null;
+
+      if (liveNow) {
+        coord = { lat: p.live_lat, lng: p.live_lng };
+      } else if (p.lat && p.lng) {
+        coord = { lat: p.lat, lng: p.lng };
+      } else {
+        const fallbackText = p.address_text || p.active_zone_today || p.base_zone;
+        const resolved = resolveCoordsFromText(fallbackText);
+        if (resolved) {
+          coord = {
+            lat: resolved.lat + ((idx % 4) - 1.5) * 0.0006,
+            lng: resolved.lng + ((idx % 3) - 1) * 0.0006
+          };
+        }
+      }
+
       if (!coord) return;
 
-      const lat = coord.lat + ((idx % 4) - 1.5) * 0.0007;
-      const lng = coord.lng + ((idx % 3) - 1) * 0.0007;
-      const isToday = Boolean(p.active_zone_today);
+      const badgeBg = liveNow ? '#047857' : p.lat && p.lng ? '#1E4635' : '#5C6B62';
+      const labelText = liveNow
+        ? `● ${p.profession_name || p.business_name}`
+        : p.profession_name || p.business_name;
 
       const pin = L.divIcon({
         className: '',
-        html: `<div style="background:${
-          isToday ? '#1E4635' : '#5C6B62'
-        };color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;cursor:pointer">${
-          p.profession_name || p.business_name
-        }</div>`,
-        iconSize: [120, 24],
-        iconAnchor: [60, 12]
+        html: `<div style="background:${badgeBg};color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;cursor:pointer">${labelText}</div>`,
+        iconSize: [126, 24],
+        iconAnchor: [63, 12]
       });
 
-      const marker = L.marker([lat, lng], { icon: pin }).bindTooltip(
-        `${p.business_name} (${p.profession_name || ''}) • ${zoneLabel}`,
+      const subLabel = liveNow
+        ? `Most a közelben (${formatRemainingLiveTime(p.live_until)})`
+        : p.address_text || p.base_zone || 'Szentendre';
+
+      const marker = L.marker([coord.lat, coord.lng], { icon: pin }).bindTooltip(
+        `${p.business_name} • ${subLabel}`,
         { direction: 'top' }
       );
       marker.on('click', () => setSelectedPro(p));
@@ -224,16 +274,71 @@ export default function ProsDirectoryView({
     });
   }, [filteredPros, showMap]);
 
+  const handleToggleLivePresence = async (pro) => {
+    if (!supabase || !currentUserId) return;
+    const currentlyLive = isLivePresenceActive(pro);
+
+    if (currentlyLive) {
+      setTogglingLiveId(pro.id);
+      await supabase
+        .from('local_pros')
+        .update({ live_lat: null, live_lng: null, live_until: null })
+        .eq('id', pro.id);
+      setTogglingLiveId(null);
+      if (onRefreshPros) await onRefreshPros();
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      alert('A böngésződ nem támogatja a GPS-helymeghatározást.');
+      return;
+    }
+
+    setTogglingLiveId(pro.id);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const fourHoursLater = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+        const { error } = await supabase
+          .from('local_pros')
+          .update({
+            live_lat: pos.coords.latitude,
+            live_lng: pos.coords.longitude,
+            live_until: fourHoursLater
+          })
+          .eq('id', pro.id);
+
+        setTogglingLiveId(null);
+        if (error) {
+          alert(`Hiba az élő jelenlét bekapcsolásakor: ${error.message}`);
+          return;
+        }
+        if (onRefreshPros) await onRefreshPros();
+      },
+      () => {
+        setTogglingLiveId(null);
+        alert('Engedélyezd a helymeghatározást a böngészőben az élő jelenlét megosztásához.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const handleRecordInteraction = async (pro, type = 'call') => {
     if (!currentUserId) return;
-    setInteractedProIds((prev) => new Set([...prev, pro.id]));
+    setInteractionsByPro((prev) => ({
+      ...prev,
+      [pro.id]: prev[pro.id] || {
+        pro_id: pro.id,
+        interaction_type: type,
+        created_at: new Date().toISOString()
+      }
+    }));
 
     if (supabase) {
       await supabase
         .from('pro_interactions')
         .upsert(
           { pro_id: pro.id, user_id: currentUserId, interaction_type: type },
-          { onConflict: 'pro_id,user_id' }
+          { onConflict: 'pro_id,user_id', ignoreDuplicates: true }
         );
     }
   };
@@ -255,6 +360,53 @@ export default function ProsDirectoryView({
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+  };
+
+  const getEndorsementEligibility = (pro) => {
+    if (!currentUserId) {
+      return { canEndorse: false, reason: 'Jelentkezz be az ajánláshoz.' };
+    }
+    if (pro.owner_id === currentUserId) {
+      return { canEndorse: false, reason: 'Saját adatlapot nem ajánlhatsz.' };
+    }
+    if (endorsedProIds.has(pro.id)) {
+      return { canEndorse: false, alreadyEndorsed: true, reason: 'Már ajánlottad ezt a szakembert.' };
+    }
+
+    const agr = agreementsByPro[pro.id];
+    const inter = interactionsByPro[pro.id];
+
+    if (agr && agr.status === 'completed') {
+      return { canEndorse: true };
+    }
+
+    if (inter && (inter.interaction_type === 'call' || !pro.owner_id)) {
+      const elapsedMs = Date.now() - new Date(inter.created_at).getTime();
+      const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+      if (elapsedMs >= twentyFourHoursMs) {
+        return { canEndorse: true };
+      }
+      const hoursLeft = Math.max(1, Math.ceil((twentyFourHoursMs - elapsedMs) / (60 * 60 * 1000)));
+      return {
+        canEndorse: false,
+        reason: `Kapcsolatfelvétel rögzítve. A hitelesség érdekében ${hoursLeft} óra múlva (24 óra elteltével) írhatsz ajánlást.`
+      };
+    }
+
+    if (pro.owner_id && agr) {
+      return {
+        canEndorse: false,
+        reason:
+          agr.status === 'agreed'
+            ? 'A szaki elvállalta a munkát. A befejezés után a chatben nyomj az „Elkészült, ajánlom” gombra.'
+            : 'Egyeztess a szakival az üzenetekben – amint elvállalja és elkészül a munka, megnyílik az ajánlás.'
+      };
+    }
+
+    return {
+      canEndorse: false,
+      reason: 'Ajánlást telefonos vagy chat-egyeztetés és a munka elvégzése után írhatsz.'
+    };
   };
 
   const handleSubmitEndorsement = async (pro) => {
@@ -304,6 +456,8 @@ export default function ProsDirectoryView({
     setBizBio('');
     setBizPhone('');
     setBizBaseZone(profile?.zone || 'Belváros');
+    setBizAddress('');
+    setBizCoords(null);
     setBizActiveToday(true);
     setFormError(null);
     setShowFormModal(true);
@@ -320,9 +474,41 @@ export default function ProsDirectoryView({
     setBizBio(pro.bio || '');
     setBizPhone(pro.phone || '');
     setBizBaseZone(pro.base_zone || pro.active_zone_today || 'Belváros');
+    setBizAddress(pro.address_text || '');
+    setBizCoords(pro.lat && pro.lng ? { lat: pro.lat, lng: pro.lng } : null);
     setBizActiveToday(Boolean(pro.active_zone_today));
     setFormError(null);
     setShowFormModal(true);
+  };
+
+  const handleCapturePinFromGps = () => {
+    if (!navigator.geolocation) return;
+    setLocatingAddress(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setBizCoords({ lat, lng });
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const city = addr.city || addr.town || addr.village || 'Szentendre';
+          const road = addr.road || addr.pedestrian || addr.suburb || '';
+          const house = addr.house_number ? ` ${addr.house_number}.` : '';
+          if (road) {
+            setBizAddress(`${city}, ${road}${house}`);
+          }
+        } catch {}
+        setLocatingAddress(false);
+      },
+      () => {
+        setLocatingAddress(false);
+        alert('Nem sikerült lekérni a GPS-pozíciót.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   };
 
   const handleSaveProForm = async (e) => {
@@ -343,6 +529,12 @@ export default function ProsDirectoryView({
     setFormError(null);
 
     try {
+      let resolvedCoords = bizCoords;
+      if (!resolvedCoords && bizAddress.trim()) {
+        const hit = resolveCoordsFromText(bizAddress.trim());
+        if (hit) resolvedCoords = { lat: hit.lat, lng: hit.lng };
+      }
+
       const expNum = parseInt(bizExperienceYears, 10);
       const payload = {
         business_name: bizName.trim(),
@@ -354,6 +546,9 @@ export default function ProsDirectoryView({
         bio: bizBio.trim() || null,
         phone: bizPhone.trim(),
         base_zone: bizBaseZone,
+        address_text: bizAddress.trim() || null,
+        lat: resolvedCoords?.lat || null,
+        lng: resolvedCoords?.lng || null,
         active_zone_today: bizActiveToday ? bizBaseZone : null,
         is_active: true
       };
@@ -409,7 +604,6 @@ export default function ProsDirectoryView({
 
   return (
     <div className="space-y-3 w-full overflow-x-hidden">
-      {/* Kereső és szűrő kártya */}
       <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] shadow-sm space-y-2.5 box-border">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display font-bold text-base text-[#18261F] truncate">
@@ -512,7 +706,6 @@ export default function ProsDirectoryView({
         </button>
       </div>
 
-      {/* Szellős, kattintható kártyák listája */}
       {filteredPros.length === 0 ? (
         <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
           <div className="text-sm font-bold text-[#18261F]">
@@ -532,6 +725,7 @@ export default function ProsDirectoryView({
       ) : (
         filteredPros.map((pro) => {
           const isOwner = Boolean(currentUserId && pro.owner_id === currentUserId);
+          const liveNow = isLivePresenceActive(pro);
           const proEndorsements = endorsementsByPro[pro.id] || [];
           const firstRecommender = proEndorsements[0];
 
@@ -558,7 +752,15 @@ export default function ProsDirectoryView({
                         {pro.experience_years} év tapasztalat
                       </span>
                     )}
-                    {pro.active_zone_today ? (
+                    {liveNow ? (
+                      <span className="text-[11px] font-bold bg-emerald-700 text-white px-2.5 py-0.5 rounded-full">
+                        ● Most a közelben ({formatRemainingLiveTime(pro.live_until)})
+                      </span>
+                    ) : pro.address_text ? (
+                      <span className="text-[11px] font-medium bg-limestone text-[#5C6B62] px-2.5 py-0.5 rounded-full">
+                        {pro.address_text}
+                      </span>
+                    ) : pro.active_zone_today ? (
                       <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full">
                         Ma itt: {pro.active_zone_today}
                       </span>
@@ -582,7 +784,27 @@ export default function ProsDirectoryView({
                 </span>
               </div>
 
-              {/* Kompakt lábléc: ajánlás összegző + közvetlen Üzenet és Hívás gombok */}
+              {isOwner && (
+                <div onClick={(e) => e.stopPropagation()} className="pt-1">
+                  <button
+                    type="button"
+                    disabled={togglingLiveId === pro.id}
+                    onClick={() => handleToggleLivePresence(pro)}
+                    className={`w-full text-xs font-bold py-2 px-3 rounded-xl border transition ${
+                      liveNow
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                        : 'bg-pilis-soft/70 hover:bg-pilis text-pilis hover:text-white border-pilis/20'
+                    }`}
+                  >
+                    {togglingLiveId === pro.id
+                      ? 'GPS helyzet lekérése...'
+                      : liveNow
+                      ? `Élő jelenlét aktív (${formatRemainingLiveTime(pro.live_until)}) – Leállítás`
+                      : 'Most itt dolgozom (4 órára a térképre)'}
+                  </button>
+                </div>
+              )}
+
               <div
                 onClick={(e) => e.stopPropagation()}
                 className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2"
@@ -640,11 +862,10 @@ export default function ProsDirectoryView({
         })
       )}
 
-      {/* KATTINTHATÓ RÉSZLETES BEMUTATKOZÓ ÉS AJÁNLÁS LAP (Bottom Sheet / Modal) */}
       {selectedPro && (() => {
         const isOwner = Boolean(currentUserId && selectedPro.owner_id === currentUserId);
-        const hasInteracted = interactedProIds.has(selectedPro.id);
-        const hasEndorsed = endorsedProIds.has(selectedPro.id);
+        const liveNow = isLivePresenceActive(selectedPro);
+        const eligibility = getEndorsementEligibility(selectedPro);
         const proEndorsements = endorsementsByPro[selectedPro.id] || [];
 
         return (
@@ -656,7 +877,6 @@ export default function ProsDirectoryView({
               onClick={(e) => e.stopPropagation()}
               className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3.5 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border"
             >
-              {/* Fejléc */}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5 mb-1">
@@ -675,9 +895,9 @@ export default function ProsDirectoryView({
                     {selectedPro.business_name}
                   </h3>
                   <div className="text-xs font-medium text-[#5C6B62] mt-0.5">
-                    {selectedPro.active_zone_today
-                      ? `Ma elérhető itt: ${selectedPro.active_zone_today}`
-                      : selectedPro.base_zone || 'Szentendre'}
+                    {liveNow
+                      ? `Most a közelben van (${formatRemainingLiveTime(selectedPro.live_until)})`
+                      : selectedPro.address_text || selectedPro.base_zone || 'Szentendre'}
                   </div>
                 </div>
 
@@ -690,7 +910,6 @@ export default function ProsDirectoryView({
                 </button>
               </div>
 
-              {/* Szakterület és részletes bemutatkozás */}
               <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
                 <div>
                   <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
@@ -713,7 +932,6 @@ export default function ProsDirectoryView({
                 )}
               </div>
 
-              {/* Közvetlen kapcsolatfelvétel gombok (Üzenet + Hívás) */}
               {!isOwner ? (
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -732,40 +950,54 @@ export default function ProsDirectoryView({
                   </a>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={() => openEditForm(selectedPro)}
-                    className="bg-white text-[#18261F] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl"
+                    disabled={togglingLiveId === selectedPro.id}
+                    onClick={() => handleToggleLivePresence(selectedPro)}
+                    className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl border transition ${
+                      liveNow
+                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                        : 'bg-pilis text-white border-pilis'
+                    }`}
                   >
-                    Adatlap szerkesztése
+                    {liveNow
+                      ? `Élő jelenlét aktív (${formatRemainingLiveTime(selectedPro.live_until)}) – Leállítás`
+                      : 'Most itt dolgozom (4 órára a térképre)'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePro(selectedPro.id)}
-                    className="bg-red-50 text-red-800 border border-red-200 font-bold text-xs py-2.5 rounded-xl"
-                  >
-                    Adatlap törlése
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(selectedPro)}
+                      className="bg-white text-[#18261F] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl"
+                    >
+                      Adatlap szerkesztése
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePro(selectedPro.id)}
+                      className="bg-red-50 text-red-800 border border-red-200 font-bold text-xs py-2.5 rounded-xl"
+                    >
+                      Adatlap törlése
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {/* Szomszédok ajánlásai + Egyszeri hitelesített ajánlás küldése */}
               <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[#18261F]">
                     Helyi ajánlások ({selectedPro.endorsement_count || 0})
                   </span>
-                  {hasEndorsed && (
+                  {eligibility.alreadyEndorsed && (
                     <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
                       Ajánlva ✓
                     </span>
                   )}
                 </div>
 
-                {/* Ajánlás írása, ha már volt kapcsolatfelvétel és még nem ajánlotta */}
-                {!isOwner && !hasEndorsed && (
-                  hasInteracted ? (
+                {!isOwner && !eligibility.alreadyEndorsed && (
+                  eligibility.canEndorse ? (
                     <div className="bg-limestone p-3 rounded-xl border border-pilis/25 space-y-2">
                       <div className="text-xs font-bold text-[#18261F]">
                         Milyen tapasztalatod volt vele?
@@ -806,13 +1038,12 @@ export default function ProsDirectoryView({
                       </button>
                     </div>
                   ) : (
-                    <div className="text-xs text-[#5C6B62] bg-limestone p-2.5 rounded-xl">
-                      Ajánlást azután tudsz írni, hogy üzenetben vagy telefonon egyeztettél vele.
+                    <div className="text-xs text-[#5C6B62] bg-limestone p-2.5 rounded-xl leading-relaxed">
+                      {eligibility.reason}
                     </div>
                   )
                 )}
 
-                {/* Korábbi ajánlások listája */}
                 {proEndorsements.length === 0 ? (
                   <div className="text-xs text-[#7A867E]">
                     Még nem érkezett szöveges ajánlás.
@@ -857,7 +1088,6 @@ export default function ProsDirectoryView({
         );
       })()}
 
-      {/* Új szakember / szolgáltató űrlap modal (tapasztalattal és bemutatkozással) */}
       {showFormModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
@@ -994,6 +1224,32 @@ export default function ProsDirectoryView({
 
             <div>
               <label className="text-xs font-bold block mb-1">
+                Fix telephely / utca (opcionális – mozgó szaki üresen hagyhatja)
+              </label>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={bizAddress}
+                  onChange={(e) => {
+                    setBizAddress(e.target.value);
+                    setBizCoords(null);
+                  }}
+                  placeholder="Pl. Szentendre, Dumtsa Jenő u. 14."
+                  className="flex-1 min-w-0 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
+                />
+                <button
+                  type="button"
+                  disabled={locatingAddress}
+                  onClick={handleCapturePinFromGps}
+                  className="shrink-0 bg-pilis-soft text-pilis font-bold text-xs px-3 py-2 rounded-xl border border-pilis/20"
+                >
+                  {locatingAddress ? '...' : bizCoords ? 'GPS rögzítve ✓' : 'GPS pont'}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold block mb-1">
                 Rövid bemutatkozás (mivel, mióta foglalkozol)
               </label>
               <textarea
@@ -1033,16 +1289,6 @@ export default function ProsDirectoryView({
                 </select>
               </div>
             </div>
-
-            <label className="flex items-center gap-2.5 bg-white border border-[#DFD9CE] rounded-xl p-3 text-xs font-semibold cursor-pointer">
-              <input
-                type="checkbox"
-                checked={bizActiveToday}
-                onChange={(e) => setBizActiveToday(e.target.checked)}
-                className="accent-pilis w-4 h-4 shrink-0"
-              />
-              <span>Ma elérhető / itt dolgozik Szentendrén</span>
-            </label>
 
             <button
               type="submit"

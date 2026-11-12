@@ -558,6 +558,79 @@ export default function AgreementChatModal({
           </div>
         )}
 
+        {/* Regisztrált szaki 2 lépéses munka-visszaigazolása az ajánláshoz */}
+        {isProInquiry && liveAgr.helper_id && (
+          <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-[#18261F] min-w-0">
+              {status === 'chatting' && (
+                isHelper
+                  ? 'Érdeklődés érkezett • Fogadd el, ha elvállalod'
+                  : 'Egyeztetés folyamatban a szakemberrel'
+              )}
+              {status === 'agreed' && (
+                isRequester
+                  ? 'Elvállalva • Ha elkészült a munka, zárd le és ajánld'
+                  : 'Elvállalva • Várakozás a megrendelő lezárására'
+              )}
+              {status === 'completed' && 'Munka lezárva ✓ • Ajánlás megnyitva'}
+            </div>
+
+            <div className="shrink-0">
+              {status === 'chatting' && isHelper && (
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    const { data } = await supabase
+                      .from('agreements')
+                      .update({ status: 'agreed', helper_agreed: true })
+                      .eq('id', liveAgr.id)
+                      .select('*')
+                      .single();
+                    if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
+                    await supabase.from('messages').insert({
+                      agreement_id: liveAgr.id,
+                      sender_id: currentUser.id,
+                      body: 'A szakember elvállalta a munkát.',
+                      is_system_event: true
+                    });
+                    setBusy(false);
+                  }}
+                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
+                >
+                  Elvállaltam
+                </button>
+              )}
+
+              {status === 'agreed' && isRequester && (
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    const { data } = await supabase
+                      .from('agreements')
+                      .update({ status: 'completed', requester_agreed: true })
+                      .eq('id', liveAgr.id)
+                      .select('*')
+                      .single();
+                    if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
+                    await supabase.from('messages').insert({
+                      agreement_id: liveAgr.id,
+                      sender_id: currentUser.id,
+                      body: 'Munka lezárva – az ajánlás megnyílt a szakember adatlapján.',
+                      is_system_event: true
+                    });
+                    setBusy(false);
+                  }}
+                  className="bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow"
+                >
+                  Elkészült, ajánlom
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Szekvenciális (1. Hirdető -> 2. Csatlakozó) jóváhagyási és útkövetési állapotsáv */}
         {!isProInquiry && (
           <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
