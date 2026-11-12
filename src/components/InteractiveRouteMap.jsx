@@ -44,12 +44,14 @@ export default function InteractiveRouteMap({
   const onPickRef = useRef(onPickLocation);
   const onSelectRideRef = useRef(onSelectRideOnMap);
   const onUpdatePinRef = useRef(onUpdatePinCoords);
+  const selectedRideRef = useRef(selectedRide);
 
   useEffect(() => {
     onPickRef.current = onPickLocation;
     onSelectRideRef.current = onSelectRideOnMap;
     onUpdatePinRef.current = onUpdatePinCoords;
-  }, [onPickLocation, onSelectRideOnMap, onUpdatePinCoords]);
+    selectedRideRef.current = selectedRide;
+  }, [onPickLocation, onSelectRideOnMap, onUpdatePinCoords, selectedRide]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
@@ -76,6 +78,7 @@ export default function InteractiveRouteMap({
     const t2 = setTimeout(() => map.invalidateSize(), 450);
 
     map.on('click', async (e) => {
+      if (selectedRideRef.current) return;
       const { lat, lng } = e.latlng;
       try {
         const res = await fetch(
@@ -230,6 +233,13 @@ export default function InteractiveRouteMap({
           offset: [0, -6],
           className: 'text-xs font-bold'
         });
+        stopDot.bindPopup(
+          `<div style="font-family:sans-serif;font-size:12px;font-weight:700;color:#18261F">${st.time} • ${st.name}</div>`
+        );
+        stopDot.on('click', (ev) => {
+          L.DomEvent.stopPropagation(ev);
+          stopDot.openPopup();
+        });
         stopDot.addTo(group);
       });
     }
@@ -339,6 +349,15 @@ export default function InteractiveRouteMap({
 
       {/* Jobb felül: Távolság jelvény VAGY Saját helyzet gomb */}
       <div className="absolute top-2 right-2 z-[400] flex items-center gap-1.5">
+        {selectedRide && (
+          <button
+            type="button"
+            onClick={() => onSelectRideRef.current && onSelectRideRef.current(null)}
+            className="bg-white/95 hover:bg-white text-[#18261F] px-2.5 py-1 rounded-lg text-[11px] font-bold shadow border border-[#DFD9CE]"
+          >
+            Útvonal bezárása ✕
+          </button>
+        )}
         {routeMeta && (
           <span className="bg-pilis text-white px-2 py-1 rounded-lg text-[11px] font-bold shadow pointer-events-none">
             {routeMeta.km} km • ~{routeMeta.min} p

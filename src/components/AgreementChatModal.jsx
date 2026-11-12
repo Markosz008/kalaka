@@ -217,14 +217,23 @@ export default function AgreementChatModal({
             </div>
           </div>
 
-          {!isProInquiry && status !== 'chatting' && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!isProInquiry && status !== 'chatting' && (
+              <button
+                onClick={handleReport}
+                className="text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1.5 rounded-lg"
+              >
+                Jelentés
+              </button>
+            )}
             <button
-              onClick={handleReport}
-              className="text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg shrink-0"
+              type="button"
+              onClick={onClose}
+              className="text-xs font-bold text-[#5C6B62] hover:text-black bg-limestone px-2.5 py-1.5 rounded-lg"
             >
-              Jelentés
+              Bezárás ✕
             </button>
-          )}
+          </div>
         </div>
 
         {errorBanner && (
