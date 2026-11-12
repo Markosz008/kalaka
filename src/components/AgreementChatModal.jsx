@@ -20,6 +20,7 @@ export default function AgreementChatModal({
 
   const isLiveDbAgreement = Boolean(supabase && isUuid(agreement?.id));
   const isRequester = agreement?.requester_id === currentUser?.id;
+  const isProInquiry = Boolean(agreement?.pro_id);
 
   useEffect(() => {
     if (!agreement) return;
@@ -176,23 +177,29 @@ export default function AgreementChatModal({
     if (isLiveDbAgreement) {
       const reportedUserId =
         agreement.requester_id === currentUser.id ? agreement.helper_id : agreement.requester_id;
-      const { error } = await supabase.from('reports').insert({
-        agreement_id: agreement.id,
-        reporter_id: currentUser.id,
-        reported_user_id: reportedUserId,
-        reason: reason.trim()
-      });
-      if (error) {
-        setErrorBanner(error.message);
-        return;
+      if (reportedUserId) {
+        const { error } = await supabase.from('reports').insert({
+          agreement_id: agreement.id,
+          reporter_id: currentUser.id,
+          reported_user_id: reportedUserId,
+          reason: reason.trim()
+        });
+        if (error) {
+          setErrorBanner(error.message);
+          return;
+        }
       }
     }
     onClose();
   };
 
+  const quickReplies = isProInquiry
+    ? ['Szia! Mikor lenne szabad időpontod?', 'Szentendrén belül kiszállással is vállalod?', 'Köszönöm a gyors választ!']
+    : ['Ott leszek a megállóban.', '2 perc és érkezem.', 'Köszönöm a segítséget!'];
+
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-limestone w-full max-w-lg h-[92vh] sm:h-[640px] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-[#DFD9CE]">
+      <div className="bg-limestone w-full max-w-lg h-[92vh] sm:h-[640px] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-[#DFD9CE] pb-[env(safe-area-inset-bottom)]">
         <div className="bg-white px-4 py-3 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <button onClick={onClose} className="text-2xl font-bold text-[#18261F] px-1.5">
@@ -210,7 +217,7 @@ export default function AgreementChatModal({
             </div>
           </div>
 
-          {status !== 'chatting' && (
+          {!isProInquiry && status !== 'chatting' && (
             <button
               onClick={handleReport}
               className="text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg shrink-0"
@@ -226,38 +233,40 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-[#18261F]">
-            {status === 'chatting' && 'Egyeztessétek a találkozót'}
-            {status === 'agreed' && 'Megállapodva'}
-            {status === 'started' && 'Úton'}
-            {status === 'arrived' && (isRequester ? 'Megérkeztetek' : 'Várakozás a visszaigazolásra')}
-            {status === 'completed' && 'Lezárva'}
-          </div>
+        {!isProInquiry && (
+          <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-[#18261F]">
+              {status === 'chatting' && 'Egyeztessétek a találkozót'}
+              {status === 'agreed' && 'Megállapodva'}
+              {status === 'started' && 'Úton'}
+              {status === 'arrived' && (isRequester ? 'Megérkeztetek' : 'Várakozás a visszaigazolásra')}
+              {status === 'completed' && 'Lezárva'}
+            </div>
 
-          <div className="shrink-0">
-            {status === 'chatting' && (
-              <button disabled={busy} onClick={() => handleUpdateStatus('agreed')} className="bg-pilis text-white text-xs font-bold px-3 py-1.5 rounded-xl">
-                Megállapodtunk
-              </button>
-            )}
-            {status === 'agreed' && (
-              <button disabled={busy} onClick={() => handleUpdateStatus('started')} className="bg-pilis text-white text-xs font-bold px-3 py-1.5 rounded-xl">
-                Elindultam
-              </button>
-            )}
-            {status === 'started' && (
-              <button disabled={busy} onClick={() => handleUpdateStatus('arrived')} className="bg-terracotta text-white text-xs font-bold px-3 py-1.5 rounded-xl">
-                Megérkeztem
-              </button>
-            )}
-            {status === 'arrived' && isRequester && (
-              <button disabled={busy} onClick={handleGiveKudos} className="bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow">
-                Segített nekem
-              </button>
-            )}
+            <div className="shrink-0">
+              {status === 'chatting' && (
+                <button disabled={busy} onClick={() => handleUpdateStatus('agreed')} className="bg-pilis text-white text-xs font-bold px-3 py-1.5 rounded-xl">
+                  Megállapodtunk
+                </button>
+              )}
+              {status === 'agreed' && (
+                <button disabled={busy} onClick={() => handleUpdateStatus('started')} className="bg-pilis text-white text-xs font-bold px-3 py-1.5 rounded-xl">
+                  Elindultam
+                </button>
+              )}
+              {status === 'started' && (
+                <button disabled={busy} onClick={() => handleUpdateStatus('arrived')} className="bg-terracotta text-white text-xs font-bold px-3 py-1.5 rounded-xl">
+                  Megérkeztem
+                </button>
+              )}
+              {status === 'arrived' && isRequester && (
+                <button disabled={busy} onClick={handleGiveKudos} className="bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow">
+                  Segített nekem
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {messages.map((m) => (
@@ -277,8 +286,8 @@ export default function AgreementChatModal({
           <div ref={bottomRef} />
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto px-4 pb-2">
-          {['Ott leszek a megállóban.', '2 perc és érkezem.', 'Köszönöm a segítséget!'].map((q) => (
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-2">
+          {quickReplies.map((q) => (
             <button
               key={q}
               type="button"
@@ -296,9 +305,9 @@ export default function AgreementChatModal({
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Üzenet írása..."
-            className="flex-1 bg-limestone border border-[#DFD9CE] rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-pilis"
+            className="flex-1 min-w-0 bg-limestone border border-[#DFD9CE] rounded-full px-4 py-2.5 text-base focus:outline-none focus:border-pilis"
           />
-          <button type="submit" className="bg-pilis text-white font-bold text-sm px-5 py-2.5 rounded-full">
+          <button type="submit" className="shrink-0 bg-pilis text-white font-bold text-sm px-5 py-2.5 rounded-full">
             Küldés
           </button>
         </form>
@@ -306,3 +315,4 @@ export default function AgreementChatModal({
     </div>
   );
 }
+

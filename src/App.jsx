@@ -246,7 +246,8 @@ export default function App() {
           requester:profiles!agreements_requester_id_fkey(display_name),
           helper:profiles!agreements_helper_id_fkey(display_name),
           ride:rides(origin_text, dest_text),
-          favor:favors(title)
+          favor:favors(title),
+          pro:local_pros(business_name, profession_name)
         `)
         .or(`requester_id.eq.${currentUserId},helper_id.eq.${currentUserId}`)
         .order('created_at', { ascending: false });
@@ -257,11 +258,15 @@ export default function App() {
             const isReq = a.requester_id === currentUserId;
             return {
               ...a,
-              partner_name: isReq
+              partner_name: a.pro
+                ? a.pro.business_name
+                : isReq
                 ? a.helper?.display_name || 'Szomszéd'
                 : a.requester?.display_name || 'Szomszéd',
               title: a.ride
                 ? `${a.ride.origin_text} → ${a.ride.dest_text}`
+                : a.pro
+                ? a.pro.profession_name || 'Szakmai megkeresés'
                 : a.favor?.title || 'Egyeztetés'
             };
           })
@@ -682,6 +687,59 @@ export default function App() {
       ...createdAgr,
       partner_name: favor.author_name,
       title: favor.title
+    });
+    fetchAllLiveData(session.user.id);
+  };
+
+  const handleStartProAgreement = async (pro) => {
+    if (!session?.user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    // Meglévő beszélgetés keresése ezzel a szakival, hogy ne duplikálódjon
+    const { data: existingAgr } = await supabase
+      .from('agreements')
+      .select('*')
+      .eq('pro_id', pro.id)
+      .eq('requester_id', session.user.id)
+      .maybeSingle();
+
+    if (existingAgr) {
+      setActiveAgreement({
+        ...existingAgr,
+        partner_name: pro.business_name,
+        title: pro.profession_name || 'Szakmai egyeztetés'
+      });
+      return;
+    }
+
+    const { data: createdAgr, error } = await supabase
+      .from('agreements')
+      .insert({
+        pro_id: pro.id,
+        requester_id: session.user.id,
+        helper_id: pro.owner_id || null,
+        status: 'chatting'
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      alert(`Nem sikerült megnyitni a beszélgetést: ${error.message}`);
+      return;
+    }
+
+    await supabase.from('messages').insert({
+      agreement_id: createdAgr.id,
+      sender_id: session.user.id,
+      body: `Szia! Érdeklődnék (${pro.profession_name || pro.business_name}).`
+    });
+
+    setActiveAgreement({
+      ...createdAgr,
+      partner_name: pro.business_name,
+      title: pro.profession_name || 'Szakmai egyeztetés'
     });
     fetchAllLiveData(session.user.id);
   };
@@ -1121,6 +1179,7 @@ export default function App() {
             profile={profile}
             onOpenAuthModal={() => setShowAuthModal(true)}
             onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
+            onStartProAgreement={handleStartProAgreement}
           />
         )}
       </main>

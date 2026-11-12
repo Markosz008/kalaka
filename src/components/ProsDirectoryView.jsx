@@ -9,32 +9,43 @@ import {
   resolveCoordsFromText
 } from '../constants/szentendreData.js';
 
+const ENDORSEMENT_STRENGTH_TAGS = [
+  'Pontos',
+  'Szépen dolgozik',
+  'Korrekt ár',
+  'Segítőkész'
+];
+
 export default function ProsDirectoryView({
   pros,
   session,
   profile,
   onOpenAuthModal,
-  onRefreshPros
+  onRefreshPros,
+  onStartProAgreement
 }) {
   const currentUserId = session?.user?.id || null;
 
-  // Szűrők: Szabad kereső + Főterület + Dinamikus szakmacímke
+  // Szűrők
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [professionFilter, setProfessionFilter] = useState('all');
   const [showMap, setShowMap] = useState(true);
 
-  // Felhasználó saját interakciói és már leadott ajánlásai
+  // Kiválasztott szakember részletes névjegykártyája (Bottom Sheet)
+  const [selectedPro, setSelectedPro] = useState(null);
+
+  // Felhasználó interakciói és leadott ajánlásai
   const [interactedProIds, setInteractedProIds] = useState(new Set());
   const [endorsedProIds, setEndorsedProIds] = useState(new Set());
-  const [endorseCommentsByPro, setEndorseCommentsByPro] = useState({});
+  const [endorsementsByPro, setEndorsementsByPro] = useState({});
 
-  // Inline ajánlás-író állapot (egy adott kártyához)
-  const [endorsingProId, setEndorsingProId] = useState(null);
+  // Ajánlás-küldő állapot a részletlapon
+  const [selectedTags, setSelectedTags] = useState([]);
   const [endorseNote, setEndorseNote] = useState('');
   const [endorseSaving, setEndorseSaving] = useState(false);
 
-  // Új szakember / szolgáltató űrlap modal (és szerkesztés)
+  // Új szakember / szolgáltató felvétele és szerkesztése
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingProId, setEditingProId] = useState(null);
   const [bizName, setBizName] = useState('');
@@ -42,8 +53,9 @@ export default function ProsDirectoryView({
   const [professionInput, setProfessionInput] = useState('');
   const [showProfessionDropdown, setShowProfessionDropdown] = useState(false);
   const [bizSpec, setBizSpec] = useState('');
+  const [bizExperienceYears, setBizExperienceYears] = useState('');
+  const [bizBio, setBizBio] = useState('');
   const [bizPhone, setBizPhone] = useState('');
-  const [bizTax, setBizTax] = useState('');
   const [bizBaseZone, setBizBaseZone] = useState(profile?.zone || 'Belváros');
   const [bizActiveToday, setBizActiveToday] = useState(true);
   const [formSaving, setFormSaving] = useState(false);
@@ -53,7 +65,6 @@ export default function ProsDirectoryView({
   const mapInstance = useRef(null);
   const markersLayer = useRef(null);
 
-  // 1. Összes létező szakma dinamikus összegyűjtése (alaplista + adatbázisban felvett új szakmák)
   const allProfessions = useMemo(() => {
     const map = new Map();
     DEFAULT_PROFESSIONS.forEach((p) => {
@@ -71,7 +82,6 @@ export default function ProsDirectoryView({
     return Array.from(map.values());
   }, [pros]);
 
-  // Aktív szakmacímkék a kiválasztott főterülethez
   const visibleProfessionChips = useMemo(() => {
     const usedNames = new Set(
       (pros || [])
@@ -82,41 +92,43 @@ export default function ProsDirectoryView({
     return Array.from(usedNames);
   }, [pros, groupFilter]);
 
-  // 2. Felhasználó interakcióinak és ajánlásainak betöltése
   const loadInteractionAndEndorsementState = async () => {
     if (!supabase) return;
 
     const { data: allEndorsements } = await supabase
       .from('pro_endorsements')
-      .select('pro_id, user_id, comment, created_at')
+      .select('id, pro_id, user_id, comment, tags, created_at, author:profiles!pro_endorsements_user_id_fkey(display_name, zone)')
       .order('created_at', { ascending: false });
 
     if (allEndorsements) {
       const myEndorsed = new Set();
-      const commentsMap = {};
+      const grouped = {};
       allEndorsements.forEach((e) => {
         if (currentUserId && e.user_id === currentUserId) {
           myEndorsed.add(e.pro_id);
         }
-        if (e.comment && e.comment.trim()) {
-          if (!commentsMap[e.pro_id]) commentsMap[e.pro_id] = [];
-          if (commentsMap[e.pro_id].length < 2) {
-            commentsMap[e.pro_id].push(e.comment.trim());
-          }
-        }
+        if (!grouped[e.pro_id]) grouped[e.pro_id] = [];
+        grouped[e.pro_id].push({
+          id: e.id,
+          authorName: e.author?.display_name || 'Szentendrei szomszéd',
+          authorZone: e.author?.zone || '',
+          tags: Array.isArray(e.tags) ? e.tags : [],
+          comment: (e.comment || '').trim()
+        });
       });
       setEndorsedProIds(myEndorsed);
-      setEndorseCommentsByPro(commentsMap);
+      setEndorsementsByPro(grouped);
     }
 
     if (currentUserId) {
-      const { data: myInts } = await supabase
-        .from('pro_interactions')
-        .select('pro_id')
-        .eq('user_id', currentUserId);
-      if (myInts) {
-        setInteractedProIds(new Set(myInts.map((i) => i.pro_id)));
-      }
+      const [{ data: myInts }, { data: myAgrs }] = await Promise.all([
+        supabase.from('pro_interactions').select('pro_id').eq('user_id', currentUserId),
+        supabase.from('agreements').select('pro_id').eq('requester_id', currentUserId).not('pro_id', 'is', null)
+      ]);
+      const combined = new Set();
+      (myInts || []).forEach((i) => combined.add(i.pro_id));
+      (myAgrs || []).forEach((a) => combined.add(a.pro_id));
+      setInteractedProIds(combined);
     } else {
       setInteractedProIds(new Set());
       setEndorsedProIds(new Set());
@@ -127,7 +139,13 @@ export default function ProsDirectoryView({
     loadInteractionAndEndorsementState();
   }, [currentUserId, pros?.length]);
 
-  // 3. Szűrt lista összeállítása
+  // Frissítjük a kiválasztott kártya adatait is, ha a háttérben változott (pl. új ajánlás)
+  useEffect(() => {
+    if (!selectedPro) return;
+    const updated = (pros || []).find((p) => p.id === selectedPro.id);
+    if (updated) setSelectedPro(updated);
+  }, [pros]);
+
   const filteredPros = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return (pros || []).filter((p) => {
@@ -140,14 +158,13 @@ export default function ProsDirectoryView({
         return false;
       }
       if (q) {
-        const hay = `${p.business_name} ${p.profession_name || ''} ${p.specialty || ''} ${p.base_zone || ''} ${p.active_zone_today || ''}`.toLowerCase();
+        const hay = `${p.business_name} ${p.profession_name || ''} ${p.specialty || ''} ${p.bio || ''} ${p.base_zone || ''} ${p.active_zone_today || ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
   }, [pros, groupFilter, professionFilter, searchQuery]);
 
-  // 4. Térkép inicializálása
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
     const map = L.map(mapRef.current, {
@@ -172,7 +189,6 @@ export default function ProsDirectoryView({
     };
   }, [showMap]);
 
-  // 5. Szakik / szolgáltatók jelölése a térképen
   useEffect(() => {
     const group = markersLayer.current;
     if (!group || !showMap) return;
@@ -192,23 +208,22 @@ export default function ProsDirectoryView({
         className: '',
         html: `<div style="background:${
           isToday ? '#1E4635' : '#5C6B62'
-        };color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap">${
+        };color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;cursor:pointer">${
           p.profession_name || p.business_name
         }</div>`,
         iconSize: [120, 24],
         iconAnchor: [60, 12]
       });
 
-      L.marker([lat, lng], { icon: pin })
-        .bindTooltip(
-          `${p.business_name} (${p.profession_name || ''}) • ${zoneLabel}`,
-          { direction: 'top' }
-        )
-        .addTo(group);
+      const marker = L.marker([lat, lng], { icon: pin }).bindTooltip(
+        `${p.business_name} (${p.profession_name || ''}) • ${zoneLabel}`,
+        { direction: 'top' }
+      );
+      marker.on('click', () => setSelectedPro(p));
+      marker.addTo(group);
     });
   }, [filteredPros, showMap]);
 
-  // 6. Kapcsolatfelvétel rögzítése (Hívás kattintáskor)
   const handleRecordInteraction = async (pro, type = 'call') => {
     if (!currentUserId) return;
     setInteractedProIds((prev) => new Set([...prev, pro.id]));
@@ -223,9 +238,28 @@ export default function ProsDirectoryView({
     }
   };
 
-  // 7. Egyszeri, hitelesített ajánlás mentése
+  const handleMessageClick = async (pro) => {
+    if (!currentUserId) {
+      setSelectedPro(null);
+      onOpenAuthModal();
+      return;
+    }
+    await handleRecordInteraction(pro, 'message');
+    setSelectedPro(null);
+    if (onStartProAgreement) {
+      await onStartProAgreement(pro);
+    }
+  };
+
+  const toggleStrengthTag = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
   const handleSubmitEndorsement = async (pro) => {
     if (!currentUserId) {
+      setSelectedPro(null);
       onOpenAuthModal();
       return;
     }
@@ -238,20 +272,16 @@ export default function ProsDirectoryView({
         const { error } = await supabase.from('pro_endorsements').insert({
           pro_id: pro.id,
           user_id: currentUserId,
+          tags: selectedTags,
           comment: cleanComment || null
         });
         if (error) throw error;
       }
 
       setEndorsedProIds((prev) => new Set([...prev, pro.id]));
-      if (cleanComment) {
-        setEndorseCommentsByPro((prev) => ({
-          ...prev,
-          [pro.id]: [cleanComment, ...(prev[pro.id] || [])].slice(0, 2)
-        }));
-      }
-      setEndorsingProId(null);
+      setSelectedTags([]);
       setEndorseNote('');
+      await loadInteractionAndEndorsementState();
       if (onRefreshPros) await onRefreshPros();
     } catch (err) {
       alert(`Nem sikerült menteni az ajánlást: ${err.message}`);
@@ -260,7 +290,6 @@ export default function ProsDirectoryView({
     }
   };
 
-  // 8. Új szaki / szolgáltató űrlap megnyitása
   const openCreateForm = () => {
     if (!currentUserId) {
       onOpenAuthModal();
@@ -271,8 +300,9 @@ export default function ProsDirectoryView({
     setBizGroup(groupFilter !== 'all' ? groupFilter : 'szepseg_egeszseg');
     setProfessionInput(professionFilter !== 'all' ? professionFilter : '');
     setBizSpec('');
+    setBizExperienceYears('');
+    setBizBio('');
     setBizPhone('');
-    setBizTax('');
     setBizBaseZone(profile?.zone || 'Belváros');
     setBizActiveToday(true);
     setFormError(null);
@@ -280,13 +310,15 @@ export default function ProsDirectoryView({
   };
 
   const openEditForm = (pro) => {
+    setSelectedPro(null);
     setEditingProId(pro.id);
     setBizName(pro.business_name || '');
     setBizGroup(normalizeServiceGroup(pro.category));
     setProfessionInput(pro.profession_name || '');
     setBizSpec(pro.specialty || '');
+    setBizExperienceYears(pro.experience_years ? String(pro.experience_years) : '');
+    setBizBio(pro.bio || '');
     setBizPhone(pro.phone || '');
-    setBizTax(pro.tax_number || '');
     setBizBaseZone(pro.base_zone || pro.active_zone_today || 'Belváros');
     setBizActiveToday(Boolean(pro.active_zone_today));
     setFormError(null);
@@ -303,7 +335,7 @@ export default function ProsDirectoryView({
 
     const cleanProfession = professionInput.trim();
     if (!bizName.trim() || !cleanProfession || !bizPhone.trim()) {
-      setFormError('Kérlek add meg a nevet, a szakmát/szolgáltatást és a telefonszámot.');
+      setFormError('Add meg a nevet, a szakmát vagy szolgáltatást és a telefonszámot.');
       return;
     }
 
@@ -311,14 +343,16 @@ export default function ProsDirectoryView({
     setFormError(null);
 
     try {
+      const expNum = parseInt(bizExperienceYears, 10);
       const payload = {
         business_name: bizName.trim(),
         category: bizGroup,
         profession_name:
           cleanProfession.charAt(0).toUpperCase() + cleanProfession.slice(1),
         specialty: bizSpec.trim() || cleanProfession,
+        experience_years: !isNaN(expNum) && expNum > 0 ? expNum : null,
+        bio: bizBio.trim() || null,
         phone: bizPhone.trim(),
-        tax_number: bizTax.trim() || '12345678-1-13',
         base_zone: bizBaseZone,
         active_zone_today: bizActiveToday ? bizBaseZone : null,
         is_active: true
@@ -348,7 +382,8 @@ export default function ProsDirectoryView({
   };
 
   const handleDeletePro = async (proId) => {
-    if (!window.confirm('Biztosan törlöd ezt a szakmai adatlapot?')) return;
+    if (!window.confirm('Biztosan törlöd ezt az adatlapot?')) return;
+    setSelectedPro(null);
     if (supabase) {
       const { error } = await supabase.from('local_pros').delete().eq('id', proId);
       if (error) {
@@ -374,7 +409,7 @@ export default function ProsDirectoryView({
 
   return (
     <div className="space-y-3 w-full overflow-x-hidden">
-      {/* Fejléc kártya: Kereső + Új szakember / szolgáltató felvétele gomb */}
+      {/* Kereső és szűrő kártya */}
       <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] shadow-sm space-y-2.5 box-border">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display font-bold text-base text-[#18261F] truncate">
@@ -389,7 +424,6 @@ export default function ProsDirectoryView({
           </button>
         </div>
 
-        {/* Keresőmező */}
         <div className="flex items-center gap-2 bg-limestone border border-[#DFD9CE] focus-within:border-pilis rounded-xl px-3 py-2">
           <input
             type="text"
@@ -409,7 +443,6 @@ export default function ProsDirectoryView({
           )}
         </div>
 
-        {/* 1. szintű szűrő: Fő területek */}
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {SERVICE_GROUPS.map((g) => (
             <button
@@ -430,7 +463,6 @@ export default function ProsDirectoryView({
           ))}
         </div>
 
-        {/* 2. szintű szűrő: Dinamikus szakmacímkék */}
         {visibleProfessionChips.length > 0 && (
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#ECE7DC]">
             <button
@@ -465,14 +497,12 @@ export default function ProsDirectoryView({
           </div>
         )}
 
-        {/* Térkép */}
         {showMap && (
           <div className="rounded-xl overflow-hidden border border-[#DFD9CE]">
             <div ref={mapRef} className="w-full h-44" />
           </div>
         )}
 
-        {/* Teljes szélességű Regisztrációs / Felvételi gomb */}
         <button
           type="button"
           onClick={openCreateForm}
@@ -482,7 +512,7 @@ export default function ProsDirectoryView({
         </button>
       </div>
 
-      {/* Szakember / Szolgáltató kártyák */}
+      {/* Szellős, kattintható kártyák listája */}
       {filteredPros.length === 0 ? (
         <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
           <div className="text-sm font-bold text-[#18261F]">
@@ -502,14 +532,18 @@ export default function ProsDirectoryView({
       ) : (
         filteredPros.map((pro) => {
           const isOwner = Boolean(currentUserId && pro.owner_id === currentUserId);
-          const hasInteracted = interactedProIds.has(pro.id);
-          const hasEndorsed = endorsedProIds.has(pro.id);
-          const recentComments = endorseCommentsByPro[pro.id] || [];
+          const proEndorsements = endorsementsByPro[pro.id] || [];
+          const firstRecommender = proEndorsements[0];
 
           return (
             <article
               key={pro.id}
-              className="bg-white rounded-2xl p-3.5 sm:p-4 border border-[#DFD9CE] shadow-sm space-y-2.5 box-border"
+              onClick={() => {
+                setSelectedTags([]);
+                setEndorseNote('');
+                setSelectedPro(pro);
+              }}
+              className="bg-white rounded-2xl p-3.5 sm:p-4 border border-[#DFD9CE] hover:border-pilis shadow-sm space-y-2.5 cursor-pointer transition box-border"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -517,6 +551,11 @@ export default function ProsDirectoryView({
                     {pro.profession_name && (
                       <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
                         {pro.profession_name}
+                      </span>
+                    )}
+                    {pro.experience_years > 0 && (
+                      <span className="text-[11px] font-semibold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full">
+                        {pro.experience_years} év tapasztalat
                       </span>
                     )}
                     {pro.active_zone_today ? (
@@ -533,36 +572,31 @@ export default function ProsDirectoryView({
                   <h3 className="font-display font-bold text-base text-[#18261F] break-words">
                     {pro.business_name}
                   </h3>
-                  <p className="text-xs text-[#5C6B62] mt-0.5 leading-relaxed">
+                  <p className="text-xs text-[#5C6B62] mt-0.5 line-clamp-1">
                     {pro.specialty}
                   </p>
                 </div>
 
-                {/* Hívás gomb (kattintásra rögzíti a kapcsolatfelvételt) */}
-                <a
-                  href={`tel:${pro.phone}`}
-                  onClick={() => handleRecordInteraction(pro, 'call')}
-                  className="shrink-0 bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3.5 py-2.5 rounded-xl transition"
-                >
-                  Hívás
-                </a>
+                <span className="text-xs font-bold text-[#5C6B62] shrink-0 pt-0.5">
+                  Részletek ›
+                </span>
               </div>
 
-              {/* Szomszédok rövid szöveges visszajelzései */}
-              {recentComments.length > 0 && (
-                <div className="bg-limestone rounded-xl p-2.5 space-y-1 border border-[#ECE7DC]">
-                  {recentComments.map((c, idx) => (
-                    <div key={idx} className="text-[11px] text-[#18261F] italic">
-                      „{c}”
+              {/* Kompakt lábléc: ajánlás összegző + közvetlen Üzenet és Hívás gombok */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-[#18261F]">
+                    {pro.endorsement_count || 0} helyi ajánlás
+                  </div>
+                  {firstRecommender && (
+                    <div className="text-[11px] text-[#5C6B62] truncate">
+                      Ajánlotta: {firstRecommender.authorName}
+                      {firstRecommender.authorZone ? ` (${firstRecommender.authorZone})` : ''}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Alsó sáv: Ajánlások száma + Hitelesített 1x ajánlás / Saját szerkesztés */}
-              <div className="flex items-center justify-between pt-2 border-t border-[#ECE7DC] gap-2">
-                <div className="text-xs font-semibold text-[#5C6B62]">
-                  {pro.endorsement_count || 0} helyi ajánlás
+                  )}
                 </div>
 
                 {isOwner ? (
@@ -570,75 +604,260 @@ export default function ProsDirectoryView({
                     <button
                       type="button"
                       onClick={() => openEditForm(pro)}
-                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-2.5 py-1.5 rounded-xl"
+                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-xl"
                     >
                       Szerkesztés
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDeletePro(pro.id)}
-                      className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-2.5 py-1.5 rounded-xl"
+                      className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-2.5 py-2 rounded-xl"
                     >
                       Törlés
                     </button>
                   </div>
-                ) : hasEndorsed ? (
-                  <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1.5 rounded-xl">
-                    Ajánlva ✓
-                  </span>
-                ) : hasInteracted ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEndorsingProId(endorsingProId === pro.id ? null : pro.id);
-                      setEndorseNote('');
-                    }}
-                    className="bg-pilis-soft hover:bg-pilis text-pilis hover:text-white font-bold text-xs px-3 py-1.5 rounded-xl transition"
-                  >
-                    Ajánlom
-                  </button>
                 ) : (
-                  <span className="text-[11px] text-[#7A867E]">
-                    Kapcsolatfelvétel után ajánlható
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleMessageClick(pro)}
+                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl transition"
+                    >
+                      Üzenet
+                    </button>
+                    <a
+                      href={`tel:${pro.phone}`}
+                      onClick={() => handleRecordInteraction(pro, 'call')}
+                      className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3.5 py-2 rounded-xl transition"
+                    >
+                      Hívás
+                    </a>
+                  </div>
                 )}
               </div>
-
-              {/* Egyszeri ajánlás szöveges megerősítése */}
-              {endorsingProId === pro.id && !hasEndorsed && (
-                <div className="bg-limestone p-2.5 rounded-xl border border-pilis/30 space-y-2">
-                  <input
-                    type="text"
-                    value={endorseNote}
-                    onChange={(e) => setEndorseNote(e.target.value)}
-                    placeholder="Rövid visszajelzés (pl. Pontos, szépen dolgozott)..."
-                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
-                  />
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setEndorsingProId(null)}
-                      className="text-xs font-bold text-[#5C6B62] px-3 py-1.5"
-                    >
-                      Mégse
-                    </button>
-                    <button
-                      type="button"
-                      disabled={endorseSaving}
-                      onClick={() => handleSubmitEndorsement(pro)}
-                      className="bg-pilis text-white font-bold text-xs px-3.5 py-1.5 rounded-xl"
-                    >
-                      {endorseSaving ? 'Mentés...' : 'Ajánlás elküldése'}
-                    </button>
-                  </div>
-                </div>
-              )}
             </article>
           );
         })
       )}
 
-      {/* Mobilbarát Űrlap Modal */}
+      {/* KATTINTHATÓ RÉSZLETES BEMUTATKOZÓ ÉS AJÁNLÁS LAP (Bottom Sheet / Modal) */}
+      {selectedPro && (() => {
+        const isOwner = Boolean(currentUserId && selectedPro.owner_id === currentUserId);
+        const hasInteracted = interactedProIds.has(selectedPro.id);
+        const hasEndorsed = endorsedProIds.has(selectedPro.id);
+        const proEndorsements = endorsementsByPro[selectedPro.id] || [];
+
+        return (
+          <div
+            onClick={() => setSelectedPro(null)}
+            className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3.5 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border"
+            >
+              {/* Fejléc */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                    {selectedPro.profession_name && (
+                      <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
+                        {selectedPro.profession_name}
+                      </span>
+                    )}
+                    {selectedPro.experience_years > 0 && (
+                      <span className="text-[11px] font-bold bg-[#ECE7DC] text-[#18261F] px-2.5 py-0.5 rounded-full">
+                        {selectedPro.experience_years} éve a szakmában
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="font-display font-extrabold text-xl text-[#18261F] break-words">
+                    {selectedPro.business_name}
+                  </h3>
+                  <div className="text-xs font-medium text-[#5C6B62] mt-0.5">
+                    {selectedPro.active_zone_today
+                      ? `Ma elérhető itt: ${selectedPro.active_zone_today}`
+                      : selectedPro.base_zone || 'Szentendre'}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedPro(null)}
+                  className="text-sm font-bold text-[#5C6B62] hover:text-black px-2 py-1 shrink-0"
+                >
+                  Bezárás ✕
+                </button>
+              </div>
+
+              {/* Szakterület és részletes bemutatkozás */}
+              <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
+                <div>
+                  <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
+                    Miben segít
+                  </div>
+                  <div className="text-sm font-semibold text-[#18261F] mt-0.5">
+                    {selectedPro.specialty}
+                  </div>
+                </div>
+
+                {selectedPro.bio && (
+                  <div className="pt-2 border-t border-[#ECE7DC]">
+                    <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
+                      Bemutatkozás
+                    </div>
+                    <p className="text-xs text-[#18261F] mt-1 leading-relaxed whitespace-pre-line">
+                      {selectedPro.bio}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Közvetlen kapcsolatfelvétel gombok (Üzenet + Hívás) */}
+              {!isOwner ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleMessageClick(selectedPro)}
+                    className="bg-white hover:bg-gray-50 text-[#18261F] border border-[#DFD9CE] font-bold text-sm py-3 rounded-xl transition"
+                  >
+                    Üzenet írása
+                  </button>
+                  <a
+                    href={`tel:${selectedPro.phone}`}
+                    onClick={() => handleRecordInteraction(selectedPro, 'call')}
+                    className="bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
+                  >
+                    Hívás indítása
+                  </a>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEditForm(selectedPro)}
+                    className="bg-white text-[#18261F] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl"
+                  >
+                    Adatlap szerkesztése
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePro(selectedPro.id)}
+                    className="bg-red-50 text-red-800 border border-red-200 font-bold text-xs py-2.5 rounded-xl"
+                  >
+                    Adatlap törlése
+                  </button>
+                </div>
+              )}
+
+              {/* Szomszédok ajánlásai + Egyszeri hitelesített ajánlás küldése */}
+              <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#18261F]">
+                    Helyi ajánlások ({selectedPro.endorsement_count || 0})
+                  </span>
+                  {hasEndorsed && (
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                      Ajánlva ✓
+                    </span>
+                  )}
+                </div>
+
+                {/* Ajánlás írása, ha már volt kapcsolatfelvétel és még nem ajánlotta */}
+                {!isOwner && !hasEndorsed && (
+                  hasInteracted ? (
+                    <div className="bg-limestone p-3 rounded-xl border border-pilis/25 space-y-2">
+                      <div className="text-xs font-bold text-[#18261F]">
+                        Milyen tapasztalatod volt vele?
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ENDORSEMENT_STRENGTH_TAGS.map((tag) => {
+                          const active = selectedTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleStrengthTag(tag)}
+                              className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition ${
+                                active
+                                  ? 'bg-pilis text-white border-pilis'
+                                  : 'bg-white text-[#18261F] border-[#DFD9CE]'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <input
+                        type="text"
+                        value={endorseNote}
+                        onChange={(e) => setEndorseNote(e.target.value)}
+                        placeholder="Írj egy rövid mondatot a szomszédoknak..."
+                        className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
+                      />
+                      <button
+                        type="button"
+                        disabled={endorseSaving}
+                        onClick={() => handleSubmitEndorsement(selectedPro)}
+                        className="w-full bg-pilis hover:bg-pilis-light text-white font-bold text-xs py-2.5 rounded-xl transition"
+                      >
+                        {endorseSaving ? 'Mentés...' : 'Ajánlás közzététele'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-[#5C6B62] bg-limestone p-2.5 rounded-xl">
+                      Ajánlást azután tudsz írni, hogy üzenetben vagy telefonon egyeztettél vele.
+                    </div>
+                  )
+                )}
+
+                {/* Korábbi ajánlások listája */}
+                {proEndorsements.length === 0 ? (
+                  <div className="text-xs text-[#7A867E]">
+                    Még nem érkezett szöveges ajánlás.
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    {proEndorsements.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-limestone rounded-xl p-2.5 border border-[#ECE7DC] space-y-1"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-[#18261F]">
+                            {item.authorName}
+                            {item.authorZone ? ` • ${item.authorZone}` : ''}
+                          </span>
+                        </div>
+                        {item.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {item.tags.map((t) => (
+                              <span
+                                key={t}
+                                className="text-[10px] font-bold bg-pilis-soft text-pilis px-2 py-0.5 rounded-full"
+                              >
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {item.comment && (
+                          <p className="text-xs text-[#18261F] leading-relaxed">
+                            „{item.comment}”
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Új szakember / szolgáltató űrlap modal (tapasztalattal és bemutatkozással) */}
       {showFormModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
@@ -681,7 +900,7 @@ export default function ProsDirectoryView({
 
             <div className="relative">
               <label className="text-xs font-bold block mb-1">
-                Szakma vagy szolgáltatás (válassz vagy írj be újat)
+                Szakma vagy szolgáltatás
               </label>
               <input
                 type="text"
@@ -698,7 +917,7 @@ export default function ProsDirectoryView({
               />
 
               {showProfessionDropdown && (
-                <div className="mt-1 bg-white border border-[#DFD9CE] rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-[#ECE7DC]">
+                <div className="mt-1 bg-white border border-[#DFD9CE] rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-[#ECE7DC]">
                   {!exactProfessionExists && professionInput.trim().length >= 2 && (
                     <button
                       type="button"
@@ -734,26 +953,54 @@ export default function ProsDirectoryView({
               )}
             </div>
 
-            <div>
-              <label className="text-xs font-bold block mb-1">Név vagy vállalkozás neve</label>
-              <input
-                type="text"
-                required
-                value={bizName}
-                onChange={(e) => setBizName(e.target.value)}
-                placeholder="Pl. Kovács Anna – Fodrászat"
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="sm:col-span-2">
+                <label className="text-xs font-bold block mb-1">Név vagy vállalkozás</label>
+                <input
+                  type="text"
+                  required
+                  value={bizName}
+                  onChange={(e) => setBizName(e.target.value)}
+                  placeholder="Pl. Kovács Anna – Fodrászat"
+                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold block mb-1">Tapasztalat (év)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  value={bizExperienceYears}
+                  onChange={(e) => setBizExperienceYears(e.target.value)}
+                  placeholder="Pl. 10"
+                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="text-xs font-bold block mb-1">Miben tud segíteni? (rövid leírás)</label>
+              <label className="text-xs font-bold block mb-1">Fő szakterület (1 sorban)</label>
               <input
                 type="text"
                 required
                 value={bizSpec}
                 onChange={(e) => setBizSpec(e.target.value)}
-                placeholder="Pl. Női-férfi hajvágás, festés bejelentkezéssel"
+                placeholder="Pl. Női és férfi hajvágás, festés bejelentkezéssel"
+                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold block mb-1">
+                Rövid bemutatkozás (mivel, mióta foglalkozol)
+              </label>
+              <textarea
+                rows={3}
+                value={bizBio}
+                onChange={(e) => setBizBio(e.target.value)}
+                placeholder="Írj pár mondatot magadról, a munkádról vagy arról, hogyan érdemes időpontot egyeztetni..."
                 className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
               />
             </div>
@@ -806,7 +1053,7 @@ export default function ProsDirectoryView({
                 ? 'Mentés...'
                 : editingProId
                 ? 'Módosítások mentése'
-                : 'Közzététel a listában'}
+                : 'Közzététel'}
             </button>
           </form>
         </div>
