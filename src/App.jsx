@@ -178,6 +178,8 @@ export default function App() {
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
+  const [selectedStopByRide, setSelectedStopByRide] = useState({});
+  const [inlineCarInfo, setInlineCarInfo] = useState('');
   const [searchStatsMap, setSearchStatsMap] = useState({});
   const [personalRoutines, setPersonalRoutines] = useState([]);
   const [locatingOriginGps, setLocatingOriginGps] = useState(false);
@@ -243,6 +245,7 @@ export default function App() {
     }
     if (data) {
       setProfile(data);
+      if (data.car_info) setInlineCarInfo(data.car_info);
       setHiddenAgreementIds(getHiddenAgreements(data.id));
       setPersonalRoutines(getPersonalRoutines(data.id));
     }
@@ -370,7 +373,7 @@ export default function App() {
           *,
           requester:profiles!agreements_requester_id_fkey(display_name),
           helper:profiles!agreements_helper_id_fkey(display_name),
-          ride:rides(origin_text, dest_text, kind, user_id),
+          ride:rides(origin_text, dest_text, kind, user_id, car_info),
           favor:favors(title),
           pro:local_pros(business_name, profession_name)
         `)
@@ -414,6 +417,7 @@ export default function App() {
               ? a.helper?.display_name || 'Szomszéd'
               : a.requester?.display_name || 'Szomszéd',
             post_owner_id: a.ride?.user_id || a.helper_id,
+            car_info: a.ride?.car_info || null,
             title: a.ride
               ? `${a.ride.origin_text} → ${a.ride.dest_text}`
               : a.pro
@@ -829,6 +833,7 @@ export default function App() {
     setActiveAgreement({
       ...createdAgr,
       post_owner_id: ride.user_id,
+      car_info: ride.car_info || null,
       partner_name: ride.author_name,
       title: `${ride.origin_text} → ${ride.dest_text}`
     });

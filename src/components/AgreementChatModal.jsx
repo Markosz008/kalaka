@@ -117,6 +117,37 @@ export default function AgreementChatModal({
     };
   }, [agreement?.id, isLiveDbAgreement]);
 
+  // Screen Wake Lock: ébren tartja a kijelzőt, amíg az élő GPS-követés ('started') fut
+  useEffect(() => {
+    let wakeLock = null;
+    const shouldKeepAwake = isRideAgreement && status === 'started';
+
+    const requestWakeLock = async () => {
+      if (!shouldKeepAwake) return;
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch {}
+    };
+
+    requestWakeLock();
+
+    const handleVis = () => {
+      if (document.visibilityState === 'visible' && shouldKeepAwake) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVis);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, [isRideAgreement, status]);
+
   // Sofőr élő GPS-közvetítése (csak status === 'started' esetén és csak a sofőrnél)
   useEffect(() => {
     const shouldBroadcast =
@@ -525,7 +556,14 @@ export default function AgreementChatModal({
               {liveAgr.partner_name?.[0] || 'S'}
             </div>
             <div className="truncate">
-              <div className="font-bold text-sm truncate">{liveAgr.partner_name}</div>
+              <div className="font-bold text-sm truncate flex items-center gap-1.5">
+                <span className="truncate">{liveAgr.partner_name}</span>
+                {liveAgr.car_info && (
+                  <span className="text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full shrink-0">
+                    🚗 {liveAgr.car_info}
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] text-[#5C6B62] truncate">
                 {liveAgr.title}
                 {liveAgr.pickup_stop_name ? ` • ${liveAgr.pickup_stop_name}` : ''}
