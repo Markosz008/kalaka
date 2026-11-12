@@ -1165,6 +1165,49 @@ export default function App() {
 
   const topPersonalRoutine = personalRoutines[0] || null;
 
+  // Azonnali frissítés másik eszközről (Supabase Realtime + oldalra visszalépéskor)
+  useEffect(() => {
+    const uid = session?.user?.id || null;
+
+    const handleWakeOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAllLiveData(uid);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleWakeOrFocus);
+    window.addEventListener('focus', handleWakeOrFocus);
+
+    let channel = null;
+    if (supabase) {
+      channel = supabase
+        .channel('kalaka-live-rides-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'rides' },
+          () => {
+            fetchAllLiveData(uid);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'agreements' },
+          () => {
+            fetchAllLiveData(uid);
+          }
+        )
+        .subscribe();
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleWakeOrFocus);
+      window.removeEventListener('focus', handleWakeOrFocus);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [session?.user?.id]);
+
   const visibleAgreements = myAgreements.filter(
     (a) => !hiddenAgreementIds.includes(a.id)
   );
