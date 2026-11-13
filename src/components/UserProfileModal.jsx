@@ -14,6 +14,9 @@ export default function UserProfileModal({
   const [kudosList, setKudosList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [inviterName, setInviterName] = useState(null);
+  const [verifyingGps, setVerifyingGps] = useState(false);
+  const [gpsFeedback, setGpsFeedback] = useState(null);
 
   // Saját profil szerkesztése
   const isOwnProfile = Boolean(currentUser?.id && userId === currentUser.id);
@@ -75,6 +78,16 @@ export default function UserProfileModal({
       if (!mounted) return;
       if (prof) {
         setProfileData(prof);
+        if (prof.invited_by) {
+          const { data: inv } = await supabase
+            .from('profiles')
+            .select('display_name, zone')
+            .eq('id', prof.invited_by)
+            .maybeSingle();
+          if (mounted && inv?.display_name) {
+            setInviterName(`${inv.display_name}${inv.zone ? ' • ' + inv.zone : ''}`);
+          }
+        }
         setEditName(prof.display_name || '');
         setEditZone(prof.zone || 'Pismány');
         setEditBio(prof.bio || '');
@@ -140,6 +153,41 @@ export default function UserProfileModal({
     if (onProfileUpdated) onProfileUpdated(data);
   };
 
+  const handleVerifyLocalGps = () => {
+    if (!navigator.geolocation || !isOwnProfile || !supabase) return;
+    setVerifyingGps(true);
+    setGpsFeedback(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const inDunakanyar =
+          latitude >= 47.55 && latitude <= 47.82 && longitude >= 18.92 && longitude <= 19.22;
+        if (!inDunakanyar) {
+          setVerifyingGps(false);
+          setGpsFeedback('A jelenlegi helyzeted kívül esik Szentendre térségén.');
+          return;
+        }
+        const { data } = await supabase
+          .from('profiles')
+          .update({ is_gps_local_verified: true })
+          .eq('id', userId)
+          .select('*')
+          .single();
+        setVerifyingGps(false);
+        if (data) {
+          setProfileData(data);
+          if (onProfileUpdated) onProfileUpdated(data);
+        }
+        setGpsFeedback('Szentendrei jelenlét sikeresen igazolva ✓');
+      },
+      () => {
+        setVerifyingGps(false);
+        setGpsFeedback('Engedélyezd a helymeghatározást a böngészőben.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const handleSignOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -169,9 +217,15 @@ export default function UserProfileModal({
                 <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
                   {displayZone}
                 </span>
+                {profileData?.is_gps_local_verified && (
+                  <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
+                    ✓ Igazolt helyi
+                  </span>
+                )}
               </div>
               <div className="text-xs text-[#5C6B62] mt-0.5">
                 Közösségi tag • {joinedLabel} óta
+                {inviterName ? ` • Meghívta: ${inviterName}` : ''}
               </div>
             </div>
           </div>
@@ -255,6 +309,23 @@ export default function UserProfileModal({
               </div>
             )}
 
+            {isOwnProfile && !profileData?.is_gps_local_verified && (
+              <div className="pt-2 border-t border-[#ECE7DC]">
+                <button
+                  type="button"
+                  disabled={verifyingGps}
+                  onClick={handleVerifyLocalGps}
+                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold text-xs py-2 rounded-xl transition"
+                >
+                  {verifyingGps ? 'GPS ellenőrzése...' : '📍 Szentendrei tartózkodás igazolása (GPS)'}
+                </button>
+              </div>
+            )}
+            {gpsFeedback && (
+              <div className="text-[11px] font-semibold text-pilis bg-pilis-soft px-3 py-1.5 rounded-xl">
+                {gpsFeedback}
+              </div>
+            )}
             {isOwnProfile && (
               <div className="pt-2 flex gap-2">
                 <button

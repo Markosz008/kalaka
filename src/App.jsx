@@ -216,6 +216,8 @@ export default function App() {
   ]);
 
   const [rides, setRides] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [rideKindFilter, setRideKindFilter] = useState('all');
   const [favors, setFavors] = useState([]);
   const [pros, setPros] = useState([]);
   const [myAgreements, setMyAgreements] = useState([]);
@@ -330,7 +332,7 @@ export default function App() {
 
     const { data: rideRows } = await supabase
       .from('rides')
-      .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone)')
+      .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info)')
       .eq('status', 'open')
       .gt('expires_at', nowIso)
       .order('departure_at', { ascending: true });
@@ -345,21 +347,37 @@ export default function App() {
           r.schedule_label || (recMatch ? recMatch[1] : isRec ? 'Munkanapokon (H–P)' : null);
         const cleanNote = recMatch ? recMatch[2] : r.note;
 
+        // Ha rendszeres út, a departure_at-et a következő aktuális indulásra vetítjük a helyes sorrendhez
+        let effectiveDepIso = r.departure_at;
+        if (isRec) {
+          const [hh, mm] = timeStr.split(':').map(Number);
+          const nextDep = new Date();
+          nextDep.setHours(hh || 6, mm || 0, 0, 0);
+          if (nextDep.getTime() < Date.now() - 15 * 60000) {
+            nextDep.setDate(nextDep.getDate() + 1);
+          }
+          effectiveDepIso = nextDep.toISOString();
+        }
+
         return {
           ...r,
+          departure_at: effectiveDepIso,
           note: cleanNote,
           author_name: r.author?.display_name || 'Szomszéd',
           author_zone: r.author?.zone || '',
+          author_car: r.car_info || r.author?.car_info || null,
+          car_info: r.car_info || r.author?.car_info || null,
           author_ride_hearts: r.author?.ride_hearts || 0,
           author_favor_hearts: r.author?.favor_hearts || 0,
           is_recurring: isRec,
           schedule_text: scheduleLabel,
           depart_time: timeStr,
           time_label: timeStr,
-          date_label: formatDayLabelFromIso(r.departure_at, isRec, scheduleLabel),
+          date_label: formatDayLabelFromIso(effectiveDepIso, isRec, scheduleLabel),
           stops: []
         };
       });
+      mappedRides.sort((a, b) => new Date(a.departure_at) - new Date(b.departure_at));
       setRides(mappedRides);
       supabase
         .from('route_search_stats')
@@ -424,6 +442,7 @@ export default function App() {
       kMap[uid] = Math.max(kMap[uid] || 0, rawCounts[uid]);
     });
     setKudosCountByUser(kMap);
+    setInitialLoading(false);
 
     const { data: proRows } = await supabase
       .from('local_pros')
@@ -713,6 +732,7 @@ export default function App() {
         departure_at: dep.toISOString(),
         expires_at: exp.toISOString(),
         seats: dbKind === 'ask' ? Number(inlineSeats) || 1 : Number(inlineSeats) || 3,
+        car_info: profile?.car_info || null,
         is_confirmed_today: true,
         note: isRec
           ? `[Rendszeres: ${inlineSchedule}] ${inlineNote.trim()}`.trim()
@@ -735,6 +755,8 @@ export default function App() {
         if (retryErr) throw retryErr;
       }
 
+      recordPersonalRoutine(session.user.id, filterFrom.trim(), filterTo.trim());
+      setPersonalRoutines(getPersonalRoutines(session.user.id));
       await fetchAllLiveData(session.user.id);
       setInlineComposerMode(null);
       setInlineNote('');
@@ -862,6 +884,7 @@ export default function App() {
         departure_at: dep.toISOString(),
         expires_at: expIso,
         seats: Number(newSeats) || 3,
+        car_info: profile?.car_info || null,
         is_confirmed_today: true,
         note:
           isRec
@@ -909,6 +932,8 @@ export default function App() {
           }
         }
       }
+      recordPersonalRoutine(session.user.id, newFrom.trim(), newTo.trim());
+      setPersonalRoutines(getPersonalRoutines(session.user.id));
       setActiveTab('rides');
     }
 
@@ -1218,14 +1243,15 @@ export default function App() {
   };
 
   const handleSwapOriginDest = () => {
-    const prevO = fromQuery;
-    const prevD = toQuery;
-    const prevOCoord = originPinCoord;
-    const prevDCoord = destPinCoord;
-    setFromQuery(prevD);
-    setToQuery(prevO);
-    if (typeof setOriginPinCoord === 'function') setOriginPinCoord(prevDCoord || null);
-    if (typeof setDestPinCoord === 'function') setDestPinCoord(prevOCoord || null);
+    setSelectedRideForMap(null);
+    const prevO = filterFrom;
+    const prevD = filterTo;
+    const prevOCoord = fromCoords;
+    const prevDCoord = toCoords;
+    setFilterFrom(prevD);
+    setFilterTo(prevO);
+    setFromCoords(prevDCoord || null);
+    setToCoords(prevOCoord || null);
   };
 
   const handleFillOriginFromCurrentGps = () => {
@@ -1234,9 +1260,7 @@ export default function App() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords;
-        if (typeof setOriginPinCoord === 'function') {
-          setOriginPinCoord({ lat, lng });
-        }
+        setFromCoords({ lat, lng });
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
@@ -1246,15 +1270,14 @@ export default function App() {
           const city = addr.city || addr.town || addr.village || 'Szentendre';
           const road = addr.road || addr.pedestrian || addr.suburb || '';
           const house = addr.house_number ? ` ${addr.house_number}.` : '';
-          setFromQuery(road ? `${city}, ${road}${house}` : `${city} (aktuális helyzet)`);
+          setFilterFrom(road ? `${city}, ${road}${house}` : `${city} (aktuális helyzet)`);
         } catch {
-          setFromQuery('Szentendre (aktuális helyzet)');
+          setFilterFrom('Szentendre (aktuális helyzet)');
         }
         setLocatingOriginGps(false);
       },
       () => {
         setLocatingOriginGps(false);
-        alert('Engedélyezd a helymeghatározást a böngészőben.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -1431,38 +1454,80 @@ export default function App() {
 
       {activeTab === 'rides' && (
         <section className="mx-3 sm:mx-4 -mt-3 bg-white rounded-2xl p-3 sm:p-3.5 shadow-lg border border-[#DFD9CE] relative z-20 space-y-2.5 box-border">
-          <div className="space-y-1">
-            <AddressAutocompleteInput
-              value={filterFrom}
-              onFocus={() => setActiveSearchField('from')}
-              onChange={(val) => {
-                setSelectedRideForMap(null);
-                setFilterFrom(val);
-              }}
-              onSelectPlace={(place) => {
-                setFromCoords(place ? { lat: place.lat, lng: place.lng } : null);
-                setActiveSearchField('to');
-              }}
-              placeholder="Honnan indulsz?"
-              dotColor="border-pilis"
-            />
-
-            <div className="border-t border-[#ECE7DC] pt-1">
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 space-y-1">
               <AddressAutocompleteInput
-                value={filterTo}
-                onFocus={() => setActiveSearchField('to')}
+                value={filterFrom}
+                onFocus={() => setActiveSearchField('from')}
                 onChange={(val) => {
                   setSelectedRideForMap(null);
-                  setFilterTo(val);
+                  setFilterFrom(val);
                 }}
                 onSelectPlace={(place) => {
-                  setToCoords(place ? { lat: place.lat, lng: place.lng } : null);
+                  setFromCoords(place ? { lat: place.lat, lng: place.lng } : null);
+                  setActiveSearchField('to');
                 }}
-                placeholder="Hová tartasz?"
-                isSolidDot
+                placeholder="Honnan indulsz?"
+                dotColor="border-pilis"
               />
+
+              <div className="border-t border-[#ECE7DC] pt-1">
+                <AddressAutocompleteInput
+                  value={filterTo}
+                  onFocus={() => setActiveSearchField('to')}
+                  onChange={(val) => {
+                    setSelectedRideForMap(null);
+                    setFilterTo(val);
+                  }}
+                  onSelectPlace={(place) => {
+                    setToCoords(place ? { lat: place.lat, lng: place.lng } : null);
+                  }}
+                  placeholder="Hová tartasz?"
+                  isSolidDot
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleFillOriginFromCurrentGps}
+                disabled={locatingOriginGps}
+                title="Jelenlegi GPS helyzetem"
+                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-pilis border border-[#DFD9CE] grid place-items-center text-xs font-bold transition"
+              >
+                {locatingOriginGps ? '…' : '📍'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSwapOriginDest}
+                title="Irány megfordítása"
+                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-[#18261F] border border-[#DFD9CE] grid place-items-center text-xs font-bold transition"
+              >
+                ⇅
+              </button>
             </div>
           </div>
+
+          {topPersonalRoutine && !filterFrom && !filterTo && (
+            <div className="flex items-center justify-between gap-2 bg-pilis-soft/45 px-2.5 py-1.5 rounded-xl border border-pilis/15 text-xs">
+              <span className="truncate text-[#18261F] font-medium">
+                Szokásos: <strong className="font-bold">{topPersonalRoutine.origin} → {topPersonalRoutine.dest}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterFrom(topPersonalRoutine.origin);
+                  setFilterTo(topPersonalRoutine.dest);
+                  setFromCoords(resolveCoordsFromText(topPersonalRoutine.origin));
+                  setToCoords(resolveCoordsFromText(topPersonalRoutine.dest));
+                }}
+                className="shrink-0 bg-pilis text-white font-bold text-[11px] px-2.5 py-1 rounded-lg"
+              >
+                Betöltés ›
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#ECE7DC] min-w-0">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0 flex-1">
@@ -1680,7 +1745,46 @@ export default function App() {
       <main className="px-3 sm:px-4 mt-4 space-y-3">
         {activeTab === 'rides' && (
           <>
-            {filteredRides.length === 0 ? (
+            <div className="flex items-center justify-between gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] shadow-sm">
+              {[
+                ['all', `Minden út (${filteredRides.length})`],
+                ['offer', `🚗 Van hely (${filteredRides.filter((r) => r.kind === 'offer').length})`],
+                ['ask', `🙋 Utat keres (${filteredRides.filter((r) => r.kind === 'ask').length})`]
+              ].map(([k, lbl]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setRideKindFilter(k)}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition ${
+                    rideKindFilter === k
+                      ? 'bg-pilis text-white shadow-sm'
+                      : 'text-[#5C6B62] hover:text-[#18261F]'
+                  }`}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+
+            {initialLoading ? (
+              <div className="space-y-2.5">
+                {[1, 2].map((n) => (
+                  <div
+                    key={n}
+                    className="bg-white rounded-2xl p-4 border border-[#DFD9CE] animate-pulse space-y-3"
+                  >
+                    <div className="flex justify-between">
+                      <div className="h-6 w-24 bg-[#ECE7DC] rounded-lg" />
+                      <div className="h-6 w-16 bg-[#ECE7DC] rounded-full" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-4 w-3/4 bg-[#ECE7DC] rounded" />
+                      <div className="h-4 w-2/3 bg-[#ECE7DC] rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter).length === 0 ? (
               <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2">
                 <div className="text-sm font-bold text-[#18261F]">
                   Jelenleg nincs aktív út erre az útvonalra.
@@ -1690,7 +1794,7 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              filteredRides.map((ride) => (
+              filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter).map((ride) => (
                 <RideCard
                   key={ride.id}
                   ride={ride}

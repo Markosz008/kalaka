@@ -394,6 +394,21 @@ export default function AgreementChatModal({
         .single();
       if (error) throw error;
 
+      // Ha most lett véglegesítve a fuvar, csökkentjük a szabad helyek számát 1-gyel
+      if (bothConfirmed && liveAgr.ride_id) {
+        const { data: rideRow } = await supabase
+          .from('rides')
+          .select('id, kind, seats')
+          .eq('id', liveAgr.ride_id)
+          .maybeSingle();
+        if (rideRow && rideRow.kind === 'offer' && Number(rideRow.seats) > 0) {
+          await supabase
+            .from('rides')
+            .update({ seats: Math.max(0, Number(rideRow.seats) - 1) })
+            .eq('id', rideRow.id);
+        }
+      }
+
       await supabase.from('messages').insert({
         agreement_id: liveAgr.id,
         sender_id: currentUser.id,
@@ -550,6 +565,50 @@ export default function AgreementChatModal({
     }
   };
 
+  const handleCancelAgreement = async () => {
+    if (!isLiveDbAgreement || busy) return;
+    setBusy(true);
+    setErrorBanner(null);
+    try {
+      const wasAgreed = ['agreed', 'started'].includes(status);
+      const { data, error } = await supabase
+        .from('agreements')
+        .update({ status: 'cancelled' })
+        .eq('id', liveAgr.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+
+      if (wasAgreed && liveAgr.ride_id) {
+        const { data: rideRow } = await supabase
+          .from('rides')
+          .select('id, kind, seats')
+          .eq('id', liveAgr.ride_id)
+          .maybeSingle();
+        if (rideRow && rideRow.kind === 'offer') {
+          await supabase
+            .from('rides')
+            .update({ seats: Number(rideRow.seats || 0) + 1 })
+            .eq('id', rideRow.id);
+        }
+      }
+
+      await supabase.from('messages').insert({
+        agreement_id: liveAgr.id,
+        sender_id: currentUser.id,
+        body: `${currentUser?.display_name || 'A partner'} lemondta az egyeztetést.`,
+        is_system_event: true
+      });
+
+      setLiveAgr((prev) => ({ ...prev, ...data }));
+      if (onAgreementUpdated) onAgreementUpdated(data);
+    } catch (err) {
+      setErrorBanner(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleReport = async () => {
     const reason = window.prompt('Írd le röviden a problémát:');
     if (!reason || reason.trim().length < 5) return;
@@ -641,6 +700,16 @@ export default function AgreementChatModal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {['chatting', 'agreed', 'started'].includes(status) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleCancelAgreement}
+                className="text-xs font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
+              >
+                Lemondás
+              </button>
+            )}
             {!isProInquiry && status !== 'chatting' && (
               <button
                 onClick={handleReport}
@@ -771,6 +840,7 @@ export default function AgreementChatModal({
                   : 'Megérkezve • Várakozás az utas visszaigazolására'
               )}
               {status === 'completed' && 'Lezárva ✓'}
+              {status === 'cancelled' && 'Lemondva ✕'}
             </div>
 
             <div className="shrink-0 flex items-center gap-1.5">

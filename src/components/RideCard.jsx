@@ -25,6 +25,8 @@ export default function RideCard({
   const showRecentlyStarted = !ride.is_recurring && depTime > 0 && depTime < now && expTime > now;
 
   const activeBadge = formatRemainingTime(ride.expires_at);
+  const isFull = ride.kind === 'offer' && Number(ride.seats) <= 0;
+  const carLabel = ride.car_info || ride.author_car || null;
 
   return (
     <article className="bg-white rounded-2xl p-3.5 sm:p-4 border border-[#DFD9CE] shadow-sm hover:border-pilis transition w-full">
@@ -51,14 +53,21 @@ export default function RideCard({
           >
             Útvonal
           </button>
+          {carLabel && (
+            <span className="hidden sm:inline-flex text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-1 rounded-full">
+              🚗 {carLabel}
+            </span>
+          )}
           <span
             className={`text-[11px] font-bold px-2 py-1 rounded-full ${
-              ride.kind === 'offer'
+              isFull
+                ? 'bg-gray-200 text-gray-600'
+                : ride.kind === 'offer'
                 ? 'bg-[#E6F2EC] text-pilis'
                 : 'bg-terracotta-soft text-terracotta'
             }`}
           >
-            {ride.kind === 'offer' ? `${ride.seats} hely` : 'Utat keres'}
+            {isFull ? 'Betelt' : ride.kind === 'offer' ? `${ride.seats} hely` : 'Utat keres'}
           </span>
         </div>
       </div>
@@ -162,15 +171,20 @@ export default function RideCard({
         ) : (
           <button
             type="button"
+            disabled={isFull && !hasExistingAgreement}
             onClick={() => onStartAgreement(ride, selectedStop)}
             className={`${
               hasExistingAgreement
                 ? 'bg-pilis-soft text-pilis border border-pilis/30'
+                : isFull
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
                 : 'bg-pilis hover:bg-pilis-light text-white'
             } font-bold text-xs px-3.5 py-2 rounded-xl shrink-0 transition`}
           >
             {hasExistingAgreement
               ? 'Egyeztetés ›'
+              : isFull
+              ? 'Betelt'
               : selectedStop
               ? `Felszállok (${selectedStop.time})`
               : ride.kind === 'offer'
