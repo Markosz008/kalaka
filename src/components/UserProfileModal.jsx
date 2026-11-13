@@ -35,7 +35,7 @@ export default function UserProfileModal({
       setLoading(true);
       const { data: prof } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
         .eq('id', userId)
         .maybeSingle();
 

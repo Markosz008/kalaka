@@ -163,13 +163,13 @@ export default function InteractiveRouteMap({
       ? selectedRide.origin_lat && selectedRide.origin_lng
         ? { lat: selectedRide.origin_lat, lng: selectedRide.origin_lng }
         : resolveCoordsFromText(selectedRide.origin_text)
-      : fromCoords || resolveCoordsFromText(effectiveFromText);
+      : resolveCoordsFromText(effectiveFromText) || fromCoords;
 
     const endCoord = selectedRide
       ? selectedRide.dest_lat && selectedRide.dest_lng
         ? { lat: selectedRide.dest_lat, lng: selectedRide.dest_lng }
         : resolveCoordsFromText(selectedRide.dest_text)
-      : toCoords || resolveCoordsFromText(effectiveToText);
+      : resolveCoordsFromText(effectiveToText) || toCoords;
 
     // 1. HA NINCS KIVÁLASZTOTT ÚTVONAL: Élő aktív kiírások jelvényei jelennek meg a térképen (statikus üres pöttyök helyett!)
     if (!selectedRide && !startCoord && !endCoord && Array.isArray(rides) && rides.length > 0) {
