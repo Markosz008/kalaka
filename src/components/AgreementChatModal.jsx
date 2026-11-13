@@ -29,6 +29,8 @@ export default function AgreementChatModal({
   const [errorBanner, setErrorBanner] = useState(null);
   const [gpsActive, setGpsActive] = useState(false);
   const [sharingPassengerPin, setSharingPassengerPin] = useState(false);
+  const [showReportBox, setShowReportBox] = useState(false);
+  const [reportReason, setReportReason] = useState('');
 
   const bottomRef = useRef(null);
   const liveMapContainerRef = useRef(null);
@@ -609,10 +611,18 @@ export default function AgreementChatModal({
     }
   };
 
-  const handleReport = async () => {
-    const reason = window.prompt('Írd le röviden a problémát:');
-    if (!reason || reason.trim().length < 5) return;
+  const handleReport = () => {
+    setShowReportBox((v) => !v);
+    setErrorBanner(null);
+  };
 
+  const handleSubmitReport = async (e) => {
+    e.preventDefault();
+    if (!reportReason || reportReason.trim().length < 4) {
+      setErrorBanner('Kérlek, írd le röviden (legalább pár szóban) a problémát.');
+      return;
+    }
+    setBusy(true);
     if (isLiveDbAgreement) {
       const reportedUserId =
         liveAgr.requester_id === currentUser.id ? liveAgr.helper_id : liveAgr.requester_id;
@@ -621,14 +631,18 @@ export default function AgreementChatModal({
           agreement_id: liveAgr.id,
           reporter_id: currentUser.id,
           reported_user_id: reportedUserId,
-          reason: reason.trim()
+          reason: reportReason.trim()
         });
         if (error) {
+          setBusy(false);
           setErrorBanner(error.message);
           return;
         }
       }
     }
+    setBusy(false);
+    setShowReportBox(false);
+    setReportReason('');
     onClose();
   };
 
@@ -732,6 +746,36 @@ export default function AgreementChatModal({
           <div className="bg-red-100 text-red-900 text-xs font-semibold px-4 py-2 border-b border-red-200">
             {errorBanner}
           </div>
+        )}
+
+        {showReportBox && (
+          <form
+            onSubmit={handleSubmitReport}
+            className="bg-red-50 px-4 py-2.5 border-b border-red-200 flex items-center gap-2"
+          >
+            <input
+              type="text"
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder="Írd le röviden a problémát..."
+              className="flex-1 min-w-0 bg-white border border-red-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={busy}
+              className="shrink-0 bg-red-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl"
+            >
+              Küldés
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReportBox(false)}
+              className="shrink-0 text-xs font-bold text-[#5C6B62] px-1.5"
+            >
+              ✕
+            </button>
+          </form>
         )}
 
         {/* Regisztrált szaki 2 lépéses munka-visszaigazolása az ajánláshoz */}

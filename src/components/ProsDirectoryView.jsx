@@ -94,6 +94,8 @@ export default function ProsDirectoryView({
   const [bizActiveToday, setBizActiveToday] = useState(true);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [proBanner, setProBanner] = useState(null);
+  const [confirmDeleteProId, setConfirmDeleteProId] = useState(null);
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -317,7 +319,7 @@ export default function ProsDirectoryView({
     }
 
     if (!navigator.geolocation) {
-      alert('A böngésződ nem támogatja a GPS-helymeghatározást.');
+      setProBanner('A böngésződ nem támogatja a GPS-helymeghatározást.');
       return;
     }
 
@@ -336,14 +338,14 @@ export default function ProsDirectoryView({
 
         setTogglingLiveId(null);
         if (error) {
-          alert(`Hiba az élő jelenlét bekapcsolásakor: ${error.message}`);
+          setProBanner(`Hiba az élő jelenlét bekapcsolásakor: ${error.message}`);
           return;
         }
         if (onRefreshPros) await onRefreshPros();
       },
       () => {
         setTogglingLiveId(null);
-        alert('Engedélyezd a helymeghatározást a böngészőben az élő jelenlét megosztásához.');
+        setProBanner('Engedélyezd a helymeghatározást a böngészőben az élő jelenlét megosztásához.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -467,7 +469,7 @@ export default function ProsDirectoryView({
       await loadInteractionAndEndorsementState();
       if (onRefreshPros) await onRefreshPros();
     } catch (err) {
-      alert(`Nem sikerült menteni az ajánlást: ${err.message}`);
+      setProBanner(`Nem sikerült menteni az ajánlást: ${err.message}`);
     } finally {
       setEndorseSaving(false);
     }
@@ -536,7 +538,7 @@ export default function ProsDirectoryView({
       },
       () => {
         setLocatingAddress(false);
-        alert('Nem sikerült lekérni a GPS-pozíciót.');
+        setFormError('Nem sikerült lekérni a GPS-pozíciót.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
@@ -608,12 +610,17 @@ export default function ProsDirectoryView({
   };
 
   const handleDeletePro = async (proId) => {
-    if (!window.confirm('Biztosan törlöd ezt az adatlapot?')) return;
+    if (confirmDeleteProId !== proId) {
+      setConfirmDeleteProId(proId);
+      setTimeout(() => setConfirmDeleteProId(null), 3500);
+      return;
+    }
+    setConfirmDeleteProId(null);
     setSelectedPro(null);
     if (supabase) {
       const { error } = await supabase.from('local_pros').delete().eq('id', proId);
       if (error) {
-        alert(`Törlési hiba: ${error.message}`);
+        setProBanner(`Törlési hiba: ${error.message}`);
         return;
       }
       if (onRefreshPros) await onRefreshPros();
@@ -635,6 +642,12 @@ export default function ProsDirectoryView({
 
   return (
     <div className="space-y-3 w-full overflow-x-hidden">
+      {proBanner && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-950 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-2">
+          <span>{proBanner}</span>
+          <button type="button" onClick={() => setProBanner(null)} className="font-bold px-1">✕</button>
+        </div>
+      )}
       <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] shadow-sm space-y-2.5 box-border">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display font-bold text-base text-[#18261F] truncate">
@@ -878,9 +891,13 @@ export default function ProsDirectoryView({
                     <button
                       type="button"
                       onClick={() => handleDeletePro(pro.id)}
-                      className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-2.5 py-2 rounded-xl"
+                      className={`${
+                        confirmDeleteProId === pro.id
+                          ? 'bg-red-700 text-white border-red-700'
+                          : 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
+                      } border font-bold text-xs px-2.5 py-2 rounded-xl transition`}
                     >
-                      Törlés
+                      {confirmDeleteProId === pro.id ? 'Biztos? ✕' : 'Törlés'}
                     </button>
                   </div>
                 ) : (
@@ -1044,9 +1061,13 @@ export default function ProsDirectoryView({
                     <button
                       type="button"
                       onClick={() => handleDeletePro(selectedPro.id)}
-                      className="bg-red-50 text-red-800 border border-red-200 font-bold text-xs py-2.5 rounded-xl"
+                      className={`${
+                        confirmDeleteProId === selectedPro.id
+                          ? 'bg-red-700 text-white border-red-700'
+                          : 'bg-red-50 text-red-800 border-red-200'
+                      } border font-bold text-xs py-2.5 rounded-xl transition`}
                     >
-                      Adatlap törlése
+                      {confirmDeleteProId === selectedPro.id ? 'Biztosan törlöd? ✕' : 'Adatlap törlése'}
                     </button>
                   </div>
                 </div>

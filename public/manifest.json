@@ -1,0 +1,20 @@
+{
+  "name": "Kaláka Szentendre",
+  "short_name": "Kaláka",
+  "description": "Szentendrei szomszédok telekocsi, kaláka és helyi szaki közössége.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F2EA",
+  "theme_color": "#1E4635",
+  "lang": "hu-HU",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ export default function RideCard({
   onDeleteRide
 }) {
   const [selectedStop, setSelectedStop] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = Boolean(currentUserId && ride.user_id === currentUserId);
 
   const scheduleSubtitle = ride.is_recurring
@@ -162,10 +163,21 @@ export default function RideCard({
             </button>
             <button
               type="button"
-              onClick={() => onDeleteRide(ride.id)}
-              className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-2.5 py-2 rounded-xl transition"
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  setTimeout(() => setConfirmDelete(false), 3500);
+                  return;
+                }
+                onDeleteRide(ride.id);
+              }}
+              className={`${
+                confirmDelete
+                  ? 'bg-red-700 text-white border-red-700'
+                  : 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
+              } border font-bold text-xs px-2.5 py-2 rounded-xl transition`}
             >
-              Törlés
+              {confirmDelete ? 'Biztos? ✕' : 'Törlés'}
             </button>
           </div>
         ) : (

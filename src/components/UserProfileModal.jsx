@@ -145,7 +145,7 @@ export default function UserProfileModal({
 
     setSaving(false);
     if (error) {
-      alert(`Mentési hiba: ${error.message}`);
+      setGpsFeedback(`Mentési hiba: ${error.message}`);
       return;
     }
     setProfileData(data);

@@ -194,6 +194,33 @@ function formatDayLabelFromIso(isoStr, isRec = false, schedLabel = null) {
   return dt.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
 }
 
+function getOffsetTimeString(addMinutes = 10) {
+  const d = new Date(Date.now() + addMinutes * 60000);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function triggerSystemNotification(title, body) {
+  try {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      if (navigator.serviceWorker?.ready) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.showNotification(title, {
+            body,
+            icon: '/icon.svg',
+            badge: '/icon.svg',
+            tag: 'kalaka-live-msg'
+          });
+        }).catch(() => {});
+      } else {
+        new Notification(title, { body, icon: '/icon.svg' });
+      }
+    }
+  } catch {}
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
@@ -248,6 +275,11 @@ export default function App() {
   const [personalRoutines, setPersonalRoutines] = useState([]);
   const [locatingOriginGps, setLocatingOriginGps] = useState(false);
   const [incomingToast, setIncomingToast] = useState(null);
+  const [appNotice, setAppNotice] = useState(null);
+  const showNotice = (text, tone = 'info') => {
+    setAppNotice({ text, tone });
+    setTimeout(() => setAppNotice(null), 4000);
+  };
   const [readVersion, setReadVersion] = useState(0);
   const [hiddenAgreementIds, setHiddenAgreementIds] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -773,7 +805,7 @@ export default function App() {
     if (supabase && !String(rideId).startsWith('demo-')) {
       const { error } = await supabase.from('rides').delete().eq('id', rideId);
       if (error) {
-        alert(`Törlési hiba: ${error.message}`);
+        showNotice(`Törlési hiba: ${error.message}`, 'err');
         fetchAllLiveData(session?.user?.id);
       }
     }
@@ -785,7 +817,7 @@ export default function App() {
     if (supabase && !String(favorId).startsWith('demo-')) {
       const { error } = await supabase.from('favors').delete().eq('id', favorId);
       if (error) {
-        alert(`Törlési hiba: ${error.message}`);
+        showNotice(`Törlési hiba: ${error.message}`, 'err');
         fetchAllLiveData(session?.user?.id);
       }
     }
@@ -849,7 +881,7 @@ export default function App() {
           .from('favors')
           .insert({ ...favPayload, user_id: session.user.id });
         if (error) {
-          alert(`Mentési hiba: ${error.message}`);
+          showNotice(`Mentési hiba: ${error.message}`, 'err');
           return;
         }
       }
@@ -1371,6 +1403,9 @@ export default function App() {
   const unreadCount = visibleAgreements.filter((a) => a.has_unread).length;
 
   const handleOpenAgreement = (agr) => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
     if (session?.user?.id && agr?.id) {
       markAgreementReadStorage(session.user.id, agr.id);
       setReadVersion((v) => v + 1);

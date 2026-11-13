@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function FavorCard({
@@ -12,6 +12,7 @@ export default function FavorCard({
   onEditFavor,
   onDeleteFavor
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = Boolean(currentUserId && favor.user_id === currentUserId);
   const minReq = favor.min_favor_hearts || 0;
   const isLocked = !isOwner && minReq > 0 && userFavorHearts < minReq;
@@ -111,10 +112,21 @@ export default function FavorCard({
             </button>
             <button
               type="button"
-              onClick={() => onDeleteFavor(favor.id)}
-              className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-3 py-2 rounded-xl transition"
+              onClick={() => {
+                if (!confirmDelete) {
+                  setConfirmDelete(true);
+                  setTimeout(() => setConfirmDelete(false), 3500);
+                  return;
+                }
+                onDeleteFavor(favor.id);
+              }}
+              className={`${
+                confirmDelete
+                  ? 'bg-red-700 text-white border-red-700'
+                  : 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
+              } border font-bold text-xs px-3 py-2 rounded-xl transition`}
             >
-              Törlés
+              {confirmDelete ? 'Biztos? ✕' : 'Törlés'}
             </button>
           </div>
         ) : (
