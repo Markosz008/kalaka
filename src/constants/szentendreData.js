@@ -126,8 +126,20 @@ export function resolveCoordsFromText(text) {
   if (!text) return null;
   const q = text.trim().toLowerCase();
 
+  if (q.includes('hév') || q.includes('hev') || q.includes('állomás tér')) {
+    return { lat: 47.6602, lng: 19.0738, label: 'Szentendre HÉV-végállomás' };
+  }
   if (q.includes('fogoly')) {
     return { lat: 47.6918, lng: 19.0517, label: text };
+  }
+  if (q.includes('bükkös') || q.includes('bukkos')) {
+    return { lat: 47.6701, lng: 19.0739, label: 'Bükkös-part' };
+  }
+  if (q.includes('papírgyár') || q.includes('papirgyar')) {
+    return { lat: 47.6852, lng: 19.0732, label: '11-es út • Papírgyár' };
+  }
+  if (q.includes('pismány') || q.includes('pismany')) {
+    return { lat: 47.6895, lng: 19.0555, label: 'Pismány' };
   }
 
   const exactOrPartial = LOCAL_PLACES.find(
