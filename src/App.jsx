@@ -1610,8 +1610,8 @@ export default function App() {
               rides={filteredRides}
               fromText={filterFrom}
               toText={filterTo}
-              fromCoords={fromCoords}
-              toCoords={toCoords}
+              fromCoords={resolveCoordsFromText(filterFrom) || fromCoords}
+              toCoords={resolveCoordsFromText(filterTo) || toCoords}
               selectedRide={selectedRideForMap}
               onSelectRideOnMap={(rideObj) => {
                 setSelectedRideForMap(rideObj);

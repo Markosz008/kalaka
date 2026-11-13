@@ -65,6 +65,7 @@ export default function AddressAutocompleteInput({
           }}
           onChange={(e) => {
             onChange(e.target.value);
+            if (onSelectPlace) onSelectPlace(null);
             setOpen(true);
           }}
           placeholder={placeholder}
