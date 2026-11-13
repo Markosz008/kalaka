@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { maskAddressForPublic } from '../constants/szentendreData.js';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function RideCard({
@@ -76,11 +77,11 @@ export default function RideCard({
       <div className="my-2.5 space-y-1.5 font-semibold text-sm text-[#18261F]">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="w-2.5 h-2.5 rounded-full border-[2.5px] border-pilis shrink-0" />
-          <span className="truncate">{ride.origin_text}</span>
+          <span className="truncate">{maskAddressForPublic(ride.origin_text)}</span>
         </div>
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="w-2.5 h-2.5 rounded-full bg-terracotta shrink-0" />
-          <span className="truncate">{ride.dest_text}</span>
+          <span className="truncate">{maskAddressForPublic(ride.dest_text)}</span>
         </div>
       </div>
 

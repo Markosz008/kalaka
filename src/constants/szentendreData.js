@@ -253,3 +253,9 @@ export async function searchAddressSuggestions(query) {
   }
 }
 
+
+export function maskAddressForPublic(fullAddress) {
+  if (!fullAddress) return '';
+  // Levágja a ponttal vagy vesszővel elválasztott utolsó házszámot (pl. "Fogoly utca 7." -> "Fogoly utca")
+  return fullAddress.replace(/[,\s]+\d+[a-zA-Z/.-]*\.?\s*$/, '').trim();
+}
