@@ -26,6 +26,8 @@ export default function UserProfileModal({
   const [editBio, setEditBio] = useState('');
   const [editCar, setEditCar] = useState('');
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     if (!userId || !supabase) return;
@@ -188,6 +190,30 @@ export default function UserProfileModal({
     );
   };
 
+  const handleDeleteOwnAccount = async () => {
+    if (!isOwnProfile || !supabase || !userId) return;
+    if (!confirmDeleteAccount) {
+      setConfirmDeleteAccount(true);
+      setTimeout(() => setConfirmDeleteAccount(false), 4500);
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      await Promise.all([
+        supabase.from('rides').delete().eq('user_id', userId),
+        supabase.from('favors').delete().eq('user_id', userId),
+        supabase.from('local_pros').delete().eq('owner_id', userId),
+        supabase.from('agreements').delete().or(`requester_id.eq.${userId},helper_id.eq.${userId}`)
+      ]);
+      await supabase.from('profiles').delete().eq('id', userId);
+      await supabase.auth.signOut();
+      onClose();
+    } catch (err) {
+      setGpsFeedback(`Hiba a törléskor: ${err.message}`);
+      setDeletingAccount(false);
+    }
+  };
+
   const handleSignOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -341,6 +367,26 @@ export default function UserProfileModal({
                   className="bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold text-xs px-3.5 py-2.5 rounded-xl transition"
                 >
                   Kilépés
+                </button>
+              </div>
+            )}
+            {isOwnProfile && (
+              <div className="pt-2 border-t border-[#ECE7DC] flex justify-end">
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={handleDeleteOwnAccount}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition ${
+                    confirmDeleteAccount
+                      ? 'bg-red-700 text-white'
+                      : 'text-[#7A867E] hover:text-red-700'
+                  }`}
+                >
+                  {deletingAccount
+                    ? 'Adatok törlése...'
+                    : confirmDeleteAccount
+                    ? 'Biztosan végleg törlöd a fiókodat? Koppints újra ✕'
+                    : 'Fiók és adatok végleges törlése'}
                 </button>
               </div>
             )}

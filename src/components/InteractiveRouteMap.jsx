@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { resolveCoordsFromText } from '../constants/szentendreData.js';
+import { resolveCoordsFromText, maskAddressForPublic } from '../constants/szentendreData.js';
 
 const MAP_STYLES = {
   topo: {
@@ -156,8 +156,8 @@ export default function InteractiveRouteMap({
     group.clearLayers();
     setRouteMeta(null);
 
-    const effectiveFromText = selectedRide ? selectedRide.origin_text : fromText;
-    const effectiveToText = selectedRide ? selectedRide.dest_text : toText;
+    const effectiveFromText = selectedRide ? maskAddressForPublic(selectedRide.origin_text) : fromText;
+    const effectiveToText = selectedRide ? maskAddressForPublic(selectedRide.dest_text) : toText;
 
     const startCoord = selectedRide
       ? selectedRide.origin_lat && selectedRide.origin_lng

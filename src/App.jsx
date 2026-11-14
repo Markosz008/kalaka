@@ -13,6 +13,7 @@ import FavorCard from './components/FavorCard.jsx';
 import ProsDirectoryView from './components/ProsDirectoryView.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
+import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 
 function addMinutesToTime(timeStr, minsToAdd) {
@@ -286,6 +287,7 @@ export default function App() {
   const [editingItemId, setEditingItemId] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showRoadModal, setShowRoadModal] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
 
   const [customRoadText, setCustomRoadText] = useState('');
   const [customRoadLevel, setCustomRoadLevel] = useState('warn');
@@ -1986,6 +1988,15 @@ export default function App() {
             onStartProAgreement={handleStartProAgreement}
           />
         )}
+        <div className="pt-4 pb-2 text-center">
+          <button
+            type="button"
+            onClick={() => setShowLegalModal(true)}
+            className="text-[11px] font-semibold text-[#7A867E] hover:text-pilis underline decoration-[#DFD9CE] underline-offset-2"
+          >
+            Házirend, biztonság és adatkezelés (GDPR)
+          </button>
+        </div>
       </main>
 
       {/* Alsó navigációs sáv: beépített középső "+ Új" gombbal, így SOHA nem takarja el a kártyák gombjait mobilon */}
@@ -2315,6 +2326,11 @@ export default function App() {
           </form>
         </div>
       )}
+
+      <LegalModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+      />
 
       {inspectedUser && (
         <UserProfileModal
