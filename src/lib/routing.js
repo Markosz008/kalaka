@@ -67,12 +67,26 @@ function projectPointToPolyline(pt, polyCoords) {
 
 export async function fetchDrivingRoute(startCoord, endCoord) {
   if (!startCoord || !endCoord) return null;
-  const key = `${startCoord.lat.toFixed(4)},${startCoord.lng.toFixed(4)}->${endCoord.lat.toFixed(4)},${endCoord.lng.toFixed(4)}`;
+  const key = `osrm_v2_${startCoord.lat.toFixed(4)},${startCoord.lng.toFixed(4)}->${endCoord.lat.toFixed(4)},${endCoord.lng.toFixed(4)}`;
   if (routeCache.has(key)) return routeCache.get(key);
 
   try {
+    const cachedStr = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null;
+    if (cachedStr) {
+      const parsed = JSON.parse(cachedStr);
+      if (parsed && Array.isArray(parsed.coords)) {
+        routeCache.set(key, parsed);
+        return parsed;
+      }
+    }
+  } catch {}
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
     const url = `https://router.project-osrm.org/route/v1/driving/${startCoord.lng},${startCoord.lat};${endCoord.lng},${endCoord.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
     const data = await res.json();
     if (data?.routes?.[0]) {
       const r = data.routes[0];
@@ -82,10 +96,15 @@ export async function fetchDrivingRoute(startCoord, endCoord) {
         durationSeconds: r.duration
       };
       routeCache.set(key, result);
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem(key, JSON.stringify(result));
+        }
+      } catch {}
       return result;
     }
   } catch {
-    // Hálózati hiba esetén egyenes szakasz fallback
+    // Hálózati hiba vagy timeout esetén egyenes szakasz fallback
   }
 
   const fallback = {

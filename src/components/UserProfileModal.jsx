@@ -321,17 +321,37 @@ export default function UserProfileModal({
             {isOwnProfile && profileData?.invite_code && (
               <div className="pt-2 border-t border-[#ECE7DC] flex items-center justify-between text-xs">
                 <span className="font-semibold text-[#5C6B62]">Meghívókódod:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(profileData.invite_code);
-                    setCopiedCode(true);
-                    setTimeout(() => setCopiedCode(false), 2000);
-                  }}
-                  className="font-mono font-extrabold bg-[#ECE7DC] hover:bg-[#DFD9CE] px-2.5 py-1 rounded-lg text-xs transition"
-                >
-                  {copiedCode ? 'Másolva ✓' : profileData.invite_code}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(profileData.invite_code);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    }}
+                    className="font-mono font-extrabold bg-[#ECE7DC] hover:bg-[#DFD9CE] px-2.5 py-1 rounded-lg text-xs transition"
+                  >
+                    {copiedCode ? 'Másolva ✓' : profileData.invite_code}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const text = `Csatlakozz a Kaláka Szentendre szomszédsági telekocsi és segítő közösséghez! Meghívókódom: ${profileData.invite_code}`;
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({ title: 'Kaláka Szentendre meghívó', text, url: window.location.origin });
+                          return;
+                        } catch {}
+                      }
+                      navigator.clipboard?.writeText(`${text} ${window.location.origin}`);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    }}
+                    className="bg-pilis-soft text-pilis font-bold px-2 py-1 rounded-lg text-[11px]"
+                  >
+                    Küldés ↗
+                  </button>
+                </div>
               </div>
             )}
 

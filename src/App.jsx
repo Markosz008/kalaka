@@ -245,6 +245,7 @@ export default function App() {
 
   const [rides, setRides] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [rideKindFilter, setRideKindFilter] = useState('all');
   const [favors, setFavors] = useState([]);
   const [pros, setPros] = useState([]);
@@ -593,6 +594,12 @@ export default function App() {
         });
       }
     }
+  }, []);
+
+  // 60 másodperces órajel a lejárt kártyák automatikus kiszűréséhez
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {

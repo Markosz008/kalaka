@@ -15,6 +15,7 @@ export default function RideCard({
 }) {
   const [selectedStop, setSelectedStop] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sharedCopied, setSharedCopied] = useState(false);
   const isOwner = Boolean(currentUserId && ride.user_id === currentUserId);
 
   const scheduleSubtitle = ride.is_recurring
@@ -155,6 +156,26 @@ export default function RideCard({
 
         {isOwner ? (
           <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={async () => {
+                const shareText = `${ride.time_label} (${scheduleSubtitle}): ${maskAddressForPublic(ride.origin_text)} → ${maskAddressForPublic(ride.dest_text)} a szentendrei Kalákán!`;
+                const shareUrl = window.location.origin;
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: 'Kaláka Szentendre', text: shareText, url: shareUrl });
+                    return;
+                  } catch {}
+                }
+                navigator.clipboard?.writeText(`${shareText} ${shareUrl}`);
+                setSharedCopied(true);
+                setTimeout(() => setSharedCopied(false), 2500);
+              }}
+              title="Útvonal megosztása szomszédokkal"
+              className="bg-pilis-soft hover:bg-pilis text-pilis hover:text-white font-bold text-xs px-2.5 py-2 rounded-xl transition"
+            >
+              {sharedCopied ? 'Link másolva ✓' : 'Megosztás ↗'}
+            </button>
             <button
               type="button"
               onClick={() => onEditRide(ride)}
