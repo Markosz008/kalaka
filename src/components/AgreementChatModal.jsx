@@ -31,6 +31,7 @@ export default function AgreementChatModal({
   const [sharingPassengerPin, setSharingPassengerPin] = useState(false);
   const [showReportBox, setShowReportBox] = useState(false);
   const [reportReason, setReportReason] = useState('');
+  const [kudosTag, setKudosTag] = useState('Pontos és segítőkész');
 
   const bottomRef = useRef(null);
   const liveMapContainerRef = useRef(null);
@@ -552,7 +553,7 @@ export default function AgreementChatModal({
         await supabase.from('messages').insert({
           agreement_id: liveAgr.id,
           sender_id: currentUser.id,
-          body: 'Segítség visszaigazolva.',
+          body: `Segítség visszaigazolva ✓ (${kudosTag})`,
           is_system_event: true
         });
 
@@ -945,13 +946,26 @@ export default function AgreementChatModal({
               )}
 
               {(status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester && (
-                <button
-                  disabled={busy}
-                  onClick={handleGiveKudos}
-                  className="bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow"
-                >
-                  Segített nekem
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={kudosTag}
+                    onChange={(e) => setKudosTag(e.target.value)}
+                    aria-label="Visszajelzés típusa"
+                    className="bg-white border border-[#DFD9CE] text-[#18261F] text-[11px] font-bold px-2 py-1.5 rounded-xl"
+                  >
+                    <option value="Pontos és segítőkész">👏 Pontos, segítőkész</option>
+                    <option value="Szuper útitárs">🚗 Szuper útitárs</option>
+                    <option value="Gyors segítség">⚡ Gyors segítség</option>
+                    <option value="Igazi jó szomszéd">🤝 Igazi jó szomszéd</option>
+                  </select>
+                  <button
+                    disabled={busy}
+                    onClick={handleGiveKudos}
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow shrink-0"
+                  >
+                    Segített nekem ✓
+                  </button>
+                </div>
               )}
             </div>
           </div>
