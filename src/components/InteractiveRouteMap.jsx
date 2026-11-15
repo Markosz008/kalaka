@@ -1,32 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 
-// Garantáltan működő, nagyfelbontású (Retina @2x) CARTO Voyager stílus + OSM tartalék,
-// ami nem függ külső glyph/sprite JSON letiltásoktól
-const VOYAGER_STYLE = {
-  version: 8,
-  sources: {
-    'carto-voyager': {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
-      ],
-      tileSize: 256,
-      attribution: '© CARTO, © OpenStreetMap'
-    }
-  },
-  layers: [
-    {
-      id: 'carto-voyager-layer',
-      type: 'raster',
-      source: 'carto-voyager',
-      minzoom: 0,
-      maxzoom: 20
-    }
-  ]
-};
+// 100% ingyenes, kulcs nélküli vektoros stílus (OpenFreeMap Liberty)
+const OPENFREEMAP_VECTOR_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
 const SATELLITE_STYLE = {
   version: 8,
@@ -100,13 +76,12 @@ export default function InteractiveRouteMap({
       ? { lat: Number(selectedRide.dest_lat), lng: Number(selectedRide.dest_lng) }
       : toCoords;
 
-  // 1. MapLibre inicializálás (egyetlen egyszer, dupla setStyle nélkül!)
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: VOYAGER_STYLE,
+      style: OPENFREEMAP_VECTOR_STYLE,
       center: [19.065, 47.675],
       zoom: 13.2,
       attributionControl: false
@@ -154,7 +129,6 @@ export default function InteractiveRouteMap({
     };
   }, []);
 
-  // 2. Utca / Műhold váltás (CSAK ha a felhasználó ténylegesen váltott!)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -162,14 +136,13 @@ export default function InteractiveRouteMap({
     initialModeRef.current = mapMode;
 
     setMapReady(false);
-    map.setStyle(mapMode === 'satellite' ? SATELLITE_STYLE : VOYAGER_STYLE);
+    map.setStyle(mapMode === 'satellite' ? SATELLITE_STYLE : OPENFREEMAP_VECTOR_STYLE);
     map.once('styledata', () => {
       map.resize();
       setMapReady(true);
     });
   }, [mapMode]);
 
-  // 3. A és B tűk + OSRM útvonal kirajzolása
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -263,14 +236,13 @@ export default function InteractiveRouteMap({
       if (single && !isNaN(single.lat) && !isNaN(single.lng)) {
         map.flyTo({
           center: [Number(single.lng), Number(single.lat)],
-          zoom: 15.8,
+          zoom: 16,
           duration: 450
         });
       }
     }
   }, [effectiveFrom?.lat, effectiveFrom?.lng, effectiveTo?.lat, effectiveTo?.lng, mapReady, selectedRide]);
 
-  // 4. Aktív utak jelölői a térképen
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;

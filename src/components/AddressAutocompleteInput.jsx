@@ -24,16 +24,34 @@ function cleanHungarianAddress(rawText) {
     .trim();
 }
 
-function formatPhotonFallback(feat) {
+function expandStreetAbbreviations(addrStr) {
+  return (addrStr || '')
+    .replace(/\bu\.\s*/gi, 'utca ')
+    .replace(/\bu\s+(?=\d)/gi, 'utca ')
+    .replace(/\bkrt\.?\s*/gi, 'körút ')
+    .replace(/\bstny\.?\s*/gi, 'sétány ')
+    .trim();
+}
+
+function extractHouseNumber(rawQuery) {
+  const m = (rawQuery || '').trim().match(/^(.*?)\s+(\d+[a-zA-Z/-]*)\.?$/);
+  if (!m || m[1].trim().length < 2) {
+    return { streetPart: (rawQuery || '').trim(), houseNum: '' };
+  }
+  return { streetPart: m[1].trim(), houseNum: `${m[2]}.` };
+}
+
+function formatPhotonFallback(feat, fallbackHouseNum = '') {
   const p = feat?.properties || {};
   const [lng, lat] = feat?.geometry?.coordinates || [];
   if (typeof lat !== 'number' || typeof lng !== 'number') return null;
 
   const city = p.city || p.town || p.village || p.municipality || '';
   const streetBase = p.street || p.name || '';
+  const house = p.housenumber ? `${p.housenumber}.` : fallbackHouseNum;
   const withHouse =
-    streetBase && p.housenumber && !/\d/.test(streetBase)
-      ? `${streetBase} ${p.housenumber}.`
+    streetBase && house && !/\d/.test(streetBase)
+      ? `${streetBase} ${house}`
       : streetBase || city;
   if (!withHouse) return null;
 
@@ -103,11 +121,11 @@ export default function AddressAutocompleteInput({
         const normQ = stripAccents(q);
         const normCity = stripAccents(cityContext);
         const biasedInput =
-          normCity && !normQ.includes(normCity) && q.length >= 3
+          normCity && !normQ.includes(normCity) && q.length >= 2
             ? `${cityContext}, ${q}`
             : q;
 
-        // 1. Elsődleges motor: Google Places Autocomplete API (New)
+        // 1. Google Places API (New)
         if (GOOGLE_PLACES_KEY) {
           const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
             method: 'POST',
@@ -145,7 +163,6 @@ export default function AddressAutocompleteInput({
                   pred.structuredFormat?.secondaryText?.text || ''
                 );
 
-                // Város + utca formátum egységesítése (pl. "Szentendre, Fogoly utca 7.")
                 const cityPrefix =
                   secondaryText &&
                   !stripAccents(mainText).includes(stripAccents(secondaryText.split(',')[0]))
@@ -161,23 +178,32 @@ export default function AddressAutocompleteInput({
               })
               .slice(0, 5);
 
-            setSuggestions(parsedGoogle);
-            setOpen(parsedGoogle.length > 0);
-            setLoading(false);
-            return;
+            if (parsedGoogle.length > 0) {
+              setSuggestions(parsedGoogle);
+              setOpen(true);
+              setLoading(false);
+              return;
+            }
           }
         }
 
-        // 2. Fallback (ha a kulcs nincs beállítva vagy a Places API (New) még nincs engedélyezve)
+        // 2. Tartalék: Photon + házszám-megőrzés
+        const { streetPart, houseNum } = extractHouseNumber(q);
+        const expandedStreet = expandStreetAbbreviations(streetPart);
+        const photonQ =
+          normCity && !stripAccents(expandedStreet).includes(normCity)
+            ? `${cityContext}, ${expandedStreet}`
+            : expandedStreet;
+
         const fallbackRes = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(biasedInput)}&lat=${
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(photonQ)}&lat=${
             biasCoords.lat
           }&lon=${biasCoords.lng}&limit=5`,
           { signal: controller.signal }
         );
         const fallbackData = await fallbackRes.json();
         const parsedFallback = (fallbackData?.features || [])
-          .map(formatPhotonFallback)
+          .map((f) => formatPhotonFallback(f, houseNum))
           .filter(Boolean)
           .slice(0, 5);
 
@@ -190,7 +216,7 @@ export default function AddressAutocompleteInput({
       } finally {
         setLoading(false);
       }
-    }, 240);
+    }, 220);
 
     return () => {
       clearTimeout(timer);
@@ -198,17 +224,17 @@ export default function AddressAutocompleteInput({
     };
   }, [value, cityContext, biasCoords.lat, biasCoords.lng]);
 
-  const handleSelect = async (item) => {
-    skipNextFetchRef.current = true;
-    onChange(item.label);
-    setSuggestions([]);
-    setOpen(false);
+  const resolveItemCoordinates = async (item) => {
+    if (typeof item.lat === 'number' && typeof item.lng === 'number') {
+      return { lat: item.lat, lng: item.lng };
+    }
 
+    // 1. Google Place Details (New)
     if (item.source === 'google' && item.placeId && GOOGLE_PLACES_KEY) {
       sessionTokenRef.current = createSessionToken();
       try {
         const detailRes = await fetch(
-          `https://places.googleapis.com/v1/places/${encodeURIComponent(item.placeId)}?languageCode=hu`,
+          `https://places.googleapis.com/v1/places/${encodeURIComponent(item.placeId)}`,
           {
             headers: {
               'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
@@ -221,31 +247,63 @@ export default function AddressAutocompleteInput({
           const lat = detail?.location?.latitude;
           const lng = detail?.location?.longitude;
           if (typeof lat === 'number' && typeof lng === 'number') {
-            if (onSelectPlace) onSelectPlace({ ...item, lat, lng });
-            return;
-          }
-        }
-      } catch {}
-
-      // Tartalék geokódolás a pontos cím szövegére, ha a Place Details bármiért nem válaszolna
-      try {
-        const geoRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(item.label)}`
-        );
-        const geoArr = await geoRes.json();
-        if (Array.isArray(geoArr) && geoArr[0]) {
-          const lat = Number(geoArr[0].lat);
-          const lng = Number(geoArr[0].lon);
-          if (!isNaN(lat) && !isNaN(lng) && onSelectPlace) {
-            onSelectPlace({ ...item, lat, lng });
-            return;
+            return { lat, lng };
           }
         }
       } catch {}
     }
 
+    // 2. Ha a Place Details nem adott koordinátát, kibontjuk a rövidítéseket ("Fogoly u. 7" -> "Fogoly utca 7")
+    const expandedFull = expandStreetAbbreviations(item.label);
+    const { streetPart } = extractHouseNumber(expandedFull);
+    const candidates = [expandedFull, streetPart];
+
+    for (const queryCandidate of candidates) {
+      if (!queryCandidate) continue;
+      try {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(
+            queryCandidate
+          )}`
+        );
+        const nomArr = await nomRes.json();
+        if (Array.isArray(nomArr) && nomArr[0]) {
+          const lat = Number(nomArr[0].lat);
+          const lng = Number(nomArr[0].lon);
+          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+        }
+      } catch {}
+
+      try {
+        const phRes = await fetch(
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(queryCandidate)}&lat=${
+            biasCoords.lat
+          }&lon=${biasCoords.lng}&limit=1`
+        );
+        const phData = await phRes.json();
+        const coords = phData?.features?.[0]?.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length >= 2) {
+          return { lat: Number(coords[1]), lng: Number(coords[0]) };
+        }
+      } catch {}
+    }
+
+    return null;
+  };
+
+  const handleSelect = async (item) => {
+    skipNextFetchRef.current = true;
+    setSuggestions([]);
+    setOpen(false);
+    setLoading(true);
+
+    const coords = await resolveItemCoordinates(item);
+    setLoading(false);
+
+    skipNextFetchRef.current = true;
+    onChange(item.label);
     if (onSelectPlace) {
-      onSelectPlace(typeof item.lat === 'number' ? item : null);
+      onSelectPlace(coords ? { ...item, lat: coords.lat, lng: coords.lng } : null);
     }
   };
 

@@ -143,9 +143,7 @@ export function resolveCoordsFromText(text) {
   }
 
   const exactOrPartial = LOCAL_PLACES.find(
-    (p) =>
-      p.name.toLowerCase().includes(q) ||
-      q.includes(p.name.toLowerCase().split(',')[0])
+    (p) => p.name.toLowerCase() === q || p.name.toLowerCase().includes(q)
   );
   if (exactOrPartial) {
     return { lat: exactOrPartial.lat, lng: exactOrPartial.lng, label: exactOrPartial.name };

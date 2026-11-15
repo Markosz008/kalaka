@@ -83,17 +83,7 @@ export default function AgreementChatModal({
 
     const map = new maplibregl.Map({
       container: liveMapContainerRef.current,
-      style: {
-      version: 8,
-      sources: {
-        'carto-voyager': {
-          type: 'raster',
-          tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
-          tileSize: 256
-        }
-      },
-      layers: [{ id: 'carto-voyager-layer', type: 'raster', source: 'carto-voyager' }]
-    },
+      style: 'https://tiles.openfreemap.org/styles/liberty',
       center: [centerCoord.lng, centerCoord.lat],
       zoom: 15,
       attributionControl: false
