@@ -6,7 +6,7 @@ import {
   resolveCoordsFromText
 } from './constants/szentendreData.js';
 import HeaderRoadBar from './components/HeaderRoadBar.jsx';
-import AddressAutocompleteInput from './components/AddressAutocompleteInput.jsx';
+import AddressAutocompleteInput, { stripAccents } from './components/AddressAutocompleteInput.jsx';
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
@@ -135,6 +135,26 @@ function getNextQuarterHourHHMM() {
   const mins = Math.ceil(d.getMinutes() / 15) * 15;
   d.setMinutes(mins, 0, 0);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function getUpcomingRoundTimeSlots() {
+  const fmt = (dt) =>
+    `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+
+  const s1 = new Date(Date.now() + 5 * 60000);
+  const rem = s1.getMinutes() % 15;
+  s1.setMinutes(rem === 0 ? s1.getMinutes() : s1.getMinutes() + (15 - rem), 0, 0);
+
+  const s2 = new Date(s1.getTime() + 15 * 60000);
+
+  const s3 = new Date(s2.getTime());
+  if (s2.getMinutes() === 0) {
+    s3.setMinutes(30, 0, 0);
+  } else {
+    s3.setHours(s2.getHours() + 1, 0, 0, 0);
+  }
+
+  return [fmt(s1), fmt(s2), fmt(s3)];
 }
 
 function getOffsetTimeString(addMinutes = 10) {
@@ -653,22 +673,24 @@ export default function App() {
     const activeTimeRides = rides.filter(
       (r) => r.is_recurring || !r.expires_at || new Date(r.expires_at).getTime() > nowTick
     );
-    const qFrom = filterFrom.trim().toLowerCase();
-    const qTo = filterTo.trim().toLowerCase();
+    const qFrom = stripAccents(filterFrom);
+    const qTo = stripAccents(filterTo);
     if (!qFrom && !qTo) return activeTimeRides;
 
     return activeTimeRides.filter((r) => {
-      const stopsText = (r.stops || []).map((s) => s.name.toLowerCase()).join(' ');
-      const fullRouteText = `${r.origin_text} ${stopsText} ${r.dest_text}`.toLowerCase();
+      const originNorm = stripAccents(r.origin_text);
+      const destNorm = stripAccents(r.dest_text);
+      const stopsText = stripAccents((r.stops || []).map((s) => s.name).join(' '));
+      const fullRouteText = `${originNorm} ${stopsText} ${destNorm}`;
 
       const matchFrom =
         !qFrom ||
-        r.origin_text.toLowerCase().includes(qFrom) ||
+        originNorm.includes(qFrom) ||
         stopsText.includes(qFrom);
 
       const matchTo =
         !qTo ||
-        r.dest_text.toLowerCase().includes(qTo) ||
+        destNorm.includes(qTo) ||
         stopsText.includes(qTo) ||
         fullRouteText.includes(qTo);
 
@@ -1679,18 +1701,18 @@ export default function App() {
 
                     {inlineComposerMode !== 'recurring' ? (
                       <div className="col-span-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                        {[
-                          ['Most (+10p)', 10],
-                          ['Köv. HÉV (+18p)', 18],
-                          ['+30 perc', 30]
-                        ].map(([lbl, mins]) => (
+                        {getUpcomingRoundTimeSlots().map((slotTime) => (
                           <button
-                            key={lbl}
+                            key={slotTime}
                             type="button"
-                            onClick={() => setInlineTime(getOffsetTimeString(mins))}
-                            className="shrink-0 text-[11px] font-bold bg-white hover:bg-pilis-soft text-pilis border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
+                            onClick={() => setInlineTime(slotTime)}
+                            className={`shrink-0 text-[11px] font-bold border px-2.5 py-1 rounded-lg transition ${
+                              inlineTime === slotTime
+                                ? 'bg-pilis text-white border-pilis'
+                                : 'bg-white hover:bg-pilis-soft text-pilis border-[#DFD9CE]'
+                            }`}
                           >
-                            ⚡ {lbl}
+                            🕒 {slotTime}
                           </button>
                         ))}
                       </div>
