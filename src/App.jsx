@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef} from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase.js';
 import { computeStopsAlongRoute } from './lib/routing.js';
 import {
@@ -10,41 +10,23 @@ import AddressAutocompleteInput from './components/AddressAutocompleteInput.jsx'
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
-const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 
-function addMinutesToTime(timeStr, minsToAdd) {
-  const [hh, mm] = (timeStr || '05:50').split(':').map(Number);
-  const totalMins = (hh * 60 + mm + minsToAdd + 1440) % 1440;
-  const nh = String(Math.floor(totalMins / 60)).padStart(2, '0');
-  const nm = String(totalMins % 60).padStart(2, '0');
-  return `${nh}:${nm}`;
-}
+const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
 
-function buildIntermediateStops(baseTime, originText = '', destText = '') {
-  const o = originText.toLowerCase();
-  const d = destText.toLowerCase();
-
-  if (o.includes('szarvashegy') || d.includes('szarvashegy') || o.includes('izbég') || d.includes('izbég')) {
-    return [
-      { time: addMinutesToTime(baseTime, 4), name: 'Szarvashegyi elágazás' },
-      { time: addMinutesToTime(baseTime, 7), name: 'Izbég, Szentlászlói út' },
-      { time: addMinutesToTime(baseTime, 11), name: 'Bükkös-part • 11-es út sarok' },
-      { time: addMinutesToTime(baseTime, 14), name: 'Szentendre HÉV-végállomás' }
-    ];
-  }
-
-  return [
-    { time: addMinutesToTime(baseTime, 4), name: 'Szabadságforrás buszforduló' },
-    { time: addMinutesToTime(baseTime, 7), name: '11-es út • Papírgyár megálló' },
-    { time: addMinutesToTime(baseTime, 10), name: 'Bükkös-part • 11-es út sarok' },
-    { time: addMinutesToTime(baseTime, 13), name: 'Szentendre HÉV-végállomás' },
-    { time: addMinutesToTime(baseTime, 15), name: 'Pannóniatelep HÉV-megálló' }
-  ];
-}
+const BASE_QUICK_DESTINATIONS = [
+  'Szentendre HÉV-végállomás',
+  'Bükkös-part',
+  'Papírgyár',
+  'Pismány',
+  'Szarvashegy',
+  'Izbég',
+  'Újpest-Városkapu',
+  'Pannóniatelep'
+];
 
 function getReadTimestamps(userId) {
   if (!userId) return {};
@@ -72,39 +54,6 @@ function getHiddenAgreements(userId) {
     return [];
   }
 }
-
-function playSoftNotificationTone() {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([120, 60, 120]);
-    }
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(660, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14);
-    gain.gain.setValueAtTime(0.06, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.22);
-  } catch {}
-}
-
-const BASE_QUICK_DESTINATIONS = [
-  'HÉV-végállomás',
-  'Újpest-Városkapu',
-  'Bükkös-part',
-  'Papírgyár',
-  'Pismány',
-  'Szarvashegy',
-  'Izbég',
-  'Pannóniatelep'
-];
 
 function getPersonalRoutines(userId) {
   if (!userId) return [];
@@ -137,6 +86,50 @@ function recordPersonalRoutine(userId, origin, dest) {
   } catch {}
 }
 
+function playSoftNotificationTone() {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([120, 60, 120]);
+    }
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14);
+    gain.gain.setValueAtTime(0.06, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+  } catch {}
+}
+
+function triggerSystemNotification(title, body) {
+  try {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+      if (navigator.serviceWorker?.ready) {
+        navigator.serviceWorker.ready
+          .then((reg) => {
+            reg.showNotification(title, {
+              body,
+              icon: '/icon.svg',
+              badge: '/icon.svg',
+              tag: 'kalaka-live-msg'
+            });
+          })
+          .catch(() => {});
+      } else {
+        new Notification(title, { body, icon: '/icon.svg' });
+      }
+    }
+  } catch {}
+}
+
 function getNextQuarterHourHHMM() {
   const d = new Date(Date.now() + 15 * 60000);
   const mins = Math.ceil(d.getMinutes() / 15) * 15;
@@ -144,14 +137,11 @@ function getNextQuarterHourHHMM() {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function isPastTimeToday(hhmm) {
-  if (!hhmm || !hhmm.includes(':')) return false;
-  const [hh, mm] = hhmm.split(':').map(Number);
-  if (isNaN(hh) || isNaN(mm)) return false;
-  const now = new Date();
-  const target = new Date();
-  target.setHours(hh, mm, 0, 0);
-  return target.getTime() < now.getTime() - 60000;
+function getOffsetTimeString(addMinutes = 10) {
+  const d = new Date(Date.now() + addMinutes * 60000);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
 }
 
 function resolveAutoDayForTime(hhmm, isRecurring = false) {
@@ -163,22 +153,6 @@ function resolveAutoDayForTime(hhmm, isRecurring = false) {
   const target = new Date();
   target.setHours(hh, mm, 0, 0);
   return target.getTime() < now.getTime() - 60000 ? 'Holnap' : 'Ma';
-}
-
-function resolveAutoExpiresAt(hhmm, isRecurring = false, fallbackHours = 12) {
-  if (isRecurring) {
-    return new Date(Date.now() + 30 * 24 * 3600000).toISOString();
-  }
-  const day = resolveAutoDayForTime(hhmm, false);
-  const [hh, mm] = (hhmm || '12:00').split(':').map(Number);
-  const target = new Date();
-  target.setHours(isNaN(hh) ? 12 : hh, isNaN(mm) ? 0 : mm, 0, 0);
-  if (day === 'Holnap') {
-    target.setDate(target.getDate() + 1);
-  }
-  const byTarget = target.getTime() + 2 * 3600000;
-  const byHours = Date.now() + Number(fallbackHours || 12) * 3600000;
-  return new Date(Math.max(byTarget, byHours)).toISOString();
 }
 
 function formatDayLabelFromIso(isoStr, isRec = false, schedLabel = null) {
@@ -193,33 +167,6 @@ function formatDayLabelFromIso(isoStr, isRec = false, schedLabel = null) {
   if (diffDays <= 0) return 'Ma';
   if (diffDays === 1) return 'Holnap';
   return dt.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
-}
-
-function getOffsetTimeString(addMinutes = 10) {
-  const d = new Date(Date.now() + addMinutes * 60000);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
-function triggerSystemNotification(title, body) {
-  try {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    if (Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-      if (navigator.serviceWorker?.ready) {
-        navigator.serviceWorker.ready.then((reg) => {
-          reg.showNotification(title, {
-            body,
-            icon: '/icon.svg',
-            badge: '/icon.svg',
-            tag: 'kalaka-live-msg'
-          });
-        }).catch(() => {});
-      } else {
-        new Notification(title, { body, icon: '/icon.svg' });
-      }
-    }
-  } catch {}
 }
 
 export default function App() {
@@ -263,27 +210,22 @@ export default function App() {
   const [inlineTime, setInlineTime] = useState(() => getNextQuarterHourHHMM());
   const [inlineSchedule, setInlineSchedule] = useState('Munkanapokon (H–P)');
   const [inlineSeats, setInlineSeats] = useState(3);
-  const [inlineValidMins, setInlineValidMins] = useState(720);
   const [inlineNote, setInlineNote] = useState('');
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
   const notifiedMsgKeysRef = useRef(new Set());
+  const fetchDebounceRef = useRef(null);
+
   const [inspectedUser, setInspectedUser] = useState(null);
   const [kudosCountByUser, setKudosCountByUser] = useState({});
-  const [selectedStopByRide, setSelectedStopByRide] = useState({});
-  const [inlineCarInfo, setInlineCarInfo] = useState('');
   const [searchStatsMap, setSearchStatsMap] = useState({});
   const [personalRoutines, setPersonalRoutines] = useState([]);
   const [locatingOriginGps, setLocatingOriginGps] = useState(false);
   const [incomingToast, setIncomingToast] = useState(null);
   const [appNotice, setAppNotice] = useState(null);
-  const showNotice = (text, tone = 'info') => {
-    setAppNotice({ text, tone });
-    setTimeout(() => setAppNotice(null), 4000);
-  };
-  const [readVersion, setReadVersion] = useState(0);
   const [hiddenAgreementIds, setHiddenAgreementIds] = useState([]);
+
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -305,11 +247,16 @@ export default function App() {
   const [newNote, setNewNote] = useState('');
   const [newMinHearts, setNewMinHearts] = useState(0);
 
+  const showNotice = useCallback((text, tone = 'info') => {
+    setAppNotice({ text, tone });
+    setTimeout(() => setAppNotice(null), 4000);
+  }, []);
+
   const loadUserProfile = useCallback(async (authUser) => {
     if (!supabase || !authUser) return;
     let { data } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -326,25 +273,25 @@ export default function App() {
         .insert({
           id: authUser.id,
           display_name:
-            fallbackName === 'Belépés' ? authUser.email?.split('@')[0] : fallbackName,
+            fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
           zone: cleanZone
         })
-        .select('*')
+        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
         .single();
       data = inserted;
     } else if (data.display_name === 'Belépés') {
-      const fixedName = authUser.email?.split('@')[0] || 'Márk';
+      const fixedName = authUser.email?.split('@')[0] || 'Szomszéd';
       const { data: fixed } = await supabase
         .from('profiles')
         .update({ display_name: fixedName })
         .eq('id', authUser.id)
-        .select('*')
+        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
         .single();
       if (fixed) data = fixed;
     }
+
     if (data) {
       setProfile(data);
-      if (data.car_info) setInlineCarInfo(data.car_info);
       setHiddenAgreementIds(getHiddenAgreements(data.id));
       setPersonalRoutines(getPersonalRoutines(data.id));
     }
@@ -354,23 +301,47 @@ export default function App() {
     if (!supabase) return;
     const nowIso = new Date().toISOString();
 
-    const { data: profRows } = await supabase
-      .from('profiles')
-      .select('id, ride_hearts, favor_hearts');
-    if (profRows) {
-      const m = {};
-      profRows.forEach((p) => {
-        m[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
-      });
-      setKudosCountByUser(m);
-    }
+    const [{ data: rideRows }, { data: favorRows }, { data: allProfs }, { data: allKudosRows }, { data: proRows }, { data: alertRows }] =
+      await Promise.all([
+        supabase
+          .from('rides')
+          .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info)')
+          .eq('status', 'open')
+          .gt('expires_at', nowIso)
+          .order('departure_at', { ascending: true }),
+        supabase
+          .from('favors')
+          .select('*, author:profiles!favors_user_id_fkey(display_name, favor_hearts, zone)')
+          .eq('status', 'open')
+          .gt('expires_at', nowIso)
+          .order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, ride_hearts, favor_hearts'),
+        supabase.from('kudos').select('receiver_id'),
+        supabase
+          .from('local_pros')
+          .select('*')
+          .eq('is_active', true)
+          .order('endorsement_count', { ascending: false }),
+        supabase
+          .from('road_alerts')
+          .select('*, reporter:profiles!road_alerts_reporter_id_fkey(display_name, zone)')
+          .gt('expires_at', nowIso)
+          .order('created_at', { ascending: false })
+          .limit(10)
+      ]);
 
-    const { data: rideRows } = await supabase
-      .from('rides')
-      .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info)')
-      .eq('status', 'open')
-      .gt('expires_at', nowIso)
-      .order('departure_at', { ascending: true });
+    const kMap = {};
+    (allProfs || []).forEach((p) => {
+      kMap[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
+    });
+    const rawCounts = {};
+    (allKudosRows || []).forEach((kr) => {
+      if (kr.receiver_id) rawCounts[kr.receiver_id] = (rawCounts[kr.receiver_id] || 0) + 1;
+    });
+    Object.keys(rawCounts).forEach((uid) => {
+      kMap[uid] = Math.max(kMap[uid] || 0, rawCounts[uid]);
+    });
+    setKudosCountByUser(kMap);
 
     if (rideRows) {
       const mappedRides = rideRows.map((r) => {
@@ -382,7 +353,6 @@ export default function App() {
           r.schedule_label || (recMatch ? recMatch[1] : isRec ? 'Munkanapokon (H–P)' : null);
         const cleanNote = recMatch ? recMatch[2] : r.note;
 
-        // Ha rendszeres út, a departure_at-et a következő aktuális indulásra vetítjük a helyes sorrendhez
         let effectiveDepIso = r.departure_at;
         if (isRec) {
           const [hh, mm] = timeStr.split(':').map(Number);
@@ -414,20 +384,7 @@ export default function App() {
       });
       mappedRides.sort((a, b) => new Date(a.departure_at) - new Date(b.departure_at));
       setRides(mappedRides);
-      supabase
-        .from('route_search_stats')
-        .select('hub_label, search_count')
-        .then(({ data: statRows }) => {
-          if (statRows) {
-            const m = {};
-            statRows.forEach((s) => {
-              m[s.hub_label] = s.search_count || 0;
-            });
-            setSearchStatsMap(m);
-          }
-        });
 
-      // Irányhelyes köztes megállók kiszámítása a tényleges útvonal alapján
       Promise.all(
         mappedRides.map(async (rideItem) => {
           if (rideItem.kind !== 'offer') return rideItem;
@@ -442,56 +399,18 @@ export default function App() {
       });
     }
 
-    const { data: favorRows } = await supabase
-      .from('favors')
-      .select('*, author:profiles!favors_user_id_fkey(display_name, favor_hearts, zone)')
-      .eq('status', 'open')
-      .gt('expires_at', nowIso)
-      .order('created_at', { ascending: false });
-
     if (favorRows) {
-      const mappedFavors = favorRows.map((f) => ({
-        ...f,
-        author_name: f.author?.display_name || 'Szomszéd',
-        author_zone: f.author?.zone || '',
-        author_favor_hearts: f.author?.favor_hearts || 0,
-        invited_by_name: 'Helyi tag'
-      }));
-      setFavors(mappedFavors);
+      setFavors(
+        favorRows.map((f) => ({
+          ...f,
+          author_name: f.author?.display_name || 'Szomszéd',
+          author_zone: f.author?.zone || '',
+          author_favor_hearts: f.author?.favor_hearts || 0
+        }))
+      );
     }
 
-    // Valós ajánlásszámok (kudosCountByUser) összegzése a kártyákhoz
-    const [{ data: allProfs }, { data: allKudosRows }] = await Promise.all([
-      supabase.from('profiles').select('id, ride_hearts, favor_hearts'),
-      supabase.from('kudos').select('receiver_id')
-    ]);
-    const kMap = {};
-    (allProfs || []).forEach((p) => {
-      kMap[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
-    });
-    const rawCounts = {};
-    (allKudosRows || []).forEach((kr) => {
-      if (kr.receiver_id) rawCounts[kr.receiver_id] = (rawCounts[kr.receiver_id] || 0) + 1;
-    });
-    Object.keys(rawCounts).forEach((uid) => {
-      kMap[uid] = Math.max(kMap[uid] || 0, rawCounts[uid]);
-    });
-    setKudosCountByUser(kMap);
-    setInitialLoading(false);
-
-    const { data: proRows } = await supabase
-      .from('local_pros')
-      .select('*')
-      .eq('is_active', true)
-      .order('endorsement_count', { ascending: false });
     if (proRows) setPros(proRows);
-
-    const { data: alertRows } = await supabase
-      .from('road_alerts')
-      .select('*, reporter:profiles!road_alerts_reporter_id_fkey(display_name, zone)')
-      .gt('expires_at', nowIso)
-      .order('created_at', { ascending: false })
-      .limit(10);
 
     if (alertRows && alertRows.length > 0) {
       setRoadAlerts(
@@ -511,6 +430,19 @@ export default function App() {
         }
       ]);
     }
+
+    supabase
+      .from('route_search_stats')
+      .select('hub_label, search_count')
+      .then(({ data: statRows }) => {
+        if (statRows) {
+          const m = {};
+          statRows.forEach((s) => {
+            m[s.hub_label] = s.search_count || 0;
+          });
+          setSearchStatsMap(m);
+        }
+      });
 
     if (currentUserId && currentUserId !== 'guest-user') {
       const { data: agrRows } = await supabase
@@ -551,8 +483,8 @@ export default function App() {
           const lastReadAt = readMap[a.id];
           const isUnread = Boolean(
             lastMsg &&
-            lastMsg.sender_id !== currentUserId &&
-            (!lastReadAt || new Date(lastMsg.created_at) > new Date(lastReadAt))
+              lastMsg.sender_id !== currentUserId &&
+              (!lastReadAt || new Date(lastMsg.created_at) > new Date(lastReadAt))
           );
 
           return {
@@ -579,31 +511,48 @@ export default function App() {
           (x, y) => new Date(y.last_activity_at) - new Date(x.last_activity_at)
         );
         setMyAgreements(mappedAgrs);
+
         mappedAgrs.forEach((item) => {
           if (item.has_unread && item.last_activity_at) {
             const notifKey = `${item.id}_${item.last_activity_at}`;
             if (!notifiedMsgKeysRef.current.has(notifKey)) {
               notifiedMsgKeysRef.current.add(notifKey);
+              const previewText = `${item.partner_name}: ${item.last_message_body || 'Új üzenet / jelentkezés'}`;
               playSoftNotificationTone();
+              triggerSystemNotification('Kaláka Szentendre', previewText);
               setIncomingToast({
                 agreement_id: item.id,
-                body: `${item.partner_name}: ${item.last_message_body || 'Új üzenet / jelentkezés'}`
+                body: previewText
               });
             }
           }
         });
       }
     }
+
+    setInitialLoading(false);
   }, []);
 
-  // 60 másodperces órajel a lejárt kártyák automatikus kiszűréséhez
+  const scheduleDebouncedRefresh = useCallback(
+    (uid) => {
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+      fetchDebounceRef.current = setTimeout(() => {
+        fetchAllLiveData(uid);
+      }, 500);
+    },
+    [fetchAllLiveData]
+  );
+
+  // 60 másodperces élő órajel lejárt utak automatikus szűréséhez
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
 
+  // Auth + Egyetlen, debounced Realtime csatorna + ablak-fókusz szinkron
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
+    const uid = session?.user?.id || null;
 
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
@@ -634,24 +583,41 @@ export default function App() {
       }
     });
 
+    const handleWakeOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        scheduleDebouncedRefresh(uid);
+      }
+    };
+    document.addEventListener('visibilitychange', handleWakeOrFocus);
+    window.addEventListener('focus', handleWakeOrFocus);
+
     const globalChannel = supabase
       .channel('public-feed-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, () =>
-        fetchAllLiveData(session?.user?.id)
+        scheduleDebouncedRefresh(uid)
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'favors' }, () =>
-        fetchAllLiveData(session?.user?.id)
+        scheduleDebouncedRefresh(uid)
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, () =>
-        fetchAllLiveData(session?.user?.id)
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, (payload) => {
+        // Élő GPS koordináta-frissítésnél nem töltjük újra az egész főoldalt
+        const oldRow = payload.old || {};
+        const newRow = payload.new || {};
+        if (
+          payload.eventType === 'UPDATE' &&
+          oldRow.status === newRow.status &&
+          oldRow.requester_agreed === newRow.requester_agreed &&
+          oldRow.helper_agreed === newRow.helper_agreed
+        ) {
+          return;
+        }
+        scheduleDebouncedRefresh(uid);
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        const uid = session?.user?.id;
         const msg = payload.new;
         if (!uid || !msg) return;
-        fetchAllLiveData(uid);
+        scheduleDebouncedRefresh(uid);
         if (msg.sender_id !== uid) {
-          // Ha el volt rejtve a beszélgetés, újra megjelenítjük
           setHiddenAgreementIds((prev) => {
             if (!prev.includes(msg.agreement_id)) return prev;
             const next = prev.filter((id) => id !== msg.agreement_id);
@@ -659,6 +625,7 @@ export default function App() {
             return next;
           });
           playSoftNotificationTone();
+          triggerSystemNotification('Új üzenet a Kalákán', msg.body || 'Új üzeneted érkezett');
           setIncomingToast({
             agreement_id: msg.agreement_id,
             body: msg.body
@@ -666,50 +633,107 @@ export default function App() {
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'road_alerts' }, () =>
-        fetchAllLiveData(session?.user?.id)
+        scheduleDebouncedRefresh(uid)
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_pros' }, () =>
-        fetchAllLiveData(session?.user?.id)
+        scheduleDebouncedRefresh(uid)
       )
       .subscribe();
 
-    const expiryTimer = setInterval(() => {
-      const now = Date.now();
-      setRides((prev) =>
-        prev.filter((r) => !r.expires_at || new Date(r.expires_at).getTime() > now)
-      );
-      setFavors((prev) =>
-        prev.filter((f) => !f.expires_at || new Date(f.expires_at).getTime() > now)
-      );
-    }, 30000);
-
     return () => {
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleWakeOrFocus);
+      window.removeEventListener('focus', handleWakeOrFocus);
       supabase.removeChannel(globalChannel);
-      clearInterval(expiryTimer);
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
-  }, [loadUserProfile, fetchAllLiveData, session?.user?.id]);
+  }, [loadUserProfile, fetchAllLiveData, scheduleDebouncedRefresh, session?.user?.id]);
 
-  const filteredRides = rides.filter((r) => {
+  const filteredRides = useMemo(() => {
+    const activeTimeRides = rides.filter(
+      (r) => r.is_recurring || !r.expires_at || new Date(r.expires_at).getTime() > nowTick
+    );
     const qFrom = filterFrom.trim().toLowerCase();
     const qTo = filterTo.trim().toLowerCase();
+    if (!qFrom && !qTo) return activeTimeRides;
 
-    const stopsText = (r.stops || []).map((s) => s.name.toLowerCase()).join(' ');
-    const fullRouteText = `${r.origin_text} ${stopsText} ${r.dest_text}`.toLowerCase();
+    return activeTimeRides.filter((r) => {
+      const stopsText = (r.stops || []).map((s) => s.name.toLowerCase()).join(' ');
+      const fullRouteText = `${r.origin_text} ${stopsText} ${r.dest_text}`.toLowerCase();
 
-    const matchFrom =
-      !qFrom ||
-      r.origin_text.toLowerCase().includes(qFrom) ||
-      stopsText.includes(qFrom);
+      const matchFrom =
+        !qFrom ||
+        r.origin_text.toLowerCase().includes(qFrom) ||
+        stopsText.includes(qFrom);
 
-    const matchTo =
-      !qTo ||
-      r.dest_text.toLowerCase().includes(qTo) ||
-      stopsText.includes(qTo) ||
-      fullRouteText.includes(qTo);
+      const matchTo =
+        !qTo ||
+        r.dest_text.toLowerCase().includes(qTo) ||
+        stopsText.includes(qTo) ||
+        fullRouteText.includes(qTo);
 
-    return matchFrom && matchTo;
-  });
+      return matchFrom && matchTo;
+    });
+  }, [rides, filterFrom, filterTo, nowTick]);
+
+  const smartQuickChips = useMemo(() => {
+    const hour = new Date().getHours();
+    const isMorning = hour >= 5 && hour < 12;
+    const morningHubs = new Set(['Szentendre HÉV-végállomás', 'Újpest-Városkapu', 'Papírgyár', 'Bükkös-part']);
+    const afternoonHubs = new Set(['Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
+
+    return BASE_QUICK_DESTINATIONS.map((label) => {
+      const needle = label.replace('Szentendre ', '').toLowerCase();
+      const liveCount = filteredRides.filter((r) => {
+        const routeStr = `${r.origin_text} ${r.dest_text}`.toLowerCase();
+        const stopMatch = (r.stops || []).some((s) =>
+          (s.name || '').toLowerCase().includes(needle)
+        );
+        return routeStr.includes(needle) || stopMatch;
+      }).length;
+
+      const searches = searchStatsMap[label] || 0;
+      const timeBoost = isMorning
+        ? morningHubs.has(label)
+          ? 8
+          : 0
+        : afternoonHubs.has(label)
+        ? 8
+        : 0;
+
+      const score = liveCount * 25 + searches + timeBoost;
+      return { label, liveCount, score };
+    })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6);
+  }, [filteredRides, searchStatsMap]);
+
+  const visibleAgreements = useMemo(
+    () => myAgreements.filter((a) => !hiddenAgreementIds.includes(a.id)),
+    [myAgreements, hiddenAgreementIds]
+  );
+
+  const unreadCount = useMemo(
+    () => visibleAgreements.filter((a) => a.has_unread).length,
+    [visibleAgreements]
+  );
+
+  const actionRequiredCount = useMemo(() => {
+    const uid = session?.user?.id;
+    if (!uid) return 0;
+    return visibleAgreements.filter((a) => {
+      if (['completed', 'cancelled'].includes(a.status)) return false;
+      const postOwnerId = a.post_owner_id || a.helper_id;
+      const isPostOwner = postOwnerId === uid;
+      const ownerIsHelper = postOwnerId === a.helper_id;
+      const ownerConfirmed = ownerIsHelper ? Boolean(a.helper_agreed) : Boolean(a.requester_agreed);
+      const joinerConfirmed = ownerIsHelper ? Boolean(a.requester_agreed) : Boolean(a.helper_agreed);
+      if (a.status === 'chatting' && isPostOwner && !ownerConfirmed) return true;
+      if (a.status === 'chatting' && !isPostOwner && ownerConfirmed && !joinerConfirmed) return true;
+      if (a.status === 'arrived' && a.requester_id === uid) return true;
+      return false;
+    }).length;
+  }, [visibleAgreements, session?.user?.id]);
 
   const handleSelectQuickLocation = (locName, coordsObj = null, forcedField = null) => {
     setSelectedRideForMap(null);
@@ -722,16 +746,62 @@ export default function App() {
       return;
     }
 
-    const targetField = forcedField || ((activeSearchField === 'to' || (filterFrom && !filterTo)) ? 'to' : 'from');
+    const targetField =
+      forcedField || (activeSearchField === 'to' || (filterFrom && !filterTo) ? 'to' : 'from');
     if (targetField === 'to') {
       setFilterTo(locName);
       setToCoords(coordsObj || resolveCoordsFromText(locName));
-      setActiveSearchField('to');
+      setActiveSearchField('from');
     } else {
       setFilterFrom(locName);
       setFromCoords(coordsObj || resolveCoordsFromText(locName));
       setActiveSearchField('to');
     }
+  };
+
+  const handleSwapOriginDest = () => {
+    setSelectedRideForMap(null);
+    const prevO = filterFrom;
+    const prevD = filterTo;
+    const prevOCoord = fromCoords;
+    const prevDCoord = toCoords;
+    setFilterFrom(prevD);
+    setFilterTo(prevO);
+    setFromCoords(prevDCoord || null);
+    setToCoords(prevOCoord || null);
+  };
+
+  const handleFillOriginFromCurrentGps = () => {
+    if (!navigator.geolocation) {
+      showNotice('A böngésződ nem támogatja a helymeghatározást.', 'err');
+      return;
+    }
+    setLocatingOriginGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setFromCoords({ lat, lng });
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
+          );
+          const data = await res.json();
+          const addr = data?.address || {};
+          const city = addr.city || addr.town || addr.village || 'Szentendre';
+          const road = addr.road || addr.pedestrian || addr.suburb || '';
+          const house = addr.house_number ? ` ${addr.house_number}.` : '';
+          setFilterFrom(road ? `${city}, ${road}${house}` : `${city} (aktuális helyzet)`);
+        } catch {
+          setFilterFrom('Szentendre (aktuális helyzet)');
+        }
+        setLocatingOriginGps(false);
+      },
+      () => {
+        setLocatingOriginGps(false);
+        showNotice('Engedélyezd a helymeghatározást a böngészőben.', 'err');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   };
 
   const handlePublishInlineRide = async (e) => {
@@ -753,14 +823,11 @@ export default function App() {
       const isRec = inlineComposerMode === 'recurring';
       const dbKind = inlineComposerMode === 'ask' ? 'ask' : 'offer';
 
-      let exp;
-      if (isRec) {
-        exp = new Date(Date.now() + 30 * 24 * 3600000);
-      } else if (dbKind === 'ask') {
-        exp = new Date(dep.getTime() + 30 * 60000);
-      } else {
-        exp = new Date(dep.getTime() + 45 * 60000);
-      }
+      const exp = isRec
+        ? new Date(Date.now() + 30 * 24 * 3600000)
+        : dbKind === 'ask'
+        ? new Date(dep.getTime() + 30 * 60000)
+        : new Date(dep.getTime() + 45 * 60000);
 
       const startPt = fromCoords || resolveCoordsFromText(filterFrom);
       const endPt = toCoords || resolveCoordsFromText(filterTo);
@@ -801,33 +868,36 @@ export default function App() {
       await fetchAllLiveData(session.user.id);
       setInlineComposerMode(null);
       setInlineNote('');
+      showNotice('Útvonal közzétéve ✓');
     } catch (err) {
-      alert(`Hiba a mentéskor: ${err.message}`);
+      showNotice(`Hiba a mentéskor: ${err.message}`, 'err');
     } finally {
       setInlineSaving(false);
     }
   };
 
   const handleDeleteRide = async (rideId) => {
-    if (!window.confirm('Biztosan törlöd ezt az utat?')) return;
     setRides((prev) => prev.filter((r) => r.id !== rideId));
     if (supabase && !String(rideId).startsWith('demo-')) {
       const { error } = await supabase.from('rides').delete().eq('id', rideId);
       if (error) {
         showNotice(`Törlési hiba: ${error.message}`, 'err');
         fetchAllLiveData(session?.user?.id);
+      } else {
+        showNotice('Útvonal törölve.');
       }
     }
   };
 
   const handleDeleteFavor = async (favorId) => {
-    if (!window.confirm('Biztosan törlöd ezt a kérést?')) return;
     setFavors((prev) => prev.filter((f) => f.id !== favorId));
     if (supabase && !String(favorId).startsWith('demo-')) {
       const { error } = await supabase.from('favors').delete().eq('id', favorId);
       if (error) {
         showNotice(`Törlési hiba: ${error.message}`, 'err');
         fetchAllLiveData(session?.user?.id);
+      } else {
+        showNotice('Kérés törölve.');
       }
     }
   };
@@ -882,7 +952,7 @@ export default function App() {
           .update(favPayload)
           .eq('id', editingItemId);
         if (error) {
-          alert(`Szerkesztési hiba: ${error.message}`);
+          showNotice(`Szerkesztési hiba: ${error.message}`, 'err');
           return;
         }
       } else {
@@ -905,15 +975,11 @@ export default function App() {
       const isRec = newKind === 'recurring';
       const actualKind = isRec ? 'offer' : newKind;
 
-      let expDate;
-      if (isRec) {
-        expDate = new Date(Date.now() + 30 * 24 * 3600000);
-      } else if (actualKind === 'ask') {
-        expDate = new Date(dep.getTime() + 30 * 60000);
-      } else {
-        expDate = new Date(dep.getTime() + 45 * 60000);
-      }
-      const expIso = expDate.toISOString();
+      const expDate = isRec
+        ? new Date(Date.now() + 30 * 24 * 3600000)
+        : actualKind === 'ask'
+        ? new Date(dep.getTime() + 30 * 60000)
+        : new Date(dep.getTime() + 45 * 60000);
 
       const startPt = newFromCoords || resolveCoordsFromText(newFrom);
       const endPt = newToCoords || resolveCoordsFromText(newTo);
@@ -923,14 +989,13 @@ export default function App() {
         origin_text: newFrom.trim(),
         dest_text: newTo.trim(),
         departure_at: dep.toISOString(),
-        expires_at: expIso,
+        expires_at: expDate.toISOString(),
         seats: Number(newSeats) || 3,
         car_info: profile?.car_info || null,
         is_confirmed_today: true,
-        note:
-          isRec
-            ? `[Rendszeres: ${newScheduleText}] ${newNote.trim()}`.trim()
-            : newNote.trim()
+        note: isRec
+          ? `[Rendszeres: ${newScheduleText}] ${newNote.trim()}`.trim()
+          : newNote.trim()
       };
 
       if (startPt) {
@@ -954,7 +1019,7 @@ export default function App() {
             .update(basic)
             .eq('id', editingItemId);
           if (retryErr) {
-            alert(`Szerkesztési hiba: ${retryErr.message}`);
+            showNotice(`Szerkesztési hiba: ${retryErr.message}`, 'err');
             return;
           }
         }
@@ -968,7 +1033,7 @@ export default function App() {
             .from('rides')
             .insert({ ...basic, user_id: session.user.id });
           if (retryErr) {
-            alert(`Mentési hiba: ${retryErr.message}`);
+            showNotice(`Mentési hiba: ${retryErr.message}`, 'err');
             return;
           }
         }
@@ -983,7 +1048,26 @@ export default function App() {
     setNewFrom('');
     setNewTo('');
     setNewNote('');
+    showNotice(editingItemId ? 'Módosítások mentve ✓' : 'Közzétéve ✓');
     fetchAllLiveData(session.user.id);
+  };
+
+  const handleOpenAgreement = (agr) => {
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'default'
+    ) {
+      Notification.requestPermission().catch(() => {});
+    }
+    if (session?.user?.id && agr?.id) {
+      markAgreementReadStorage(session.user.id, agr.id);
+      setMyAgreements((prev) =>
+        prev.map((item) => (item.id === agr.id ? { ...item, has_unread: false } : item))
+      );
+    }
+    setIncomingToast(null);
+    setActiveAgreement(agr);
   };
 
   const handleStartRideAgreement = async (ride, selectedStop) => {
@@ -1000,25 +1084,6 @@ export default function App() {
 
     const requesterId = ride.kind === 'offer' ? session.user.id : ride.user_id;
     const helperId = ride.kind === 'offer' ? ride.user_id : session.user.id;
-
-    const { data: existingDb } = await supabase
-      .from('agreements')
-      .select('*')
-      .eq('ride_id', ride.id)
-      .eq('requester_id', requesterId)
-      .eq('helper_id', helperId)
-      .maybeSingle();
-
-    if (existingDb) {
-      handleOpenAgreement({
-        ...existingDb,
-        post_owner_id: ride.user_id,
-        car_info: ride.car_info || null,
-        partner_name: ride.author_name,
-        title: `${ride.origin_text} → ${ride.dest_text}`
-      });
-      return;
-    }
     const stopLabel = selectedStop ? `${selectedStop.time} ${selectedStop.name}` : null;
 
     const { data: existingAgr } = await supabase
@@ -1030,7 +1095,7 @@ export default function App() {
       .maybeSingle();
 
     if (existingAgr) {
-      setActiveAgreement({
+      handleOpenAgreement({
         ...existingAgr,
         post_owner_id: ride.user_id,
         car_info: ride.car_info || null,
@@ -1053,7 +1118,7 @@ export default function App() {
       .single();
 
     if (error) {
-      alert(`Hiba: ${error.message}`);
+      showNotice(`Nem sikerült csatlakozni: ${error.message}`, 'err');
       return;
     }
 
@@ -1065,7 +1130,7 @@ export default function App() {
         : 'Szia! Csatlakoznék az úthoz.'
     });
 
-    setActiveAgreement({
+    handleOpenAgreement({
       ...createdAgr,
       post_owner_id: ride.user_id,
       car_info: ride.car_info || null,
@@ -1099,7 +1164,7 @@ export default function App() {
       .maybeSingle();
 
     if (existingAgr) {
-      setActiveAgreement({
+      handleOpenAgreement({
         ...existingAgr,
         partner_name: favor.author_name,
         title: favor.title
@@ -1119,7 +1184,7 @@ export default function App() {
       .single();
 
     if (error) {
-      alert(`Nem sikerült megnyitni: ${error.message}`);
+      showNotice(`Nem sikerült megnyitni: ${error.message}`, 'err');
       return;
     }
 
@@ -1129,7 +1194,7 @@ export default function App() {
       body: `Szia! Érdekelne: ${favor.title}`
     });
 
-    setActiveAgreement({
+    handleOpenAgreement({
       ...createdAgr,
       partner_name: favor.author_name,
       title: favor.title
@@ -1143,7 +1208,6 @@ export default function App() {
       return;
     }
 
-    // Meglévő beszélgetés keresése ezzel a szakival, hogy ne duplikálódjon
     const { data: existingAgr } = await supabase
       .from('agreements')
       .select('*')
@@ -1152,7 +1216,7 @@ export default function App() {
       .maybeSingle();
 
     if (existingAgr) {
-      setActiveAgreement({
+      handleOpenAgreement({
         ...existingAgr,
         partner_name: pro.business_name,
         title: pro.profession_name || 'Szakmai egyeztetés'
@@ -1172,7 +1236,7 @@ export default function App() {
       .single();
 
     if (error) {
-      alert(`Nem sikerült megnyitni a beszélgetést: ${error.message}`);
+      showNotice(`Nem sikerült megnyitni a beszélgetést: ${error.message}`, 'err');
       return;
     }
 
@@ -1182,7 +1246,7 @@ export default function App() {
       body: `Szia! Érdeklődnék (${pro.profession_name || pro.business_name}).`
     });
 
-    setActiveAgreement({
+    handleOpenAgreement({
       ...createdAgr,
       partner_name: pro.business_name,
       title: pro.profession_name || 'Szakmai egyeztetés'
@@ -1207,225 +1271,35 @@ export default function App() {
         message: cleanMsg
       });
       if (error) {
-        alert(`Hiba: ${error.message}`);
+        showNotice(`Hiba: ${error.message}`, 'err');
         return;
       }
       await fetchAllLiveData(session.user.id);
+      showNotice('Útinfó közzétéve ✓');
     }
     setCustomRoadText('');
+  };
+
+  const handleClearRoadAlert = async (alertId) => {
+    if (!session?.user) {
+      setShowRoadModal(false);
+      setShowAuthModal(true);
+      return;
+    }
+    if (supabase && alertId && alertId !== 'default-ok') {
+      await supabase
+        .from('road_alerts')
+        .update({ expires_at: new Date().toISOString() })
+        .eq('id', alertId);
+      await fetchAllLiveData(session.user.id);
+      showNotice('Köszönjük! Az útinfó jelzés lezárva.');
+    }
   };
 
   const handleDeleteRoadAlert = async (alertId) => {
     if (!supabase || alertId === 'default-ok') return;
     await supabase.from('road_alerts').delete().eq('id', alertId);
     fetchAllLiveData(session?.user?.id);
-  };
-
-  const handleCheckInProZone = async (proId, zoneName) => {
-    setPros((prev) =>
-      prev.map((p) => (p.id === proId ? { ...p, active_zone_today: zoneName } : p))
-    );
-    if (supabase && proId) {
-      await supabase
-        .from('local_pros')
-        .update({ active_zone_today: zoneName })
-        .eq('id', proId);
-    }
-  };
-
-  const handleEndorsePro = async (pro) => {
-    if (!session?.user) {
-      setShowAuthModal(true);
-      return;
-    }
-    const nextCount = (pro.endorsement_count || 0) + 1;
-    setPros((prev) =>
-      prev.map((p) => (p.id === pro.id ? { ...p, endorsement_count: nextCount } : p))
-    );
-    if (supabase) {
-      await supabase
-        .from('local_pros')
-        .update({ endorsement_count: nextCount })
-        .eq('id', pro.id);
-    }
-  };
-
-  const handleRegisterNewPro = async (newProObj) => {
-    if (supabase && session?.user) {
-      const { data, error } = await supabase
-        .from('local_pros')
-        .insert({ ...newProObj, owner_id: session.user.id, endorsement_count: 1 })
-        .select('*')
-        .single();
-      if (!error && data) {
-        setPros((prev) => [data, ...prev]);
-      }
-    }
-  };
-
-  const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
-
-  const trackDestinationSearch = async (label) => {
-    const clean = (label || '').trim();
-    if (clean.length < 2) return;
-    const matchedHub = BASE_QUICK_DESTINATIONS.find(
-      (h) =>
-        clean.toLowerCase().includes(h.toLowerCase()) ||
-        h.toLowerCase().includes(clean.toLowerCase())
-    );
-    const hubToLog = matchedHub || clean;
-    setSearchStatsMap((prev) => ({
-      ...prev,
-      [hubToLog]: (prev[hubToLog] || 0) + 1
-    }));
-    if (supabase) {
-      await supabase.rpc('increment_route_search', { p_hub_label: hubToLog });
-    }
-  };
-
-  const handleSwapOriginDest = () => {
-    setSelectedRideForMap(null);
-    const prevO = filterFrom;
-    const prevD = filterTo;
-    const prevOCoord = fromCoords;
-    const prevDCoord = toCoords;
-    setFilterFrom(prevD);
-    setFilterTo(prevO);
-    setFromCoords(prevDCoord || null);
-    setToCoords(prevOCoord || null);
-  };
-
-  const handleFillOriginFromCurrentGps = () => {
-    if (!navigator.geolocation) return;
-    setLocatingOriginGps(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords;
-        setFromCoords({ lat, lng });
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
-          );
-          const data = await res.json();
-          const addr = data?.address || {};
-          const city = addr.city || addr.town || addr.village || 'Szentendre';
-          const road = addr.road || addr.pedestrian || addr.suburb || '';
-          const house = addr.house_number ? ` ${addr.house_number}.` : '';
-          setFilterFrom(road ? `${city}, ${road}${house}` : `${city} (aktuális helyzet)`);
-        } catch {
-          setFilterFrom('Szentendre (aktuális helyzet)');
-        }
-        setLocatingOriginGps(false);
-      },
-      () => {
-        setLocatingOriginGps(false);
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  };
-
-  const smartQuickChips = (() => {
-    const hour = new Date().getHours();
-    const isMorning = hour >= 5 && hour < 12;
-    const morningHubs = new Set(['HÉV-végállomás', 'Újpest-Városkapu', 'Papírgyár', 'Bükkös-part']);
-    const afternoonHubs = new Set(['Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
-
-    const allLabels = Array.from(
-      new Set([...BASE_QUICK_DESTINATIONS, ...Object.keys(searchStatsMap)])
-    );
-
-    return allLabels
-      .map((label) => {
-        const needle = label.toLowerCase();
-        const liveCount = rides.filter((r) => {
-          const destMatch = (r.dest_text || '').toLowerCase().includes(needle);
-          const stopMatch = (r.stops || []).some((s) =>
-            (s.name || '').toLowerCase().includes(needle)
-          );
-          return destMatch || stopMatch;
-        }).length;
-
-        const searches = searchStatsMap[label] || 0;
-        const timeBoost = isMorning
-          ? morningHubs.has(label)
-            ? 8
-            : 0
-          : afternoonHubs.has(label)
-          ? 8
-          : 0;
-
-        const score = liveCount * 25 + searches + timeBoost;
-        return { label, liveCount, searches, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 7);
-  })();
-
-  const topPersonalRoutine = personalRoutines[0] || null;
-
-  // Azonnali frissítés másik eszközről (Supabase Realtime + oldalra visszalépéskor)
-  useEffect(() => {
-    const uid = session?.user?.id || null;
-
-    const handleWakeOrFocus = () => {
-      if (document.visibilityState === 'visible') {
-        fetchAllLiveData(uid);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleWakeOrFocus);
-    window.addEventListener('focus', handleWakeOrFocus);
-
-    let channel = null;
-    if (supabase) {
-      channel = supabase
-        .channel('kalaka-live-rides-sync')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'rides' },
-          () => {
-            fetchAllLiveData(uid);
-          }
-        )
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'agreements' },
-          () => {
-            fetchAllLiveData(uid);
-          }
-        )
-        .subscribe();
-    }
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleWakeOrFocus);
-      window.removeEventListener('focus', handleWakeOrFocus);
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
-      }
-    };
-  }, [session?.user?.id]);
-
-  const visibleAgreements = myAgreements.filter(
-    (a) => !hiddenAgreementIds.includes(a.id)
-  );
-  const unreadCount = visibleAgreements.filter((a) => a.has_unread).length;
-
-  const handleOpenAgreement = (agr) => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-    if (session?.user?.id && agr?.id) {
-      markAgreementReadStorage(session.user.id, agr.id);
-      setReadVersion((v) => v + 1);
-      setMyAgreements((prev) =>
-        prev.map((item) =>
-          item.id === agr.id ? { ...item, has_unread: false } : item
-        )
-      );
-    }
-    setIncomingToast(null);
-    setActiveAgreement(agr);
   };
 
   const handleHideCompletedAgreement = (e, agrId) => {
@@ -1442,8 +1316,42 @@ export default function App() {
     localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
   };
 
+  const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
+  const topPersonalRoutine = personalRoutines[0] || null;
+  const displayedRides = useMemo(
+    () => filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter),
+    [filteredRides, rideKindFilter]
+  );
+
   return (
     <div className="w-full max-w-xl mx-auto min-h-screen pb-28 overflow-x-hidden">
+      {/* Globális alkalmazás visszajelző sáv (Toast) */}
+      {appNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-md"
+        >
+          <div
+            className={`px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+              appNotice.tone === 'err'
+                ? 'bg-red-900 text-white border-red-700'
+                : 'bg-[#18261F] text-white border-white/15'
+            }`}
+          >
+            <span>{appNotice.text}</span>
+            <button
+              type="button"
+              aria-label="Értesítés bezárása"
+              onClick={() => setAppNotice(null)}
+              className="opacity-80 hover:opacity-100 px-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Felugró értesítés új bejövő üzenetkor (ha a chat nincs megnyitva) */}
       {incomingToast && activeAgreement?.id !== incomingToast.agreement_id && (
         <div
@@ -1470,6 +1378,7 @@ export default function App() {
           </div>
           <button
             type="button"
+            aria-label="Üzenet értesítés bezárása"
             onClick={(e) => {
               e.stopPropagation();
               setIncomingToast(null);
@@ -1480,6 +1389,7 @@ export default function App() {
           </button>
         </div>
       )}
+
       <HeaderRoadBar
         session={session}
         profile={profile}
@@ -1537,16 +1447,18 @@ export default function App() {
                 type="button"
                 onClick={handleFillOriginFromCurrentGps}
                 disabled={locatingOriginGps}
+                aria-label="Jelenlegi GPS helyzetem betöltése"
                 title="Jelenlegi GPS helyzetem"
-                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-pilis border border-[#DFD9CE] grid place-items-center text-xs font-bold transition"
+                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-pilis border border-[#DFD9CE] grid place-items-center text-xs font-bold transition active:scale-95"
               >
                 {locatingOriginGps ? '…' : '📍'}
               </button>
               <button
                 type="button"
                 onClick={handleSwapOriginDest}
+                aria-label="Indulás és érkezés megfordítása"
                 title="Irány megfordítása"
-                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-[#18261F] border border-[#DFD9CE] grid place-items-center text-xs font-bold transition"
+                className="w-8 h-8 rounded-xl bg-limestone hover:bg-pilis-soft text-[#18261F] border border-[#DFD9CE] grid place-items-center text-xs font-bold transition active:scale-95"
               >
                 ⇅
               </button>
@@ -1556,7 +1468,10 @@ export default function App() {
           {topPersonalRoutine && !filterFrom && !filterTo && (
             <div className="flex items-center justify-between gap-2 bg-pilis-soft/45 px-2.5 py-1.5 rounded-xl border border-pilis/15 text-xs">
               <span className="truncate text-[#18261F] font-medium">
-                Szokásos: <strong className="font-bold">{topPersonalRoutine.origin} → {topPersonalRoutine.dest}</strong>
+                Szokásos:{' '}
+                <strong className="font-bold">
+                  {topPersonalRoutine.origin} → {topPersonalRoutine.dest}
+                </strong>
               </span>
               <button
                 type="button"
@@ -1566,7 +1481,7 @@ export default function App() {
                   setFromCoords(resolveCoordsFromText(topPersonalRoutine.origin));
                   setToCoords(resolveCoordsFromText(topPersonalRoutine.dest));
                 }}
-                className="shrink-0 bg-pilis text-white font-bold text-[11px] px-2.5 py-1 rounded-lg"
+                className="shrink-0 bg-pilis text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition active:scale-95"
               >
                 Betöltés ›
               </button>
@@ -1575,31 +1490,44 @@ export default function App() {
 
           <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#ECE7DC] min-w-0">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0 flex-1">
-              {[
-                'Mind',
-                'Szentendre HÉV-végállomás',
-                'Bükkös-part',
-                'Papírgyár',
-                'Pismány',
-                'Szarvashegy',
-                'Izbég'
-              ].map((chip) => {
+              <button
+                type="button"
+                onClick={() => handleSelectQuickLocation('Mind')}
+                className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border transition ${
+                  !filterFrom && !filterTo
+                    ? 'bg-pilis text-white border-pilis'
+                    : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-pilis'
+                }`}
+              >
+                Mind
+              </button>
+
+              {smartQuickChips.map((chipObj) => {
                 const isSelected =
-                  (chip === 'Mind' && !filterFrom && !filterTo) ||
-                  filterFrom === chip ||
-                  filterTo === chip;
+                  filterFrom === chipObj.label || filterTo === chipObj.label;
                 return (
                   <button
-                    key={chip}
+                    key={chipObj.label}
                     type="button"
-                    onClick={() => handleSelectQuickLocation(chip)}
-                    className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border transition ${
+                    onClick={() => handleSelectQuickLocation(chipObj.label)}
+                    className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border transition flex items-center gap-1 ${
                       isSelected
                         ? 'bg-pilis text-white border-pilis'
                         : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-pilis'
                     }`}
                   >
-                    {chip.replace('Szentendre ', '')}
+                    <span>{chipObj.label.replace('Szentendre ', '')}</span>
+                    {chipObj.liveCount > 0 && (
+                      <span
+                        className={`text-[10px] font-extrabold px-1.5 rounded-full ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : 'bg-pilis-soft text-pilis'
+                        }`}
+                      >
+                        {chipObj.liveCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1608,7 +1536,8 @@ export default function App() {
             <button
               type="button"
               onClick={() => setShowMap((v) => !v)}
-              className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg"
+              aria-expanded={showMap}
+              className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg transition active:scale-95"
             >
               {showMap ? 'Térkép elrejtése' : 'Térkép'}
             </button>
@@ -1622,9 +1551,7 @@ export default function App() {
               fromCoords={resolveCoordsFromText(filterFrom) || fromCoords}
               toCoords={resolveCoordsFromText(filterTo) || toCoords}
               selectedRide={selectedRideForMap}
-              onSelectRideOnMap={(rideObj) => {
-                setSelectedRideForMap(rideObj);
-              }}
+              onSelectRideOnMap={(rideObj) => setSelectedRideForMap(rideObj)}
               onPickLocation={(label, coordsObj, forcedField) =>
                 handleSelectQuickLocation(label, coordsObj, forcedField)
               }
@@ -1647,10 +1574,9 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setInlineSeats(3);
-                        setInlineValidMins(720);
                         setInlineComposerMode('offer');
                       }}
-                      className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-2.5 py-2 rounded-lg transition"
+                      className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-2.5 py-2 rounded-lg transition active:scale-95"
                     >
                       Van helyem
                     </button>
@@ -1658,10 +1584,9 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setInlineSeats(3);
-                        setInlineValidMins(10080);
                         setInlineComposerMode('recurring');
                       }}
-                      className="bg-white hover:border-pilis text-pilis border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-lg transition"
+                      className="bg-white hover:border-pilis text-pilis border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-lg transition active:scale-95"
                     >
                       Rendszeres
                     </button>
@@ -1669,10 +1594,9 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setInlineSeats(1);
-                        setInlineValidMins(180);
                         setInlineComposerMode('ask');
                       }}
-                      className="bg-terracotta hover:bg-[#b55538] text-white font-bold text-xs px-2.5 py-2 rounded-lg transition"
+                      className="bg-terracotta hover:bg-[#b55538] text-white font-bold text-xs px-2.5 py-2 rounded-lg transition active:scale-95"
                     >
                       Utat keresek
                     </button>
@@ -1721,22 +1645,25 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex items-center justify-between bg-white border border-[#DFD9CE] rounded-xl px-3 py-2">
                       <span className="text-xs text-[#5C6B62] font-semibold">Indulás:</span>
-                      <input
-                        type="time"
-                        value={inlineTime}
-                        onChange={(e) => setInlineTime(e.target.value)}
-                        className="text-sm font-bold focus:outline-none bg-transparent"
-                      />
-                  {!false && (
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis shrink-0">
-                      {resolveAutoDayForTime(inlineTime, false)}
-                    </span>
-                  )}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="time"
+                          value={inlineTime}
+                          onChange={(e) => setInlineTime(e.target.value)}
+                          className="text-sm font-bold focus:outline-none bg-transparent"
+                        />
+                        {inlineComposerMode !== 'recurring' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis shrink-0">
+                            {resolveAutoDayForTime(inlineTime, false)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <select
                       value={inlineSeats}
-                      onChange={(e) => setInlineSeats(e.target.value)}
+                      onChange={(e) => setInlineSeats(Number(e.target.value))}
+                      aria-label="Helyek vagy utasok száma"
                       className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold"
                     >
                       {[1, 2, 3, 4].map((n) => (
@@ -1746,10 +1673,28 @@ export default function App() {
                       ))}
                     </select>
 
-                    {inlineComposerMode === 'recurring' && (
+                    {inlineComposerMode !== 'recurring' ? (
+                      <div className="col-span-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                        {[
+                          ['Most (+10p)', 10],
+                          ['Köv. HÉV (+18p)', 18],
+                          ['+30 perc', 30]
+                        ].map(([lbl, mins]) => (
+                          <button
+                            key={lbl}
+                            type="button"
+                            onClick={() => setInlineTime(getOffsetTimeString(mins))}
+                            className="shrink-0 text-[11px] font-bold bg-white hover:bg-pilis-soft text-pilis border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
+                          >
+                            ⚡ {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
                       <select
                         value={inlineSchedule}
                         onChange={(e) => setInlineSchedule(e.target.value)}
+                        aria-label="Rendszeres ütemezés"
                         className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-bold"
                       >
                         <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
@@ -1759,8 +1704,6 @@ export default function App() {
                         <option value="Kedd, Csütörtök">Kedd, Csütörtök</option>
                       </select>
                     )}
-
-                    
                   </div>
 
                   <div className="flex gap-2">
@@ -1828,17 +1771,47 @@ export default function App() {
                   </div>
                 ))}
               </div>
-            ) : filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter).length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2">
+            ) : displayedRides.length === 0 ? (
+              <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-3">
                 <div className="text-sm font-bold text-[#18261F]">
-                  Jelenleg nincs aktív út erre az útvonalra.
+                  Jelenleg nincs aktív út erre a szűrésre.
                 </div>
                 <p className="text-xs text-[#5C6B62]">
-                  Add meg fent a Honnan és Hová mezőt, és tedd közzé elsőként!
+                  Add meg fent az indulási és érkezési pontot, vagy töröld a szűrőket.
                 </p>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {(filterFrom || filterTo || rideKindFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterFrom('');
+                        setFilterTo('');
+                        setFromCoords(null);
+                        setToCoords(null);
+                        setRideKindFilter('all');
+                      }}
+                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3.5 py-2 rounded-xl"
+                    >
+                      Szűrők törlése
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingItemId(null);
+                      setNewFrom(filterFrom);
+                      setNewTo(filterTo);
+                      setNewKind('offer');
+                      setShowNewModal(true);
+                    }}
+                    className="bg-pilis text-white font-bold text-xs px-4 py-2 rounded-xl"
+                  >
+                    + Útvonal kiírása
+                  </button>
+                </div>
               </div>
             ) : (
-              filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter).map((ride) => (
+              displayedRides.map((ride) => (
                 <RideCard
                   key={ride.id}
                   ride={ride}
@@ -1862,11 +1835,15 @@ export default function App() {
         {activeTab === 'favors' && (
           <>
             {favors.length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2">
+              <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
                 <div className="text-sm font-bold text-[#18261F]">
                   Még nincs aktív Kaláka-kérés.
                 </div>
+                <p className="text-xs text-[#5C6B62]">
+                  Kérj kölcsön egy szerszámot a szomszédtól, vagy ajánlj fel segítséget!
+                </p>
                 <button
+                  type="button"
                   onClick={() => {
                     setEditingItemId(null);
                     setNewKind('favor');
@@ -1902,8 +1879,11 @@ export default function App() {
               Beszélgetéseim ({visibleAgreements.length})
             </h2>
             {visibleAgreements.length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center text-xs text-[#5C6B62] border border-[#DFD9CE]">
-                Még nincs aktív beszélgetésed.
+              <div className="bg-white rounded-2xl p-6 text-center text-xs text-[#5C6B62] border border-[#DFD9CE] space-y-2">
+                <div className="font-bold text-sm text-[#18261F]">
+                  Még nincs aktív beszélgetésed.
+                </div>
+                <p>Csatlakozz egy fuvarhoz vagy Kaláka-kéréshez az egyeztetéshez.</p>
               </div>
             ) : (
               visibleAgreements.map((agr) => {
@@ -1928,8 +1908,14 @@ export default function App() {
                             {agr.partner_name}
                           </span>
                           {isDone && (
-                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full shrink-0">
-                              Lezárva
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                agr.status === 'cancelled'
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : 'bg-emerald-100 text-emerald-900'
+                              }`}
+                            >
+                              {agr.status === 'cancelled' ? 'Lemondva' : 'Lezárva'}
                             </span>
                           )}
                         </div>
@@ -1978,25 +1964,32 @@ export default function App() {
         )}
 
         {activeTab === 'pros' && (
-          <React.Suspense fallback={<div className="bg-white rounded-2xl p-6 text-center text-xs font-bold text-[#5C6B62] border border-[#DFD9CE]">Szakemberek betöltése...</div>}>
+          <React.Suspense
+            fallback={
+              <div className="bg-white rounded-2xl p-6 text-center text-xs font-bold text-[#5C6B62] border border-[#DFD9CE]">
+                Szakemberek betöltése...
+              </div>
+            }
+          >
             <ProsDirectoryView
-            pros={pros}
-            session={session}
-            profile={profile}
-            onOpenAuthModal={() =>
-          session?.user
-            ? setInspectedUser({
-                userId: session.user.id,
-                name: profile?.display_name,
-                zone: profile?.zone
-              })
-            : setShowAuthModal(true)
-        }
-            onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
-            onStartProAgreement={handleStartProAgreement}
-          />
+              pros={pros}
+              session={session}
+              profile={profile}
+              onOpenAuthModal={() =>
+                session?.user
+                  ? setInspectedUser({
+                      userId: session.user.id,
+                      name: profile?.display_name,
+                      zone: profile?.zone
+                    })
+                  : setShowAuthModal(true)
+              }
+              onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
+              onStartProAgreement={handleStartProAgreement}
+            />
           </React.Suspense>
         )}
+
         <div className="pt-4 pb-2 text-center">
           <button
             type="button"
@@ -2008,10 +2001,13 @@ export default function App() {
         </div>
       </main>
 
-      {/* Alsó navigációs sáv: beépített középső "+ Új" gombbal, így SOHA nem takarja el a kártyák gombjait mobilon */}
-      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#DFD9CE] pb-[env(safe-area-inset-bottom)] z-30">
+      <nav
+        aria-label="Fő navigáció"
+        className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#DFD9CE] pb-[env(safe-area-inset-bottom)] z-30"
+      >
         <div className="max-w-xl mx-auto grid grid-cols-5 items-center">
           <button
+            type="button"
             onClick={() => setActiveTab('rides')}
             className={`py-3 text-xs font-bold border-t-2 transition ${
               activeTab === 'rides'
@@ -2023,6 +2019,7 @@ export default function App() {
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('favors')}
             className={`py-3 text-xs font-bold border-t-2 transition ${
               activeTab === 'favors'
@@ -2035,6 +2032,8 @@ export default function App() {
 
           <div className="flex justify-center py-1.5">
             <button
+              type="button"
+              aria-label="Új kiírás létrehozása"
               onClick={() => {
                 setEditingItemId(null);
                 setNewFrom(filterFrom);
@@ -2045,13 +2044,14 @@ export default function App() {
                 else if (newKind === 'favor') setNewKind('offer');
                 setShowNewModal(true);
               }}
-              className="bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-xs px-3.5 py-2 rounded-full shadow-md transition"
+              className="bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-xs px-3.5 py-2 rounded-full shadow-md transition active:scale-95"
             >
               + Új
             </button>
           </div>
 
           <button
+            type="button"
             onClick={() => setActiveTab('messages')}
             className={`relative py-3 text-xs font-bold border-t-2 transition px-1 flex items-center justify-center gap-1 ${
               activeTab === 'messages'
@@ -2060,14 +2060,15 @@ export default function App() {
             }`}
           >
             <span>Üzenet</span>
-            {unreadCount > 0 && (
+            {(unreadCount > 0 || actionRequiredCount > 0) && (
               <span className="bg-terracotta text-white text-[10px] font-extrabold px-1.5 py-0.2 rounded-full leading-tight">
-                {unreadCount}
+                {unreadCount > 0 ? unreadCount : `${actionRequiredCount}!`}
               </span>
             )}
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('pros')}
             className={`py-3 text-xs font-bold border-t-2 transition ${
               activeTab === 'pros'
@@ -2081,13 +2082,20 @@ export default function App() {
       </nav>
 
       {showRoadModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="11-es út és hegyi útinfó"
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+        >
           <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
             <div className="flex justify-between items-center">
               <h3 className="font-display font-extrabold text-lg">
                 11-es út és hegyi útinfó ({roadAlerts.length})
               </h3>
               <button
+                type="button"
+                aria-label="Útinfó ablak bezárása"
                 onClick={() => setShowRoadModal(false)}
                 className="text-sm font-bold text-[#5C6B62] px-2 py-1"
               >
@@ -2113,17 +2121,30 @@ export default function App() {
                         })}
                       </span>
                     </div>
-                    <div className="font-semibold text-[#18261F] mt-0.5 break-words">{al.message}</div>
+                    <div className="font-semibold text-[#18261F] mt-0.5 break-words">
+                      {al.message}
+                    </div>
                   </div>
-                  {session?.user && al.reporter_id === session.user.id && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRoadAlert(al.id)}
-                      className="text-[11px] font-bold text-red-700 hover:underline shrink-0"
-                    >
-                      Törlés
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {al.id !== 'default-ok' && (
+                      <button
+                        type="button"
+                        onClick={() => handleClearRoadAlert(al.id)}
+                        className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full"
+                      >
+                        ✓ Már tiszta
+                      </button>
+                    )}
+                    {session?.user && al.reporter_id === session.user.id && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRoadAlert(al.id)}
+                        className="text-[11px] font-bold text-red-700 hover:underline"
+                      >
+                        Törlés
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2176,7 +2197,12 @@ export default function App() {
       )}
 
       {showNewModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingItemId ? 'Kiírás szerkesztése' : 'Új kiírás'}
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+        >
           <form
             onSubmit={handleSaveModalPost}
             className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] max-h-[90vh] overflow-y-auto box-border"
@@ -2187,6 +2213,7 @@ export default function App() {
               </h3>
               <button
                 type="button"
+                aria-label="Űrlap bezárása"
                 onClick={() => {
                   setShowNewModal(false);
                   setEditingItemId(null);
@@ -2251,29 +2278,58 @@ export default function App() {
             )}
 
             {newKind !== 'favor' ? (
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="time"
-                  value={newTime}
-                  onChange={(e) => setNewTime(e.target.value)}
-                  className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base font-bold box-border"
-                />
-                <select
-                  value={newSeats}
-                  onChange={(e) => setNewSeats(e.target.value)}
-                  className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
-                >
-                  {[1, 2, 3, 4].map((n) => (
-                    <option key={n} value={n}>
-                      {newKind === 'ask' ? `${n} utas` : `${n} szabad hely`}
-                    </option>
-                  ))}
-                </select>
-                {newKind === 'recurring' && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 flex items-center justify-between gap-1">
+                    <input
+                      type="time"
+                      value={newTime}
+                      onChange={(e) => setNewTime(e.target.value)}
+                      className="text-base font-bold bg-transparent focus:outline-none"
+                    />
+                    {newKind !== 'recurring' && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis">
+                        {resolveAutoDayForTime(newTime, false)}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    value={newSeats}
+                    onChange={(e) => setNewSeats(e.target.value)}
+                    aria-label="Szabad helyek száma"
+                    className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
+                  >
+                    {[1, 2, 3, 4].map((n) => (
+                      <option key={n} value={n}>
+                        {newKind === 'ask' ? `${n} utas` : `${n} szabad hely`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {newKind !== 'recurring' ? (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    {[
+                      ['Most (+10p)', 10],
+                      ['Köv. HÉV (+18p)', 18],
+                      ['+30 perc', 30]
+                    ].map(([lbl, mins]) => (
+                      <button
+                        key={lbl}
+                        type="button"
+                        onClick={() => setNewTime(getOffsetTimeString(mins))}
+                        className="shrink-0 text-[11px] font-bold bg-white hover:bg-pilis-soft text-pilis border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
+                      >
+                        ⚡ {lbl}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
                   <select
                     value={newScheduleText}
                     onChange={(e) => setNewScheduleText(e.target.value)}
-                    className="col-span-2 bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
+                    aria-label="Rendszeres napok"
+                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
                   >
                     <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
                     <option value="Minden nap">Minden nap</option>
@@ -2284,38 +2340,38 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
-                <label className="text-xs font-bold block mb-1">
-                  Kölcsönzés feltétele: legalább {newMinHearts} korábbi segítés
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  value={newMinHearts}
-                  onChange={(e) => setNewMinHearts(e.target.value)}
-                  className="w-full accent-pilis"
-                />
-              </div>
-            )}
+              <>
+                <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
+                  <label className="text-xs font-bold block mb-1">
+                    Kölcsönzés feltétele: legalább {newMinHearts} korábbi segítés
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    value={newMinHearts}
+                    onChange={(e) => setNewMinHearts(e.target.value)}
+                    className="w-full accent-pilis"
+                  />
+                </div>
 
-            {newKind === 'favor' && (
-              <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
-                <span className="text-xs font-bold text-[#18261F]">
-                  Érvényesség
-                </span>
-                <select
-                  value={newValidMins}
-                  onChange={(e) => setNewValidMins(Number(e.target.value))}
-                  className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
-                >
-                  {VALIDITY_OPTIONS.map((opt) => (
-                    <option key={opt.minutes} value={opt.minutes}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-[#18261F]">
+                    Érvényesség
+                  </span>
+                  <select
+                    value={newValidMins}
+                    onChange={(e) => setNewValidMins(Number(e.target.value))}
+                    className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
+                  >
+                    {VALIDITY_OPTIONS.map((opt) => (
+                      <option key={opt.minutes} value={opt.minutes}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
             )}
 
             <input
@@ -2364,7 +2420,7 @@ export default function App() {
       />
 
       <AgreementChatModal
-          onInspectUser={setInspectedUser}
+        onInspectUser={setInspectedUser}
         agreement={activeAgreement}
         currentUser={profile}
         onClose={() => {
@@ -2387,4 +2443,3 @@ export default function App() {
     </div>
   );
 }
-
