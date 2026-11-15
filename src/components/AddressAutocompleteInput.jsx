@@ -84,7 +84,7 @@ export default function AddressAutocompleteInput({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
-  const skipNextFetchRef = useRef(false);
+  const isUserTypingRef = useRef(false);
   const sessionTokenRef = useRef(createSessionToken());
 
   useEffect(() => {
@@ -102,13 +102,14 @@ export default function AddressAutocompleteInput({
   }, []);
 
   useEffect(() => {
-    if (skipNextFetchRef.current) {
-      skipNextFetchRef.current = false;
+    // Csak akkor keresünk és nyitjuk ki a listát, ha a felhasználó ténylegesen gépelt!
+    if (!isUserTypingRef.current) {
       return;
     }
 
     const q = (value || '').trim();
     if (q.length < 2) {
+      isUserTypingRef.current = false;
       setSuggestions([]);
       setOpen(false);
       return;
@@ -116,6 +117,7 @@ export default function AddressAutocompleteInput({
 
     const controller = new AbortController();
     const timer = setTimeout(async () => {
+      isUserTypingRef.current = false;
       setLoading(true);
       try {
         const normQ = stripAccents(q);
@@ -125,7 +127,6 @@ export default function AddressAutocompleteInput({
             ? `${cityContext}, ${q}`
             : q;
 
-        // 1. Google Places API (New)
         if (GOOGLE_PLACES_KEY) {
           const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
             method: 'POST',
@@ -187,7 +188,6 @@ export default function AddressAutocompleteInput({
           }
         }
 
-        // 2. Tartalék: Photon + házszám-megőrzés
         const { streetPart, houseNum } = extractHouseNumber(q);
         const expandedStreet = expandStreetAbbreviations(streetPart);
         const photonQ =
@@ -229,7 +229,6 @@ export default function AddressAutocompleteInput({
       return { lat: item.lat, lng: item.lng };
     }
 
-    // 1. Google Place Details (New)
     if (item.source === 'google' && item.placeId && GOOGLE_PLACES_KEY) {
       sessionTokenRef.current = createSessionToken();
       try {
@@ -253,7 +252,6 @@ export default function AddressAutocompleteInput({
       } catch {}
     }
 
-    // 2. Ha a Place Details nem adott koordinátát, kibontjuk a rövidítéseket ("Fogoly u. 7" -> "Fogoly utca 7")
     const expandedFull = expandStreetAbbreviations(item.label);
     const { streetPart } = extractHouseNumber(expandedFull);
     const candidates = [expandedFull, streetPart];
@@ -292,7 +290,7 @@ export default function AddressAutocompleteInput({
   };
 
   const handleSelect = async (item) => {
-    skipNextFetchRef.current = true;
+    isUserTypingRef.current = false;
     setSuggestions([]);
     setOpen(false);
     setLoading(true);
@@ -300,7 +298,7 @@ export default function AddressAutocompleteInput({
     const coords = await resolveItemCoordinates(item);
     setLoading(false);
 
-    skipNextFetchRef.current = true;
+    isUserTypingRef.current = false;
     onChange(item.label);
     if (onSelectPlace) {
       onSelectPlace(coords ? { ...item, lat: coords.lat, lng: coords.lng } : null);
@@ -320,9 +318,11 @@ export default function AddressAutocompleteInput({
           value={value}
           onFocus={() => {
             if (onFocus) onFocus();
-            if (suggestions.length > 0) setOpen(true);
           }}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            isUserTypingRef.current = true;
+            onChange(e.target.value);
+          }}
           placeholder={placeholder}
           autoComplete="off"
           className="w-full min-w-0 bg-transparent text-sm sm:text-base font-medium text-[#18261F] placeholder:text-[#7A867E] focus:outline-none"
@@ -335,6 +335,7 @@ export default function AddressAutocompleteInput({
             type="button"
             aria-label="Mező törlése"
             onClick={() => {
+              isUserTypingRef.current = false;
               onChange('');
               setSuggestions([]);
               setOpen(false);

@@ -28,6 +28,24 @@ const BASE_QUICK_DESTINATIONS = [
   'Pannóniatelep'
 ];
 
+// Okos cím-normalizáló a szűréshez: levágja a házszámot és egységesíti a HÉV/Újpest/utca kifejezéseket
+function normalizeRouteToken(rawStr) {
+  const s = stripAccents(rawStr);
+  if (!s) return '';
+  if (s.includes('hev') || s.includes('allomas ter')) return 'hev';
+  if (s.includes('ujpest')) return 'ujpest';
+  if (s.includes('papirgyar')) return 'papirgyar';
+  if (s.includes('bukkos')) return 'bukkos';
+  return s
+    .replace(/^szentendre[,\s]+/, '')
+    .replace(/^budapest[,\s]+/, '')
+    .replace(/\bu\.\s*/g, 'utca ')
+    .replace(/\b(utca|ut|ter|korut|setany|dulo|koz)\b/g, '')
+    .replace(/[,\s]+\d+[a-z0-9/.-]*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getReadTimestamps(userId) {
   if (!userId) return {};
   try {
@@ -155,13 +173,6 @@ function getUpcomingRoundTimeSlots() {
   }
 
   return [fmt(s1), fmt(s2), fmt(s3)];
-}
-
-function getOffsetTimeString(addMinutes = 10) {
-  const d = new Date(Date.now() + addMinutes * 60000);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
 }
 
 function resolveAutoDayForTime(hhmm, isRecurring = false) {
@@ -563,13 +574,11 @@ export default function App() {
     [fetchAllLiveData]
   );
 
-  // 60 másodperces élő órajel lejárt utak automatikus szűréséhez
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // Auth + Egyetlen, debounced Realtime csatorna + ablak-fókusz szinkron
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
     const uid = session?.user?.id || null;
@@ -620,7 +629,6 @@ export default function App() {
         scheduleDebouncedRefresh(uid)
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, (payload) => {
-        // Élő GPS koordináta-frissítésnél nem töltjük újra az egész főoldalt
         const oldRow = payload.old || {};
         const newRow = payload.new || {};
         if (
@@ -673,26 +681,41 @@ export default function App() {
     const activeTimeRides = rides.filter(
       (r) => r.is_recurring || !r.expires_at || new Date(r.expires_at).getTime() > nowTick
     );
-    const qFrom = stripAccents(filterFrom);
-    const qTo = stripAccents(filterTo);
-    if (!qFrom && !qTo) return activeTimeRides;
+    const qFromRaw = stripAccents(filterFrom);
+    const qToRaw = stripAccents(filterTo);
+    if (!qFromRaw && !qToRaw) return activeTimeRides;
+
+    const qFromToken = normalizeRouteToken(filterFrom);
+    const qToToken = normalizeRouteToken(filterTo);
 
     return activeTimeRides.filter((r) => {
       const originNorm = stripAccents(r.origin_text);
       const destNorm = stripAccents(r.dest_text);
+      const originToken = normalizeRouteToken(r.origin_text);
+      const destToken = normalizeRouteToken(r.dest_text);
       const stopsText = stripAccents((r.stops || []).map((s) => s.name).join(' '));
+      const stopsToken = normalizeRouteToken(stopsText);
       const fullRouteText = `${originNorm} ${stopsText} ${destNorm}`;
+      const fullRouteToken = `${originToken} ${stopsToken} ${destToken}`;
 
       const matchFrom =
-        !qFrom ||
-        originNorm.includes(qFrom) ||
-        stopsText.includes(qFrom);
+        !qFromRaw ||
+        originNorm.includes(qFromRaw) ||
+        stopsText.includes(qFromRaw) ||
+        (qFromToken.length >= 3 &&
+          (originToken.includes(qFromToken) ||
+            qFromToken.includes(originToken) ||
+            stopsToken.includes(qFromToken)));
 
       const matchTo =
-        !qTo ||
-        destNorm.includes(qTo) ||
-        stopsText.includes(qTo) ||
-        fullRouteText.includes(qTo);
+        !qToRaw ||
+        destNorm.includes(qToRaw) ||
+        stopsText.includes(qToRaw) ||
+        fullRouteText.includes(qToRaw) ||
+        (qToToken.length >= 3 &&
+          (destToken.includes(qToToken) ||
+            qToToken.includes(destToken) ||
+            fullRouteToken.includes(qToToken)));
 
       return matchFrom && matchTo;
     });
@@ -929,8 +952,18 @@ export default function App() {
   const handleOpenEditRide = (ride) => {
     setEditingItemId(ride.id);
     setNewKind(ride.is_recurring ? 'recurring' : ride.kind);
-    setNewFrom(ride.origin_text);
-    setNewTo(ride.dest_text);
+    setNewFrom(ride.origin_text || '');
+    setNewTo(ride.dest_text || '');
+    setNewFromCoords(
+      ride.origin_lat && ride.origin_lng
+        ? { lat: Number(ride.origin_lat), lng: Number(ride.origin_lng) }
+        : null
+    );
+    setNewToCoords(
+      ride.dest_lat && ride.dest_lng
+        ? { lat: Number(ride.dest_lat), lng: Number(ride.dest_lng) }
+        : null
+    );
     setNewTime(ride.time_label || '05:50');
     setNewScheduleText(ride.schedule_text || 'Munkanapokon (H–P)');
     setNewSeats(ride.seats || 3);
@@ -1349,7 +1382,6 @@ export default function App() {
 
   return (
     <div className="w-full max-w-xl mx-auto min-h-screen pb-28 overflow-x-hidden">
-      {/* Globális alkalmazás visszajelző sáv (Toast) */}
       {appNotice && (
         <div
           role="status"
@@ -1376,7 +1408,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Felugró értesítés új bejövő üzenetkor (ha a chat nincs megnyitva) */}
       {incomingToast && activeAgreement?.id !== incomingToast.agreement_id && (
         <div
           onClick={() => {
@@ -1833,6 +1864,8 @@ export default function App() {
                       setEditingItemId(null);
                       setNewFrom(filterFrom);
                       setNewTo(filterTo);
+                      setNewFromCoords(fromCoords);
+                      setNewToCoords(toCoords);
                       setNewKind('offer');
                       setShowNewModal(true);
                     }}
@@ -2289,16 +2322,23 @@ export default function App() {
               <div className="bg-white rounded-xl p-2 border border-[#DFD9CE] space-y-1.5">
                 <AddressAutocompleteInput
                   value={newFrom}
-                  onChange={setNewFrom}
+                  onChange={(val) => {
+                    setNewFromCoords(null);
+                    setNewFrom(val);
+                  }}
                   onSelectPlace={(pl) =>
                     setNewFromCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
                   }
                   placeholder="Honnan indulsz?"
+                  dotColor="border-pilis"
                 />
                 <div className="border-t border-[#ECE7DC] pt-1.5">
                   <AddressAutocompleteInput
                     value={newTo}
-                    onChange={setNewTo}
+                    onChange={(val) => {
+                      setNewToCoords(null);
+                      setNewTo(val);
+                    }}
                     onSelectPlace={(pl) =>
                       setNewToCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
                     }
