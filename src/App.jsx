@@ -1439,6 +1439,7 @@ export default function App() {
                 onFocus={() => setActiveSearchField('from')}
                 onChange={(val) => {
                   setSelectedRideForMap(null);
+                  setFromCoords(null);
                   setFilterFrom(val);
                 }}
                 onSelectPlace={(place) => {
@@ -1456,6 +1457,7 @@ export default function App() {
                   onFocus={() => setActiveSearchField('to')}
                   onChange={(val) => {
                     setSelectedRideForMap(null);
+                    setToCoords(null);
                     setFilterTo(val);
                   }}
                   onSelectPlace={(place) => {
@@ -1574,8 +1576,8 @@ export default function App() {
               rides={filteredRides}
               fromText={filterFrom}
               toText={filterTo}
-              fromCoords={resolveCoordsFromText(filterFrom) || fromCoords}
-              toCoords={resolveCoordsFromText(filterTo) || toCoords}
+              fromCoords={fromCoords || resolveCoordsFromText(filterFrom)}
+              toCoords={toCoords || resolveCoordsFromText(filterTo)}
               selectedRide={selectedRideForMap}
               onSelectRideOnMap={(rideObj) => setSelectedRideForMap(rideObj)}
               onPickLocation={(label, coordsObj, forcedField) =>
