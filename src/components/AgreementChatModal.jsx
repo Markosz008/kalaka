@@ -63,46 +63,7 @@ export default function AgreementChatModal({
     : Boolean(liveAgr?.helper_agreed);
 
   useEffect(() => {
-    if (!liveMapContainerRef.current || !agreement?.driver_lat || !agreement?.driver_lng) return;
-    const lat = Number(agreement.driver_lat);
-    const lng = Number(agreement.driver_lng);
-    if (isNaN(lat) || isNaN(lng)) return;
-
-    const map = new maplibregl.Map({
-      container: liveMapContainerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-      center: [lng, lat],
-      zoom: 15,
-      attributionControl: false
-    });
-
-    const el = document.createElement('div');
-    el.style.width = '28px';
-    el.style.height = '28px';
-    el.style.borderRadius = '9999px';
-    el.style.background = '#1E4635';
-    el.style.color = '#fff';
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.style.fontSize = '14px';
-    el.style.border = '2px solid #fff';
-    el.style.boxShadow = '0 3px 10px rgba(0,0,0,0.3)';
-    el.textContent = '🚗';
-
-    new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
-
-    return () => map.remove();
-  }, [agreement?.driver_lat, agreement?.driver_lng]);
-
-  // Élő jelölők frissítése
-  useEffect(() => {
-    const map = liveMapRef.current;
-    const layer = liveLayerRef.current;
-    if (!map || !layer || status !== 'started') return;
-
-    layer.clearLayers();
-    const bounds = [];
+    if (!liveMapContainerRef.current || status !== 'started') return;
 
     const pickupFallback = liveAgr?.pickup_stop_name
       ? resolveCoordsFromText(liveAgr.pickup_stop_name.replace(/^\d{2}:\d{2}\s*/, ''))
@@ -110,59 +71,94 @@ export default function AgreementChatModal({
 
     const passengerCoord =
       liveAgr?.passenger_lat && liveAgr?.passenger_lng
-        ? { lat: liveAgr.passenger_lat, lng: liveAgr.passenger_lng }
+        ? { lat: Number(liveAgr.passenger_lat), lng: Number(liveAgr.passenger_lng) }
         : pickupFallback;
 
     const driverCoord =
       liveAgr?.driver_lat && liveAgr?.driver_lng
-        ? { lat: liveAgr.driver_lat, lng: liveAgr.driver_lng }
+        ? { lat: Number(liveAgr.driver_lat), lng: Number(liveAgr.driver_lng) }
         : null;
 
+    const centerCoord = driverCoord || passengerCoord || { lat: 47.6694, lng: 19.0756 };
+
+    const map = new maplibregl.Map({
+      container: liveMapContainerRef.current,
+      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+      center: [centerCoord.lng, centerCoord.lat],
+      zoom: 15,
+      attributionControl: false
+    });
+
+    const markers = [];
+
     if (passengerCoord) {
-      const paxIcon = L.divIcon({
-        className: '',
-        html: `<div style="background:#C86446;color:#fff;font-weight:800;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap">Felszállópont</div>`,
-        iconSize: [96, 24],
-        iconAnchor: [48, 12]
-      });
-      L.marker([passengerCoord.lat, passengerCoord.lng], { icon: paxIcon }).addTo(layer);
-      bounds.push([passengerCoord.lat, passengerCoord.lng]);
+      const paxEl = document.createElement('div');
+      paxEl.style.cssText =
+        'background:#C86446;color:#fff;font-weight:800;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap';
+      paxEl.textContent = 'Felszállópont';
+      markers.push(
+        new maplibregl.Marker({ element: paxEl })
+          .setLngLat([passengerCoord.lng, passengerCoord.lat])
+          .addTo(map)
+      );
     }
 
     if (driverCoord) {
-      const carIcon = L.divIcon({
-        className: '',
-        html: `<div style="background:#1E4635;color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.45);white-space:nowrap">Autó úton</div>`,
-        iconSize: [86, 26],
-        iconAnchor: [43, 13]
-      });
-      L.marker([driverCoord.lat, driverCoord.lng], { icon: carIcon }).addTo(layer);
-      bounds.push([driverCoord.lat, driverCoord.lng]);
+      const carEl = document.createElement('div');
+      carEl.style.cssText =
+        'background:#1E4635;color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.45);white-space:nowrap';
+      carEl.textContent = '🚗 Autó úton';
+      markers.push(
+        new maplibregl.Marker({ element: carEl })
+          .setLngLat([driverCoord.lng, driverCoord.lat])
+          .addTo(map)
+      );
     }
 
     if (driverCoord && passengerCoord) {
-      L.polyline(
-        [
-          [driverCoord.lat, driverCoord.lng],
-          [passengerCoord.lat, passengerCoord.lng]
-        ],
-        { color: '#1E4635', weight: 3, dashArray: '6 6' }
-      ).addTo(layer);
+      const bounds = new maplibregl.LngLatBounds()
+        .extend([driverCoord.lng, driverCoord.lat])
+        .extend([passengerCoord.lng, passengerCoord.lat]);
+      map.fitBounds(bounds, { padding: 36, maxZoom: 15, duration: 0 });
+
+      map.on('load', () => {
+        map.addSource('live-approach', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [driverCoord.lng, driverCoord.lat],
+                [passengerCoord.lng, passengerCoord.lat]
+              ]
+            }
+          }
+        });
+        map.addLayer({
+          id: 'live-approach-line',
+          type: 'line',
+          source: 'live-approach',
+          paint: {
+            'line-color': '#1E4635',
+            'line-width': 3,
+            'line-dasharray': [2, 2]
+          }
+        });
+      });
     }
 
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 15);
-    } else if (bounds.length > 1) {
-      map.fitBounds(L.latLngBounds(bounds), { padding: [32, 32], maxZoom: 15 });
-    }
+    return () => {
+      markers.forEach((m) => m.remove());
+      map.remove();
+    };
   }, [
     status,
     liveAgr?.driver_lat,
     liveAgr?.driver_lng,
     liveAgr?.passenger_lat,
     liveAgr?.passenger_lng,
-    liveAgr?.pickup_stop_name,
-    liveAgr?.title
+    liveAgr?.pickup_stop_name
   ]);
 
   useEffect(() => {

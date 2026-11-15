@@ -2341,18 +2341,18 @@ export default function App() {
 
                 {newKind !== 'recurring' ? (
                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    {[
-                      ['Most (+10p)', 10],
-                      ['Köv. HÉV (+18p)', 18],
-                      ['+30 perc', 30]
-                    ].map(([lbl, mins]) => (
+                    {getUpcomingRoundTimeSlots().map((slotTime) => (
                       <button
-                        key={lbl}
+                        key={slotTime}
                         type="button"
-                        onClick={() => setNewTime(getOffsetTimeString(mins))}
-                        className="shrink-0 text-[11px] font-bold bg-white hover:bg-pilis-soft text-pilis border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
+                        onClick={() => setNewTime(slotTime)}
+                        className={`shrink-0 text-[11px] font-bold border px-2.5 py-1 rounded-lg transition ${
+                          newTime === slotTime
+                            ? 'bg-pilis text-white border-pilis'
+                            : 'bg-white hover:bg-pilis-soft text-pilis border-[#DFD9CE]'
+                        }`}
                       >
-                        ⚡ {lbl}
+                        🕒 {slotTime}
                       </button>
                     ))}
                   </div>

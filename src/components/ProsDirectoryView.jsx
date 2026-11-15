@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import L from 'leaflet';
+import maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import {
   SZENTENDRE_ZONES,
@@ -218,42 +218,43 @@ export default function ProsDirectoryView({
 
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
-    const map = L.map(mapRef.current, {
-      center: [47.674, 19.066],
+    const map = new maplibregl.Map({
+      container: mapRef.current,
+      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+      center: [19.066, 47.674],
       zoom: 13,
-      zoomControl: false
+      attributionControl: false
     });
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-      { attribution: '&copy; Esri, OpenStreetMap' }
-    ).addTo(map);
-
-    markersLayer.current = L.layerGroup().addTo(map);
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     mapInstance.current = map;
-    const t = setTimeout(() => map.invalidateSize(), 150);
+    markersLayer.current = [];
 
     return () => {
-      clearTimeout(t);
+      (markersLayer.current || []).forEach((m) => m.remove());
+      markersLayer.current = [];
       map.remove();
       mapInstance.current = null;
     };
   }, [showMap]);
 
   useEffect(() => {
-    const group = markersLayer.current;
-    if (!group || !showMap) return;
-    group.clearLayers();
+    const map = mapInstance.current;
+    if (!map || !showMap) return;
 
-    const boundsPoints = [];
+    (markersLayer.current || []).forEach((m) => m.remove());
+    markersLayer.current = [];
+
+    const bounds = new maplibregl.LngLatBounds();
+    let count = 0;
+
     filteredPros.forEach((p, idx) => {
       const liveNow = isLivePresenceActive(p);
       let coord = null;
 
       if (liveNow) {
-        coord = { lat: p.live_lat, lng: p.live_lng };
+        coord = { lat: Number(p.live_lat), lng: Number(p.live_lng) };
       } else if (p.lat && p.lng) {
-        coord = { lat: p.lat, lng: p.lng };
+        coord = { lat: Number(p.lat), lng: Number(p.lng) };
       } else {
         const fallbackText = p.address_text || p.active_zone_today || p.base_zone;
         const resolved = resolveCoordsFromText(fallbackText);
@@ -265,41 +266,32 @@ export default function ProsDirectoryView({
         }
       }
 
-      if (!coord) return;
+      if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) return;
 
       const badgeBg = liveNow ? '#047857' : p.lat && p.lng ? '#1E4635' : '#5C6B62';
       const shortProf = (p.profession_name || p.business_name || '').slice(0, 14);
       const labelText = liveNow ? `● ${shortProf}` : shortProf;
 
-      const pin = L.divIcon({
-        className: '',
-        html: `<div style="display:inline-flex;align-items:center;justify-content:center;background:${badgeBg};color:#fff;font-weight:700;font-size:10px;line-height:1;padding:4px 7px;border-radius:99px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.32);white-space:nowrap;cursor:pointer;transform:translate(-50%,-50%)">${labelText}</div>`,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0]
-      });
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.style.cssText = `display:inline-flex;align-items:center;justify-content:center;background:${badgeBg};color:#fff;font-weight:700;font-size:10px;line-height:1;padding:4px 8px;border-radius:99px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.32);white-space:nowrap;cursor:pointer`;
+      el.textContent = labelText;
+      el.title = `${p.business_name} • ${p.address_text || p.base_zone || 'Szentendre'}`;
+      el.onclick = () => setSelectedPro(p);
 
-      const subLabel = liveNow
-        ? `Most a közelben (${formatRemainingLiveTime(p.live_until)})`
-        : p.address_text || p.base_zone || 'Szentendre';
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([coord.lng, coord.lat])
+        .addTo(map);
 
-      const marker = L.marker([coord.lat, coord.lng], { icon: pin }).bindTooltip(
-        `${p.business_name} • ${subLabel}`,
-        { direction: 'top', offset: [0, -10] }
-      );
-      marker.on('click', () => setSelectedPro(p));
-      marker.addTo(group);
-      boundsPoints.push([coord.lat, coord.lng]);
+      markersLayer.current.push(marker);
+      bounds.extend([coord.lng, coord.lat]);
+      count += 1;
     });
 
-    if (mapInstance.current && boundsPoints.length > 0) {
-      if (boundsPoints.length === 1) {
-        mapInstance.current.setView(boundsPoints[0], 15);
-      } else {
-        mapInstance.current.fitBounds(L.latLngBounds(boundsPoints), {
-          padding: [28, 28],
-          maxZoom: 14
-        });
-      }
+    if (count === 1) {
+      map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 400 });
+    } else if (count > 1) {
+      map.fitBounds(bounds, { padding: 32, maxZoom: 14, duration: 400 });
     }
   }, [filteredPros, showMap]);
 
