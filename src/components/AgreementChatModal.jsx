@@ -3,6 +3,27 @@ import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
+const OSM_RASTER_STYLE = {
+  version: 8,
+  sources: {
+    'osm-raster': {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap'
+    }
+  },
+  layers: [
+    {
+      id: 'osm-layer',
+      type: 'raster',
+      source: 'osm-raster',
+      minzoom: 0,
+      maxzoom: 19
+    }
+  ]
+};
+
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -35,8 +56,6 @@ export default function AgreementChatModal({
 
   const bottomRef = useRef(null);
   const liveMapContainerRef = useRef(null);
-  const liveMapRef = useRef(null);
-  const liveLayerRef = useRef(null);
   const watchIdRef = useRef(null);
 
   const isUuid = (val) =>
@@ -50,7 +69,6 @@ export default function AgreementChatModal({
   const isRideAgreement = Boolean(liveAgr?.ride_id);
   const status = liveAgr?.status || 'chatting';
 
-  // Ki a hirdetés feladója (aki először hagyja jóvá a jelentkezést) és ki a csatlakozó fél?
   const postOwnerId = liveAgr?.post_owner_id || liveAgr?.helper_id;
   const isPostOwner = Boolean(currentUser?.id && postOwnerId === currentUser.id);
   const ownerIsHelper = postOwnerId === liveAgr?.helper_id;
@@ -62,6 +80,116 @@ export default function AgreementChatModal({
     ? Boolean(liveAgr?.requester_agreed)
     : Boolean(liveAgr?.helper_agreed);
 
+  // 1. Megállapodás és üzenetek betöltése + Realtime szinkron
+  useEffect(() => {
+    setLiveAgr(agreement || null);
+    setErrorBanner(null);
+    setGpsErrorMsg(null);
+    if (!agreement?.id || !supabase || !isUuid(agreement.id)) {
+      setMessages([]);
+      return;
+    }
+
+    let mounted = true;
+
+    supabase
+      .from('messages')
+      .select('*')
+      .eq('agreement_id', agreement.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (mounted && data) setMessages(data);
+      });
+
+    const channel = supabase
+      .channel(`agr-chat-${agreement.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `agreement_id=eq.${agreement.id}`
+        },
+        (payload) => {
+          if (!mounted || !payload.new) return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'agreements',
+          filter: `id=eq.${agreement.id}`
+        },
+        (payload) => {
+          if (!mounted || !payload.new) return;
+          setLiveAgr((prev) => (prev ? { ...prev, ...payload.new } : payload.new));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, [agreement?.id]);
+
+  // 2. Sofőr élő GPS megosztása, amíg az út 'started' státuszban van
+  useEffect(() => {
+    if (!isLiveDbAgreement || !isRideAgreement || status !== 'started' || !isHelper) {
+      if (watchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      setGpsActive(false);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setGpsErrorMsg('A böngésződ nem támogatja a GPS-helyzetmegosztást.');
+      return;
+    }
+
+    setGpsActive(true);
+    let lastSentAt = 0;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const now = Date.now();
+        if (now - lastSentAt < 6000) return;
+        lastSentAt = now;
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setGpsErrorMsg(null);
+        await supabase
+          .from('agreements')
+          .update({
+            driver_lat: lat,
+            driver_lng: lng,
+            driver_updated_at: new Date().toISOString()
+          })
+          .eq('id', liveAgr.id);
+      },
+      () => {
+        setGpsErrorMsg('Engedélyezd a GPS-t, vagy küldd el a pozíciódat gombbal.');
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    );
+
+    return () => {
+      if (watchIdRef.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      setGpsActive(false);
+    };
+  }, [isLiveDbAgreement, isRideAgreement, status, isHelper, liveAgr?.id]);
+
+  // 3. Élő mini-térkép kirajzolása (OSM raszteres csempékkel, valódi map.on('load') eseménnyel)
   useEffect(() => {
     if (!liveMapContainerRef.current || status !== 'started') return;
 
@@ -81,76 +209,85 @@ export default function AgreementChatModal({
 
     const centerCoord = driverCoord || passengerCoord || { lat: 47.6694, lng: 19.0756 };
 
-    const map = new maplibregl.Map({
-      container: liveMapContainerRef.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [centerCoord.lng, centerCoord.lat],
-      zoom: 15,
-      attributionControl: false
-    });
-
+    let map = null;
     const markers = [];
 
-    if (passengerCoord) {
-      const paxEl = document.createElement('div');
-      paxEl.style.cssText =
-        'background:#C86446;color:#fff;font-weight:800;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap';
-      paxEl.textContent = 'Felszállópont';
-      markers.push(
-        new maplibregl.Marker({ element: paxEl })
-          .setLngLat([passengerCoord.lng, passengerCoord.lat])
-          .addTo(map)
-      );
-    }
-
-    if (driverCoord) {
-      const carEl = document.createElement('div');
-      carEl.style.cssText =
-        'background:#1E4635;color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.45);white-space:nowrap';
-      carEl.textContent = '🚗 Autó úton';
-      markers.push(
-        new maplibregl.Marker({ element: carEl })
-          .setLngLat([driverCoord.lng, driverCoord.lat])
-          .addTo(map)
-      );
-    }
-
-    if (driverCoord && passengerCoord) {
-      const bounds = new maplibregl.LngLatBounds()
-        .extend([driverCoord.lng, driverCoord.lat])
-        .extend([passengerCoord.lng, passengerCoord.lat]);
-      map.fitBounds(bounds, { padding: 36, maxZoom: 15, duration: 0 });
+    try {
+      map = new maplibregl.Map({
+        container: liveMapContainerRef.current,
+        style: OSM_RASTER_STYLE,
+        center: [centerCoord.lng, centerCoord.lat],
+        zoom: 14.5,
+        attributionControl: false
+      });
 
       map.on('load', () => {
-        map.addSource('live-approach', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [
-                [driverCoord.lng, driverCoord.lat],
-                [passengerCoord.lng, passengerCoord.lat]
-              ]
+        map.resize();
+
+        if (passengerCoord && !isNaN(passengerCoord.lat) && !isNaN(passengerCoord.lng)) {
+          const paxEl = document.createElement('div');
+          paxEl.style.cssText =
+            'background:#C86446;color:#fff;font-weight:800;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap';
+          paxEl.textContent = 'Felszállópont';
+          markers.push(
+            new maplibregl.Marker({ element: paxEl })
+              .setLngLat([passengerCoord.lng, passengerCoord.lat])
+              .addTo(map)
+          );
+        }
+
+        if (driverCoord && !isNaN(driverCoord.lat) && !isNaN(driverCoord.lng)) {
+          const carEl = document.createElement('div');
+          carEl.style.cssText =
+            'background:#1E4635;color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.45);white-space:nowrap';
+          carEl.textContent = '🚗 Autó úton';
+          markers.push(
+            new maplibregl.Marker({ element: carEl })
+              .setLngLat([driverCoord.lng, driverCoord.lat])
+              .addTo(map)
+          );
+        }
+
+        if (driverCoord && passengerCoord) {
+          const bounds = new maplibregl.LngLatBounds()
+            .extend([driverCoord.lng, driverCoord.lat])
+            .extend([passengerCoord.lng, passengerCoord.lat]);
+          map.fitBounds(bounds, { padding: 36, maxZoom: 15, duration: 0 });
+
+          map.addSource('live-approach', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [driverCoord.lng, driverCoord.lat],
+                  [passengerCoord.lng, passengerCoord.lat]
+                ]
+              }
             }
-          }
-        });
-        map.addLayer({
-          id: 'live-approach-line',
-          type: 'line',
-          source: 'live-approach',
-          paint: {
-            'line-color': '#1E4635',
-            'line-width': 3,
-            'line-dasharray': [2, 2]
-          }
-        });
+          });
+          map.addLayer({
+            id: 'live-approach-line',
+            type: 'line',
+            source: 'live-approach',
+            paint: {
+              'line-color': '#1E4635',
+              'line-width': 3,
+              'line-dasharray': [2, 2]
+            }
+          });
+        }
       });
-    }
+    } catch {}
 
     return () => {
       markers.forEach((m) => m.remove());
-      map.remove();
+      if (map) {
+        try {
+          map.remove();
+        } catch {}
+      }
     };
   }, [
     status,
@@ -172,7 +309,10 @@ export default function AgreementChatModal({
     if (!clean) return;
 
     if (!isLiveDbAgreement) {
-      setMessages((prev) => [...prev, { id: `local-${Date.now()}`, sender_id: currentUser.id, body: clean }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `local-${Date.now()}`, sender_id: currentUser.id, body: clean }
+      ]);
       return;
     }
 
@@ -193,7 +333,6 @@ export default function AgreementChatModal({
     await sendMessage(msg);
   };
 
-  // 1. lépés: Hirdetés feladója jóváhagyja -> 2. lépés: Csatlakozó fél véglegesíti
   const handleSequentialApproval = async () => {
     if (!isLiveDbAgreement) return;
     setBusy(true);
@@ -229,7 +368,6 @@ export default function AgreementChatModal({
         .single();
       if (error) throw error;
 
-      // Ha most lett véglegesítve a fuvar, csökkentjük a szabad helyek számát 1-gyel
       if (bothConfirmed && liveAgr.ride_id) {
         const { data: rideRow } = await supabase
           .from('rides')
@@ -505,7 +643,6 @@ export default function AgreementChatModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-limestone w-full max-w-lg h-[100dvh] sm:h-[660px] rounded-none sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border-0 sm:border sm:border-[#DFD9CE] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-        {/* Fejléc */}
         <div className="bg-white px-4 py-3 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <button onClick={onClose} className="text-2xl font-bold text-[#18261F] px-1">
@@ -526,23 +663,23 @@ export default function AgreementChatModal({
               className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition"
               title="Adatlap megtekintése"
             >
-            <div className="w-9 h-9 rounded-full bg-pilis text-white font-bold text-sm grid place-items-center shrink-0">
-              {liveAgr.partner_name?.[0] || 'S'}
-            </div>
-            <div className="truncate">
-              <div className="font-bold text-sm truncate flex items-center gap-1.5">
-                <span className="truncate">{liveAgr.partner_name}</span>
-                {liveAgr.car_info && (
-                  <span className="text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full shrink-0">
-                    🚗 {liveAgr.car_info}
-                  </span>
-                )}
+              <div className="w-9 h-9 rounded-full bg-pilis text-white font-bold text-sm grid place-items-center shrink-0">
+                {liveAgr.partner_name?.[0] || 'S'}
               </div>
-              <div className="text-[11px] text-[#5C6B62] truncate">
-                {liveAgr.title}
-                {liveAgr.pickup_stop_name ? ` • ${liveAgr.pickup_stop_name}` : ''}
+              <div className="truncate">
+                <div className="font-bold text-sm truncate flex items-center gap-1.5">
+                  <span className="truncate">{liveAgr.partner_name}</span>
+                  {liveAgr.car_info && (
+                    <span className="text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full shrink-0">
+                      🚗 {liveAgr.car_info}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-[#5C6B62] truncate">
+                  {liveAgr.title}
+                  {liveAgr.pickup_stop_name ? ` • ${liveAgr.pickup_stop_name}` : ''}
+                </div>
               </div>
-            </div>
             </div>
           </div>
 
@@ -611,7 +748,6 @@ export default function AgreementChatModal({
           </form>
         )}
 
-        {/* Regisztrált szaki 2 lépéses munka-visszaigazolása az ajánláshoz */}
         {isProInquiry && liveAgr.helper_id && (
           <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-[#18261F] min-w-0">
@@ -684,7 +820,6 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        {/* Szekvenciális (1. Hirdető -> 2. Csatlakozó) jóváhagyási és útkövetési állapotsáv */}
         {!isProInquiry && (
           <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
             <div className="text-xs font-semibold text-[#18261F] min-w-0">
@@ -721,7 +856,6 @@ export default function AgreementChatModal({
             </div>
 
             <div className="shrink-0 flex items-center gap-1.5">
-              {/* 1. lépés: Csak a hirdető látja az Elfogadom gombot */}
               {status === 'chatting' && isPostOwner && !ownerConfirmed && (
                 <button
                   disabled={busy}
@@ -732,7 +866,6 @@ export default function AgreementChatModal({
                 </button>
               )}
 
-              {/* 2. lépés: Miután a hirdető elfogadta, a csatlakozó véglegesíti */}
               {status === 'chatting' && !isPostOwner && ownerConfirmed && !joinerConfirmed && (
                 <button
                   disabled={busy}
@@ -803,7 +936,6 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        {/* Élő mini-térkép a chatben, amíg az autó úton van */}
         {isRideAgreement && status === 'started' && (
           <div className="relative bg-[#E8E4DA] border-b border-[#DFD9CE]">
             <div ref={liveMapContainerRef} className="w-full h-40" />
@@ -817,7 +949,6 @@ export default function AgreementChatModal({
           </div>
         )}
 
-        {/* Üzenetek */}
         {isRideAgreement && ['agreed', 'started'].includes(status) && gpsErrorMsg && (
           <div className="bg-amber-50 border-b border-amber-200 px-3.5 py-2 flex items-center justify-between gap-2 text-[11px] text-amber-950">
             <span className="leading-tight">{gpsErrorMsg}</span>
@@ -871,7 +1002,6 @@ export default function AgreementChatModal({
           <div ref={bottomRef} />
         </div>
 
-        {/* Gyorsválaszok */}
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-2">
           {quickReplies.map((q) => (
             <button
@@ -885,7 +1015,6 @@ export default function AgreementChatModal({
           ))}
         </div>
 
-        {/* Üzenetküldő */}
         <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-[#DFD9CE] flex gap-2">
           <input
             type="text"
@@ -902,4 +1031,3 @@ export default function AgreementChatModal({
     </div>
   );
 }
-

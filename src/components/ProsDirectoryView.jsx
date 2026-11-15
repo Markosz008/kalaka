@@ -9,6 +9,27 @@ import {
   resolveCoordsFromText
 } from '../constants/szentendreData.js';
 
+const OSM_RASTER_STYLE = {
+  version: 8,
+  sources: {
+    'osm-raster': {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap'
+    }
+  },
+  layers: [
+    {
+      id: 'osm-layer',
+      type: 'raster',
+      source: 'osm-raster',
+      minzoom: 0,
+      maxzoom: 19
+    }
+  ]
+};
+
 const ENDORSEMENT_STRENGTH_TAGS = [
   'Pontos',
   'Szépen dolgozik',
@@ -63,6 +84,7 @@ export default function ProsDirectoryView({
   const [groupFilter, setGroupFilter] = useState('all');
   const [professionFilter, setProfessionFilter] = useState('all');
   const [showMap, setShowMap] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
 
   const [selectedPro, setSelectedPro] = useState(null);
 
@@ -99,7 +121,7 @@ export default function ProsDirectoryView({
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
-  const markersLayer = useRef(null);
+  const markersLayer = useRef([]);
 
   const allProfessions = useMemo(() => {
     const map = new Map();
@@ -218,28 +240,40 @@ export default function ProsDirectoryView({
 
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
-    const map = new maplibregl.Map({
-      container: mapRef.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [19.066, 47.674],
-      zoom: 13,
-      attributionControl: false
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-    mapInstance.current = map;
-    markersLayer.current = [];
+    let map = null;
+    try {
+      map = new maplibregl.Map({
+        container: mapRef.current,
+        style: OSM_RASTER_STYLE,
+        center: [19.066, 47.674],
+        zoom: 13,
+        attributionControl: false
+      });
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+      map.on('load', () => {
+        map.resize();
+        setMapReady(true);
+      });
+      mapInstance.current = map;
+      markersLayer.current = [];
+    } catch {}
 
     return () => {
       (markersLayer.current || []).forEach((m) => m.remove());
       markersLayer.current = [];
-      map.remove();
-      mapInstance.current = null;
+      if (mapInstance.current) {
+        try {
+          mapInstance.current.remove();
+        } catch {}
+        mapInstance.current = null;
+      }
+      setMapReady(false);
     };
   }, [showMap]);
 
   useEffect(() => {
     const map = mapInstance.current;
-    if (!map || !showMap) return;
+    if (!map || !showMap || !mapReady) return;
 
     (markersLayer.current || []).forEach((m) => m.remove());
     markersLayer.current = [];
@@ -293,7 +327,7 @@ export default function ProsDirectoryView({
     } else if (count > 1) {
       map.fitBounds(bounds, { padding: 32, maxZoom: 14, duration: 400 });
     }
-  }, [filteredPros, showMap]);
+  }, [filteredPros, showMap, mapReady]);
 
   const handleToggleLivePresence = async (pro) => {
     if (!supabase || !currentUserId) return;
@@ -728,7 +762,7 @@ export default function ProsDirectoryView({
         )}
 
         {showMap && (
-          <div className="rounded-xl overflow-hidden border border-[#DFD9CE]">
+          <div className="rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
             <div ref={mapRef} className="w-full h-48 sm:h-60" />
           </div>
         )}
@@ -1388,4 +1422,3 @@ export default function ProsDirectoryView({
     </div>
   );
 }
-

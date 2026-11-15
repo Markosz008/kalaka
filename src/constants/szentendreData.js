@@ -1,4 +1,3 @@
-// Valós szentendrei városrészek pontos középponti koordinátákkal
 export const SZENTENDRE_ZONES = [
   { id: 'belvaros', name: 'Belváros', lat: 47.6673, lng: 19.0756 },
   { id: 'bukkos', name: 'Bükkös-part', lat: 47.6698, lng: 19.0715 },
@@ -16,7 +15,6 @@ export const SZENTENDRE_ZONES = [
   { id: 'derecske', name: 'Derecske', lat: 47.6560, lng: 19.0540 }
 ];
 
-// Fő szolgáltatási és szakmai területek (fizikai szakik + helyi szolgáltatók együtt)
 export const SERVICE_GROUPS = [
   { id: 'all', label: 'Összes' },
   { id: 'otthon', label: 'Otthon és szerelés' },
@@ -26,7 +24,6 @@ export const SERVICE_GROUPS = [
   { id: 'mozgas_oktatas', label: 'Edzés és oktatás' }
 ];
 
-// Induló szakmalista (bármikor bővíthető új szakmával az űrlapból!)
 export const DEFAULT_PROFESSIONS = [
   { name: 'Villanyszerelő', group: 'otthon' },
   { name: 'Víz- és fűtésszerelő', group: 'otthon' },
@@ -59,9 +56,8 @@ export function normalizeServiceGroup(cat) {
 
 export const PRO_CATEGORIES = SERVICE_GROUPS;
 
-// Valós szentendrei közlekedési csomópontok és buszöblök
 export const LOCAL_PLACES = [
-  { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.6918, lng: 19.0517 },
+  { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.6916, lng: 19.0563 },
   { name: 'Szabadságforrás buszforduló', subtitle: 'Szentendre, Felső-Pismány', lat: 47.6948, lng: 19.0462 },
   { name: 'Pismány, Cseresznyés út sarok', subtitle: 'Szabadságforrás út • Pismány', lat: 47.6902, lng: 19.0558 },
   { name: 'Alsó-Pismány, Barackos út', subtitle: '2000 Szentendre', lat: 47.6860, lng: 19.0620 },
@@ -130,7 +126,7 @@ export function resolveCoordsFromText(text) {
     return { lat: 47.6602, lng: 19.0738, label: 'Szentendre HÉV-végállomás' };
   }
   if (q.includes('fogoly')) {
-    return { lat: 47.6918, lng: 19.0517, label: text };
+    return { lat: 47.6916, lng: 19.0563, label: text };
   }
   if (q.includes('bükkös') || q.includes('bukkos')) {
     return { lat: 47.6701, lng: 19.0739, label: 'Bükkös-part' };
@@ -159,101 +155,11 @@ export function resolveCoordsFromText(text) {
   if (q.includes('újpest') || q.includes('ujpest')) return { lat: 47.5605, lng: 19.0792, label: text };
   if (q.includes('batthyány') || q.includes('batthyany')) return { lat: 47.5065, lng: 19.0399, label: text };
   if (q.includes('árpád') || q.includes('göncz')) return { lat: 47.5325, lng: 19.0660, label: text };
-  if (q.includes('hév') || q.includes('hev')) return { lat: 47.6602, lng: 19.0738, label: 'Szentendre HÉV-végállomás' };
 
   return null;
 }
 
-export async function searchAddressSuggestions(query) {
-  const raw = (query || '').trim();
-  if (raw.length < 2) return [];
-
-  const qLower = raw.toLowerCase();
-  const houseMatch = raw.match(/(?:^|\s)(\d+[a-zA-Z/.-]*)\s*$/);
-  const typedHouseNumber = houseMatch ? houseMatch[1].replace(/\.*$/, '') : null;
-
-  const localMatches = LOCAL_PLACES.filter(
-    (p) =>
-      p.name.toLowerCase().includes(qLower) ||
-      p.subtitle.toLowerCase().includes(qLower)
-  ).map((p) => {
-    if (typedHouseNumber && !p.name.match(/\d/) && p.name.toLowerCase().includes('utca')) {
-      return {
-        ...p,
-        name: `${p.name} ${typedHouseNumber}.`
-      };
-    }
-    return p;
-  });
-
-  try {
-    const cleanedForGeocoder = raw
-      .replace(/^(felső-pismány|alsó-pismány|pismány|szarvashegy|izbég|sztaravoda|belváros)[,\s-]*/i, '')
-      .trim();
-
-    const searchTerm =
-      cleanedForGeocoder.toLowerCase().includes('budapest') ||
-      cleanedForGeocoder.toLowerCase().includes('újpest') ||
-      cleanedForGeocoder.toLowerCase().includes('pomáz')
-        ? cleanedForGeocoder
-        : `${cleanedForGeocoder}, Szentendre`;
-
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=hu&viewbox=18.95,47.76,19.20,47.48&bounded=1&limit=6&accept-language=hu&q=${encodeURIComponent(
-      searchTerm
-    )}`;
-
-    const res = await fetch(url);
-    const rows = await res.json();
-
-    const remoteMatches = (rows || [])
-      .map((item) => {
-        const addr = item.address || {};
-        const city =
-          addr.city ||
-          addr.town ||
-          addr.village ||
-          addr.suburb ||
-          'Szentendre';
-        const road = addr.road || addr.pedestrian || addr.residential || item.name || '';
-        const house = addr.house_number
-          ? `${addr.house_number}.`
-          : typedHouseNumber && road
-          ? `${typedHouseNumber}.`
-          : '';
-
-        const lat = parseFloat(item.lat);
-        const lng = parseFloat(item.lon);
-        if (!lat || !lng || (!road && !item.name)) return null;
-
-        const mainTitle = road
-          ? `${city === 'Szentendre' ? 'Szentendre, ' : city + ', '}${road}${house ? ' ' + house : ''}`
-          : item.display_name.split(',').slice(0, 2).join(', ');
-
-        return {
-          name: mainTitle.trim(),
-          subtitle: `${addr.postcode || '2000'} ${city}${addr.suburb ? ' • ' + addr.suburb : ''}`,
-          lat,
-          lng
-        };
-      })
-      .filter(Boolean);
-
-    const combined = [...localMatches];
-    remoteMatches.forEach((rm) => {
-      if (!combined.some((c) => c.name.toLowerCase() === rm.name.toLowerCase())) {
-        combined.push(rm);
-      }
-    });
-
-    return combined.slice(0, 6);
-  } catch {
-    return localMatches.slice(0, 6);
-  }
-}
-
-
 export function maskAddressForPublic(fullAddress) {
   if (!fullAddress) return '';
-  // Levágja a ponttal vagy vesszővel elválasztott utolsó házszámot (pl. "Fogoly utca 7." -> "Fogoly utca")
   return fullAddress.replace(/[,\s]+\d+[a-zA-Z/.-]*\.?\s*$/, '').trim();
 }
