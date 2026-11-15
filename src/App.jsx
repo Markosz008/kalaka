@@ -203,7 +203,7 @@ export default function App() {
   const [fromCoords, setFromCoords] = useState(null);
   const [toCoords, setToCoords] = useState(null);
   const [activeSearchField, setActiveSearchField] = useState('from');
-  const [showMap, setShowMap] = useState(true);
+  const [showMap, setShowMap] = useState(false);
   const [selectedRideForMap, setSelectedRideForMap] = useState(null);
 
   const [inlineComposerMode, setInlineComposerMode] = useState(null);
@@ -680,7 +680,7 @@ export default function App() {
     const hour = new Date().getHours();
     const isMorning = hour >= 5 && hour < 12;
     const morningHubs = new Set(['Szentendre HÉV-végállomás', 'Újpest-Városkapu', 'Papírgyár', 'Bükkös-part']);
-    const afternoonHubs = new Set(['Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
+    const afternoonHubs = new Set(['Szentendre HÉV-végállomás', 'Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
 
     return BASE_QUICK_DESTINATIONS.map((label) => {
       const needle = label.replace('Szentendre ', '').toLowerCase();
@@ -743,8 +743,10 @@ export default function App() {
       setFromCoords(null);
       setToCoords(null);
       setInlineComposerMode(null);
+      setShowMap(false);
       return;
     }
+    setShowMap(true);
 
     const targetField =
       forcedField || (activeSearchField === 'to' || (filterFrom && !filterTo) ? 'to' : 'from');
@@ -1419,6 +1421,7 @@ export default function App() {
                 }}
                 onSelectPlace={(place) => {
                   setFromCoords(place ? { lat: place.lat, lng: place.lng } : null);
+                  if (place) setShowMap(true);
                   setActiveSearchField('to');
                 }}
                 placeholder="Honnan indulsz?"
@@ -1435,6 +1438,7 @@ export default function App() {
                   }}
                   onSelectPlace={(place) => {
                     setToCoords(place ? { lat: place.lat, lng: place.lng } : null);
+                    if (place) setShowMap(true);
                   }}
                   placeholder="Hová tartasz?"
                   isSolidDot
@@ -1488,8 +1492,8 @@ export default function App() {
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-[#ECE7DC] min-w-0">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-[#ECE7DC] min-w-0">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 pr-3 min-w-0 flex-1 [mask-image:linear-gradient(to_right,black_88%,transparent_100%)]">
               <button
                 type="button"
                 onClick={() => handleSelectQuickLocation('Mind')}
@@ -1539,7 +1543,7 @@ export default function App() {
               aria-expanded={showMap}
               className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg transition active:scale-95"
             >
-              {showMap ? 'Térkép elrejtése' : 'Térkép'}
+              {showMap ? 'Térkép ▴' : '🗺️ Térkép'}
             </button>
           </div>
 
@@ -1772,12 +1776,16 @@ export default function App() {
                 ))}
               </div>
             ) : displayedRides.length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-3">
+              <div className="bg-white rounded-2xl p-5 sm:p-6 text-center border border-[#DFD9CE] space-y-2.5">
                 <div className="text-sm font-bold text-[#18261F]">
-                  Jelenleg nincs aktív út erre a szűrésre.
+                  {filterFrom || filterTo || rideKindFilter !== 'all'
+                    ? 'Nincs aktív út erre a szűrésre.'
+                    : 'Még nincs kiírt út a következő órákra.'}
                 </div>
-                <p className="text-xs text-[#5C6B62]">
-                  Add meg fent az indulási és érkezési pontot, vagy töröld a szűrőket.
+                <p className="text-xs text-[#5C6B62] leading-relaxed">
+                  {filterFrom || filterTo || rideKindFilter !== 'all'
+                    ? 'Próbálj meg másik megállót választani, vagy töröld a szűrőket.'
+                    : 'Indulsz valahová Szentendrén belül vagy a HÉV-hez? Írd ki 10 másodperc alatt!'}
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1">
                   {(filterFrom || filterTo || rideKindFilter !== 'all') && (
