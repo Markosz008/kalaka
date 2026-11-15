@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
+import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
 const COMBINED_MAP_STYLE = {
   version: 8,
@@ -78,15 +79,17 @@ export default function InteractiveRouteMap({
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
 
-  const effectiveFrom =
-    selectedRide && selectedRide.origin_lat && selectedRide.origin_lng
+  const effectiveFrom = selectedRide
+    ? selectedRide.origin_lat && selectedRide.origin_lng
       ? { lat: Number(selectedRide.origin_lat), lng: Number(selectedRide.origin_lng) }
-      : fromCoords;
+      : resolveCoordsFromText(selectedRide.origin_text)
+    : fromCoords;
 
-  const effectiveTo =
-    selectedRide && selectedRide.dest_lat && selectedRide.dest_lng
+  const effectiveTo = selectedRide
+    ? selectedRide.dest_lat && selectedRide.dest_lng
       ? { lat: Number(selectedRide.dest_lat), lng: Number(selectedRide.dest_lng) }
-      : toCoords;
+      : resolveCoordsFromText(selectedRide.dest_text)
+    : toCoords;
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;

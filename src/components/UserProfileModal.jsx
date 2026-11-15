@@ -18,7 +18,6 @@ export default function UserProfileModal({
   const [verifyingGps, setVerifyingGps] = useState(false);
   const [gpsFeedback, setGpsFeedback] = useState(null);
 
-  // Saját profil szerkesztése
   const isOwnProfile = Boolean(currentUser?.id && userId === currentUser.id);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -35,46 +34,41 @@ export default function UserProfileModal({
 
     (async () => {
       setLoading(true);
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
-        .eq('id', userId)
-        .maybeSingle();
-
-      // Kudos lekérdezés FK-fallbackkel, hogy soha ne dobjon 400-as hibát
-      let resolvedKudos = [];
-      const { data: joinedKudos, error: joinErr } = await supabase
-        .from('kudos')
-        .select('id, kudos_type, created_at, giver_id, giver:profiles!kudos_giver_id_fkey(display_name, zone)')
-        .eq('receiver_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (!joinErr && joinedKudos) {
-        resolvedKudos = joinedKudos;
-      } else {
-        const { data: rawKudos } = await supabase
+      const [{ data: prof }, { data: rawKudos }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
           .from('kudos')
-          .select('id, kudos_type, created_at, giver_id')
+          .select('*')
           .eq('receiver_id', userId)
-          .order('created_at', { ascending: false });
+      ]);
 
-        if (rawKudos && rawKudos.length > 0) {
-          const giverIds = Array.from(new Set(rawKudos.map((k) => k.giver_id).filter(Boolean)));
-          let giverMap = {};
-          if (giverIds.length > 0) {
-            const { data: givers } = await supabase
-              .from('profiles')
-              .select('id, display_name, zone')
-              .in('id', giverIds);
-            (givers || []).forEach((g) => {
-              giverMap[g.id] = g;
-            });
-          }
-          resolvedKudos = rawKudos.map((k) => ({
-            ...k,
-            giver: giverMap[k.giver_id] || null
-          }));
+      let resolvedKudos = [];
+      if (rawKudos && rawKudos.length > 0) {
+        const giverIds = Array.from(
+          new Set(rawKudos.map((k) => k.giver_id || k.sender_id).filter(Boolean))
+        );
+        const giverMap = {};
+        if (giverIds.length > 0) {
+          const { data: givers } = await supabase
+            .from('profiles')
+            .select('id, display_name, zone')
+            .in('id', giverIds);
+          (givers || []).forEach((g) => {
+            giverMap[g.id] = g;
+          });
         }
+        resolvedKudos = rawKudos.map((k, idx) => {
+          const gid = k.giver_id || k.sender_id;
+          return {
+            id: k.id || `kudos-${idx}`,
+            kudos_type: k.kudos_type || k.type || 'ride',
+            giver: gid ? giverMap[gid] || null : null
+          };
+        });
       }
 
       if (!mounted) return;
@@ -229,7 +223,6 @@ export default function UserProfileModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-4 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border"
       >
-        {/* Fejléc */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-12 h-12 rounded-full bg-pilis text-white font-display font-extrabold text-lg grid place-items-center shrink-0 shadow">
@@ -265,7 +258,6 @@ export default function UserProfileModal({
           </button>
         </div>
 
-        {/* Közösségi bizalmi mutatók */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-white rounded-2xl p-3 border border-[#DFD9CE] text-center">
             <div className="font-display font-extrabold text-xl text-pilis">
@@ -293,7 +285,6 @@ export default function UserProfileModal({
           </div>
         </div>
 
-        {/* Bemutatkozás és opcionális autó infó */}
         {!editing ? (
           <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
             <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
@@ -495,7 +486,6 @@ export default function UserProfileModal({
           </form>
         )}
 
-        {/* Kik igazolták vissza? (Utolsó visszajelzések) */}
         <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
           <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
             Legutóbbi visszaigazolások ({totalKudos})
