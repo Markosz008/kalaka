@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
