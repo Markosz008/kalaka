@@ -220,7 +220,17 @@ export default function ProsDirectoryView({
     if (!showMap || !mapRef.current || mapInstance.current) return;
     const map = new maplibregl.Map({
       container: mapRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+      style: {
+      version: 8,
+      sources: {
+        'carto-voyager': {
+          type: 'raster',
+          tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
+          tileSize: 256
+        }
+      },
+      layers: [{ id: 'carto-voyager-layer', type: 'raster', source: 'carto-voyager' }]
+    },
       center: [19.066, 47.674],
       zoom: 13,
       attributionControl: false

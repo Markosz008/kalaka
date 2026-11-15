@@ -1,8 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
-const VECTOR_STYLE_URL = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+// Garantáltan működő, nagyfelbontású (Retina @2x) CARTO Voyager stílus + OSM tartalék,
+// ami nem függ külső glyph/sprite JSON letiltásoktól
+const VOYAGER_STYLE = {
+  version: 8,
+  sources: {
+    'carto-voyager': {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'
+      ],
+      tileSize: 256,
+      attribution: '© CARTO, © OpenStreetMap'
+    }
+  },
+  layers: [
+    {
+      id: 'carto-voyager-layer',
+      type: 'raster',
+      source: 'carto-voyager',
+      minzoom: 0,
+      maxzoom: 20
+    }
+  ]
+};
 
 const SATELLITE_STYLE = {
   version: 8,
@@ -16,13 +40,21 @@ const SATELLITE_STYLE = {
       attribution: '© Esri'
     }
   },
-  layers: [{ id: 'esri-sat', type: 'raster', source: 'esri' }]
+  layers: [
+    {
+      id: 'esri-sat',
+      type: 'raster',
+      source: 'esri',
+      minzoom: 0,
+      maxzoom: 19
+    }
+  ]
 };
 
 function createPinElement(letter, bgColor) {
   const el = document.createElement('div');
-  el.style.width = '28px';
-  el.style.height = '28px';
+  el.style.width = '30px';
+  el.style.height = '30px';
   el.style.borderRadius = '9999px';
   el.style.background = bgColor;
   el.style.color = '#ffffff';
@@ -32,7 +64,7 @@ function createPinElement(letter, bgColor) {
   el.style.alignItems = 'center';
   el.style.justifyContent = 'center';
   el.style.border = '2.5px solid #ffffff';
-  el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.28)';
+  el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.32)';
   el.style.cursor = 'grab';
   el.textContent = letter;
   return el;
@@ -52,6 +84,7 @@ export default function InteractiveRouteMap({
   const markerARef = useRef(null);
   const markerBRef = useRef(null);
   const rideMarkersRef = useRef([]);
+  const initialModeRef = useRef('vector');
 
   const [mapMode, setMapMode] = useState('vector');
   const [routeStats, setRouteStats] = useState(null);
@@ -67,23 +100,32 @@ export default function InteractiveRouteMap({
       ? { lat: Number(selectedRide.dest_lat), lng: Number(selectedRide.dest_lng) }
       : toCoords;
 
-  // MapLibre inicializálás
+  // 1. MapLibre inicializálás (egyetlen egyszer, dupla setStyle nélkül!)
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: VECTOR_STYLE_URL,
-      center: [19.0756, 47.6694],
-      zoom: 13,
+      style: VOYAGER_STYLE,
+      center: [19.065, 47.675],
+      zoom: 13.2,
       attributionControl: false
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
-    map.on('load', () => {
+    const markReady = () => {
+      map.resize();
       setMapReady(true);
-    });
+    };
+
+    map.on('load', markReady);
+    const resizeTimer = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+        setMapReady(true);
+      }
+    }, 250);
 
     map.on('click', async (e) => {
       if (!onPickLocation) return;
@@ -105,22 +147,29 @@ export default function InteractiveRouteMap({
 
     mapRef.current = map;
     return () => {
+      clearTimeout(resizeTimer);
       map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
   }, []);
 
-  // Utca / Műhold stílus váltás
+  // 2. Utca / Műhold váltás (CSAK ha a felhasználó ténylegesen váltott!)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    if (initialModeRef.current === mapMode) return;
+    initialModeRef.current = mapMode;
+
     setMapReady(false);
-    map.setStyle(mapMode === 'satellite' ? SATELLITE_STYLE : VECTOR_STYLE_URL);
-    map.once('styledata', () => setMapReady(true));
+    map.setStyle(mapMode === 'satellite' ? SATELLITE_STYLE : VOYAGER_STYLE);
+    map.once('styledata', () => {
+      map.resize();
+      setMapReady(true);
+    });
   }, [mapMode]);
 
-  // A és B tűk + OSRM útvonal rajzolás
+  // 3. A és B tűk + OSRM útvonal kirajzolása
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -134,12 +183,12 @@ export default function InteractiveRouteMap({
       markerBRef.current = null;
     }
 
-    if (effectiveFrom) {
+    if (effectiveFrom && !isNaN(effectiveFrom.lat) && !isNaN(effectiveFrom.lng)) {
       const mA = new maplibregl.Marker({
         element: createPinElement('A', '#1E4635'),
         draggable: Boolean(onUpdatePinCoords && !selectedRide)
       })
-        .setLngLat([effectiveFrom.lng, effectiveFrom.lat])
+        .setLngLat([Number(effectiveFrom.lng), Number(effectiveFrom.lat)])
         .addTo(map);
 
       mA.on('dragend', () => {
@@ -149,12 +198,12 @@ export default function InteractiveRouteMap({
       markerARef.current = mA;
     }
 
-    if (effectiveTo) {
+    if (effectiveTo && !isNaN(effectiveTo.lat) && !isNaN(effectiveTo.lng)) {
       const mB = new maplibregl.Marker({
         element: createPinElement('B', '#C86446'),
         draggable: Boolean(onUpdatePinCoords && !selectedRide)
       })
-        .setLngLat([effectiveTo.lng, effectiveTo.lat])
+        .setLngLat([Number(effectiveTo.lng), Number(effectiveTo.lat)])
         .addTo(map);
 
       mB.on('dragend', () => {
@@ -165,15 +214,17 @@ export default function InteractiveRouteMap({
     }
 
     const clearRouteLayer = () => {
-      if (map.getLayer('kalaka-route-line')) map.removeLayer('kalaka-route-line');
-      if (map.getSource('kalaka-route')) map.removeSource('kalaka-route');
+      try {
+        if (map.getLayer('kalaka-route-line')) map.removeLayer('kalaka-route-line');
+        if (map.getSource('kalaka-route')) map.removeSource('kalaka-route');
+      } catch {}
     };
 
     if (effectiveFrom && effectiveTo) {
       const bounds = new maplibregl.LngLatBounds()
-        .extend([effectiveFrom.lng, effectiveFrom.lat])
-        .extend([effectiveTo.lng, effectiveTo.lat]);
-      map.fitBounds(bounds, { padding: 52, maxZoom: 15, duration: 500 });
+        .extend([Number(effectiveFrom.lng), Number(effectiveFrom.lat)])
+        .extend([Number(effectiveTo.lng), Number(effectiveTo.lat)]);
+      map.fitBounds(bounds, { padding: 54, maxZoom: 15.5, duration: 450 });
 
       fetch(
         `https://router.project-osrm.org/route/v1/driving/${effectiveFrom.lng},${effectiveFrom.lat};${effectiveTo.lng},${effectiveTo.lat}?overview=full&geometries=geojson`
@@ -209,13 +260,17 @@ export default function InteractiveRouteMap({
       clearRouteLayer();
       setRouteStats(null);
       const single = effectiveFrom || effectiveTo;
-      if (single) {
-        map.flyTo({ center: [single.lng, single.lat], zoom: 15.5, duration: 500 });
+      if (single && !isNaN(single.lat) && !isNaN(single.lng)) {
+        map.flyTo({
+          center: [Number(single.lng), Number(single.lat)],
+          zoom: 15.8,
+          duration: 450
+        });
       }
     }
   }, [effectiveFrom?.lat, effectiveFrom?.lng, effectiveTo?.lat, effectiveTo?.lng, mapReady, selectedRide]);
 
-  // Aktív utak jelölői a térképen
+  // 4. Aktív utak jelölői a térképen
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -256,16 +311,15 @@ export default function InteractiveRouteMap({
       mapRef.current?.flyTo({
         center: [pos.coords.longitude, pos.coords.latitude],
         zoom: 15.5,
-        duration: 500
+        duration: 450
       });
     });
   };
 
   return (
-    <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
+    <div className="relative w-full h-60 sm:h-64 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
       <div ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Felső lebegő vezérlők */}
       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none z-10">
         <div className="flex bg-white/95 backdrop-blur rounded-xl p-0.5 shadow-sm border border-[#DFD9CE] pointer-events-auto text-[11px] font-bold">
           <button

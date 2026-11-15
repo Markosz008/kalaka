@@ -30,3 +30,12 @@ html, body, #root {
   scrollbar-width: none;
 }
 
+
+.maplibregl-map {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  width: 100% !important;
+  height: 100% !important;
+}
+.maplibregl-canvas {
+  outline: none;
+}
