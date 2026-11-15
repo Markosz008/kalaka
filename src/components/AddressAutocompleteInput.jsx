@@ -8,22 +8,33 @@ export function stripAccents(str) {
     .trim();
 }
 
-function formatPhotonFeature(feat) {
+function extractHouseNumber(rawQuery) {
+  const m = (rawQuery || '').trim().match(/^(.*?)\s+(\d+[a-zA-Z/-]*)\.?$/);
+  if (!m || m[1].trim().length < 2) {
+    return { streetPart: (rawQuery || '').trim(), houseNum: '' };
+  }
+  return { streetPart: m[1].trim(), houseNum: `${m[2]}.` };
+}
+
+function formatPhotonFeature(feat, fallbackHouseNum = '') {
   const p = feat?.properties || {};
   const [lng, lat] = feat?.geometry?.coordinates || [];
   if (typeof lat !== 'number' || typeof lng !== 'number') return null;
 
   const city = p.city || p.town || p.village || p.municipality || '';
-  const streetLine = p.street
-    ? `${p.street}${p.housenumber ? ` ${p.housenumber}.` : ''}`
-    : '';
-  const primaryName = p.name || streetLine || city;
-  if (!primaryName) return null;
+  const effectiveHouse = p.housenumber ? `${p.housenumber}.` : fallbackHouseNum;
+  const streetBase = p.street || p.name || '';
+  if (!streetBase && !city) return null;
+
+  const withHouse =
+    streetBase && effectiveHouse && !/\d/.test(streetBase)
+      ? `${streetBase} ${effectiveHouse}`
+      : streetBase || city;
 
   const label =
-    city && !stripAccents(primaryName).includes(stripAccents(city))
-      ? `${city}, ${primaryName}`
-      : primaryName;
+    city && !stripAccents(withHouse).includes(stripAccents(city))
+      ? `${city}, ${withHouse}`
+      : withHouse;
 
   const subParts = [p.postcode, city, p.district || p.suburb].filter(Boolean);
   const subtitle = Array.from(new Set(subParts)).join(' • ');
@@ -31,6 +42,33 @@ function formatPhotonFeature(feat) {
   return {
     label,
     subtitle: subtitle || 'Magyarország',
+    cityNorm: stripAccents(city),
+    lat,
+    lng
+  };
+}
+
+function formatNominatimItem(item, cityContext, fallbackHouseNum = '') {
+  const lat = Number(item?.lat);
+  const lng = Number(item?.lon);
+  if (isNaN(lat) || isNaN(lng)) return null;
+
+  const addr = item.address || {};
+  const city = addr.city || addr.town || addr.village || addr.municipality || cityContext || '';
+  const road = addr.road || addr.pedestrian || addr.suburb || item.name || '';
+  const effectiveHouse = addr.house_number ? `${addr.house_number}.` : fallbackHouseNum;
+  if (!road) return null;
+
+  const withHouse = effectiveHouse && !/\d/.test(road) ? `${road} ${effectiveHouse}` : road;
+  const label =
+    city && !stripAccents(withHouse).includes(stripAccents(city))
+      ? `${city}, ${withHouse}`
+      : withHouse;
+
+  const subParts = [addr.postcode, city, addr.suburb || addr.neighbourhood].filter(Boolean);
+  return {
+    label,
+    subtitle: Array.from(new Set(subParts)).join(' • ') || 'Magyarország',
     cityNorm: stripAccents(city),
     lat,
     lng
@@ -87,49 +125,81 @@ export default function AddressAutocompleteInput({
       try {
         const normQ = stripAccents(q);
         const normCity = stripAccents(cityContext);
-        const baseQuery =
-          normQ === 'hev' || normQ.endsWith(' hev') ? `${q} megálló` : q;
+        const { streetPart, houseNum } = extractHouseNumber(q);
 
-        // Ha a user még nem írta be a város nevét, párhuzamosan kérdezzük le a városhoz kötött és az általános találatokat
-        const queries =
-          normCity && !normQ.includes(normCity)
-            ? [`${cityContext}, ${baseQuery}`, baseQuery]
-            : [baseQuery];
+        const baseStreet =
+          stripAccents(streetPart) === 'hev' || stripAccents(streetPart).endsWith(' hev')
+            ? `${streetPart} megálló`
+            : streetPart;
 
-        const responses = await Promise.all(
-          queries.map((qry) =>
-            fetch(
-              `https://photon.komoot.io/api/?q=${encodeURIComponent(qry)}&lat=${
-                biasCoords.lat
-              }&lon=${biasCoords.lng}&limit=6`,
-              { signal: controller.signal }
-            )
-              .then((r) => r.json())
-              .catch(() => ({ features: [] }))
+        const hasCityInQuery = normCity && normQ.includes(normCity);
+        const localPhotonQ = hasCityInQuery ? baseStreet : `${cityContext}, ${baseStreet}`;
+
+        const [photonLocalRes, photonBroadRes, nominatimLocalRes] = await Promise.all([
+          fetch(
+            `https://photon.komoot.io/api/?q=${encodeURIComponent(localPhotonQ)}&lat=${
+              biasCoords.lat
+            }&lon=${biasCoords.lng}&limit=6`,
+            { signal: controller.signal }
           )
-        );
+            .then((r) => r.json())
+            .catch(() => ({ features: [] })),
+          !hasCityInQuery
+            ? fetch(
+                `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${
+                  biasCoords.lat
+                }&lon=${biasCoords.lng}&limit=4`,
+                { signal: controller.signal }
+              )
+                .then((r) => r.json())
+                .catch(() => ({ features: [] }))
+            : Promise.resolve({ features: [] }),
+          fetch(
+            `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=hu&limit=5&q=${encodeURIComponent(
+              hasCityInQuery ? streetPart : `${cityContext}, ${streetPart}`
+            )}`,
+            { signal: controller.signal }
+          )
+            .then((r) => r.json())
+            .catch(() => [])
+        ]);
 
-        const rawFeatures = responses.flatMap((d) => d?.features || []);
+        const localItems = [
+          ...(photonLocalRes?.features || []).map((f) => formatPhotonFeature(f, houseNum)),
+          ...(Array.isArray(nominatimLocalRes)
+            ? nominatimLocalRes.map((n) => formatNominatimItem(n, cityContext, houseNum))
+            : [])
+        ].filter(Boolean);
+
+        const broadItems = (photonBroadRes?.features || [])
+          .map((f) => formatPhotonFeature(f, ''))
+          .filter(Boolean);
+
         const seen = new Set();
-
-        const parsed = rawFeatures
-          .map(formatPhotonFeature)
+        const combined = [...localItems, ...broadItems]
           .filter((item) => {
-            if (!item) return false;
             const key = `${stripAccents(item.label)}_${item.lat.toFixed(3)}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
           })
           .sort((a, b) => {
-            const aLocal = normCity && (a.cityNorm === normCity || stripAccents(a.label).startsWith(normCity)) ? 1 : 0;
-            const bLocal = normCity && (b.cityNorm === normCity || stripAccents(b.label).startsWith(normCity)) ? 1 : 0;
+            const aLocal =
+              normCity &&
+              (a.cityNorm === normCity || stripAccents(a.label).startsWith(normCity))
+                ? 1
+                : 0;
+            const bLocal =
+              normCity &&
+              (b.cityNorm === normCity || stripAccents(b.label).startsWith(normCity))
+                ? 1
+                : 0;
             return bLocal - aLocal;
           })
           .slice(0, 5);
 
-        setSuggestions(parsed);
-        setOpen(parsed.length > 0);
+        setSuggestions(combined);
+        setOpen(combined.length > 0);
       } catch (err) {
         if (err.name !== 'AbortError') {
           setSuggestions([]);
@@ -137,7 +207,7 @@ export default function AddressAutocompleteInput({
       } finally {
         setLoading(false);
       }
-    }, 250);
+    }, 260);
 
     return () => {
       clearTimeout(timer);
