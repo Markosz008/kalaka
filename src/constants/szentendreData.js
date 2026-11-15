@@ -57,7 +57,7 @@ export function normalizeServiceGroup(cat) {
 export const PRO_CATEGORIES = SERVICE_GROUPS;
 
 export const LOCAL_PLACES = [
-  { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.6916, lng: 19.0563 },
+  { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.69031, lng: 19.06172 },
   { name: 'Szabadságforrás buszforduló', subtitle: 'Szentendre, Felső-Pismány', lat: 47.6948, lng: 19.0462 },
   { name: 'Pismány, Cseresznyés út sarok', subtitle: 'Szabadságforrás út • Pismány', lat: 47.6902, lng: 19.0558 },
   { name: 'Alsó-Pismány, Barackos út', subtitle: '2000 Szentendre', lat: 47.6860, lng: 19.0620 },
@@ -126,7 +126,7 @@ export function resolveCoordsFromText(text) {
     return { lat: 47.6602, lng: 19.0738, label: 'Szentendre HÉV-végállomás' };
   }
   if (q.includes('fogoly')) {
-    return { lat: 47.6916, lng: 19.0563, label: text };
+    return { lat: 47.69031, lng: 19.06172, label: text };
   }
   if (q.includes('bükkös') || q.includes('bukkos')) {
     return { lat: 47.6701, lng: 19.0739, label: 'Bükkös-part' };

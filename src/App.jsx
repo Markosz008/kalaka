@@ -28,7 +28,6 @@ const BASE_QUICK_DESTINATIONS = [
   'Pannóniatelep'
 ];
 
-// Okos cím-normalizáló a szűréshez: levágja a házszámot és egységesíti a HÉV/Újpest/utca kifejezéseket
 function normalizeRouteToken(rawStr) {
   const s = stripAccents(rawStr);
   if (!s) return '';
@@ -44,6 +43,26 @@ function normalizeRouteToken(rawStr) {
     .replace(/[,\s]+\d+[a-z0-9/.-]*$/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+async function geocodeAddressFallback(rawAddress) {
+  const clean = (rawAddress || '')
+    .replace(/\bu\.\s*/gi, 'utca ')
+    .replace(/\bu\s+(?=\d)/gi, 'utca ')
+    .trim();
+  if (!clean) return null;
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(clean)}`
+    );
+    const arr = await res.json();
+    if (Array.isArray(arr) && arr[0]) {
+      const lat = Number(arr[0].lat);
+      const lng = Number(arr[0].lon);
+      if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
+    }
+  } catch {}
+  return resolveCoordsFromText(rawAddress);
 }
 
 function getReadTimestamps(userId) {
@@ -82,7 +101,7 @@ function getPersonalRoutines(userId) {
   }
 }
 
-function recordPersonalRoutine(userId, origin, dest) {
+function recordPersonalRoutine(userId, origin, dest, originCoords = null, destCoords = null) {
   if (!userId || !origin?.trim() || !dest?.trim()) return;
   try {
     const cleanO = origin.trim();
@@ -95,9 +114,29 @@ function recordPersonalRoutine(userId, origin, dest) {
       existing.count = (existing.count || 1) + 1;
       existing.origin = cleanO;
       existing.dest = cleanD;
+      if (originCoords?.lat && originCoords?.lng) {
+        existing.originCoords = { lat: Number(originCoords.lat), lng: Number(originCoords.lng) };
+      }
+      if (destCoords?.lat && destCoords?.lng) {
+        existing.destCoords = { lat: Number(destCoords.lat), lng: Number(destCoords.lng) };
+      }
       existing.updatedAt = Date.now();
     } else {
-      list.push({ key, origin: cleanO, dest: cleanD, count: 1, updatedAt: Date.now() });
+      list.push({
+        key,
+        origin: cleanO,
+        dest: cleanD,
+        originCoords:
+          originCoords?.lat && originCoords?.lng
+            ? { lat: Number(originCoords.lat), lng: Number(originCoords.lng) }
+            : null,
+        destCoords:
+          destCoords?.lat && destCoords?.lng
+            ? { lat: Number(destCoords.lat), lng: Number(destCoords.lng) }
+            : null,
+        count: 1,
+        updatedAt: Date.now()
+      });
     }
     list.sort((a, b) => (b.count - a.count) || (b.updatedAt - a.updatedAt));
     localStorage.setItem(`kalaka_routines_${userId}`, JSON.stringify(list.slice(0, 4)));
@@ -395,8 +434,21 @@ export default function App() {
           effectiveDepIso = nextDep.toISOString();
         }
 
+        // Ha egy korábban mentett Fogoly utcai út még a régi, nyugatabbi koordinátával szerepel az adatbázisban, javítjuk
+        let fixedOriginLat = r.origin_lat;
+        let fixedOriginLng = r.origin_lng;
+        if (
+          (r.origin_text || '').toLowerCase().includes('fogoly') &&
+          (!fixedOriginLng || Number(fixedOriginLng) < 19.059)
+        ) {
+          fixedOriginLat = 47.69031;
+          fixedOriginLng = 19.06172;
+        }
+
         return {
           ...r,
+          origin_lat: fixedOriginLat,
+          origin_lng: fixedOriginLng,
           departure_at: effectiveDepIso,
           note: cleanNote,
           author_name: r.author?.display_name || 'Szomszéd',
@@ -806,6 +858,37 @@ export default function App() {
     }
   };
 
+  const handleLoadPersonalRoutine = async (routine) => {
+    if (!routine) return;
+    setSelectedRideForMap(null);
+    setFilterFrom(routine.origin);
+    setFilterTo(routine.dest);
+    setShowMap(true);
+
+    const initialO =
+      routine.originCoords?.lat &&
+      routine.originCoords?.lng &&
+      !(routine.origin.toLowerCase().includes('fogoly') && routine.originCoords.lng < 19.059)
+        ? routine.originCoords
+        : resolveCoordsFromText(routine.origin);
+
+    const initialD =
+      routine.destCoords?.lat && routine.destCoords?.lng
+        ? routine.destCoords
+        : resolveCoordsFromText(routine.dest);
+
+    setFromCoords(initialO);
+    setToCoords(initialD);
+
+    const [exactO, exactD] = await Promise.all([
+      initialO ? Promise.resolve(initialO) : geocodeAddressFallback(routine.origin),
+      initialD ? Promise.resolve(initialD) : geocodeAddressFallback(routine.dest)
+    ]);
+
+    if (exactO) setFromCoords(exactO);
+    if (exactD) setToCoords(exactD);
+  };
+
   const handleSwapOriginDest = () => {
     setSelectedRideForMap(null);
     const prevO = filterFrom;
@@ -910,7 +993,7 @@ export default function App() {
         if (retryErr) throw retryErr;
       }
 
-      recordPersonalRoutine(session.user.id, filterFrom.trim(), filterTo.trim());
+      recordPersonalRoutine(session.user.id, filterFrom.trim(), filterTo.trim(), startPt, endPt);
       setPersonalRoutines(getPersonalRoutines(session.user.id));
       await fetchAllLiveData(session.user.id);
       setInlineComposerMode(null);
@@ -1095,7 +1178,7 @@ export default function App() {
           }
         }
       }
-      recordPersonalRoutine(session.user.id, newFrom.trim(), newTo.trim());
+      recordPersonalRoutine(session.user.id, newFrom.trim(), newTo.trim(), startPt, endPt);
       setPersonalRoutines(getPersonalRoutines(session.user.id));
       setActiveTab('rides');
     }
@@ -1534,12 +1617,7 @@ export default function App() {
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setFilterFrom(topPersonalRoutine.origin);
-                  setFilterTo(topPersonalRoutine.dest);
-                  setFromCoords(resolveCoordsFromText(topPersonalRoutine.origin));
-                  setToCoords(resolveCoordsFromText(topPersonalRoutine.dest));
-                }}
+                onClick={() => handleLoadPersonalRoutine(topPersonalRoutine)}
                 className="shrink-0 bg-pilis text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition active:scale-95"
               >
                 Betöltés ›
