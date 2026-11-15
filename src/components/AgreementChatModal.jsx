@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import L from 'leaflet';
+import maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
@@ -63,201 +63,37 @@ export default function AgreementChatModal({
     : Boolean(liveAgr?.helper_agreed);
 
   useEffect(() => {
-    setLiveAgr(agreement || null);
-  }, [agreement]);
+    if (!liveMapContainerRef.current || !agreement?.driver_lat || !agreement?.driver_lng) return;
+    const lat = Number(agreement.driver_lat);
+    const lng = Number(agreement.driver_lng);
+    if (isNaN(lat) || isNaN(lng)) return;
 
-  useEffect(() => {
-    if (!agreement) return;
-    setErrorBanner(null);
+    const map = new maplibregl.Map({
+      container: liveMapContainerRef.current,
+      style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+      center: [lng, lat],
+      zoom: 15,
+      attributionControl: false
+    });
 
-    if (!isLiveDbAgreement) {
-      setMessages(agreement.messages || []);
-      return;
-    }
+    const el = document.createElement('div');
+    el.style.width = '28px';
+    el.style.height = '28px';
+    el.style.borderRadius = '9999px';
+    el.style.background = '#1E4635';
+    el.style.color = '#fff';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
+    el.style.fontSize = '14px';
+    el.style.border = '2px solid #fff';
+    el.style.boxShadow = '0 3px 10px rgba(0,0,0,0.3)';
+    el.textContent = '🚗';
 
-    let channel;
-    (async () => {
-      const [{ data: msgRows }, { data: freshAgr }] = await Promise.all([
-        supabase
-          .from('messages')
-          .select('*')
-          .eq('agreement_id', agreement.id)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('agreements')
-          .select('*')
-          .eq('id', agreement.id)
-          .maybeSingle()
-      ]);
+    new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map);
 
-      if (msgRows) setMessages(msgRows);
-      if (freshAgr) {
-        setLiveAgr((prev) => ({ ...(prev || {}), ...freshAgr }));
-      }
-
-      channel = supabase
-        .channel(`agreement-room-${agreement.id}`)
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages', filter: `agreement_id=eq.${agreement.id}` },
-          (payload) => {
-            setMessages((prev) =>
-              prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]
-            );
-          }
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'agreements', filter: `id=eq.${agreement.id}` },
-          (payload) => {
-            setLiveAgr((prev) => ({ ...(prev || {}), ...payload.new }));
-            if (onAgreementUpdated) onAgreementUpdated(payload.new);
-          }
-        )
-        .subscribe();
-    })();
-
-    return () => {
-      if (channel && supabase) supabase.removeChannel(channel);
-    };
-  }, [agreement?.id, isLiveDbAgreement]);
-
-  // Élő koordináták (driver_lat/lng, passenger_lat/lng) 3 másodperces frissítése aktív út alatt
-  useEffect(() => {
-    if (!isRideAgreement || !liveAgr?.id || !supabase) return;
-    if (!['agreed', 'started', 'arrived'].includes(status)) return;
-
-    const syncCoords = async () => {
-      const { data } = await supabase
-        .from('agreements')
-        .select('status, driver_lat, driver_lng, driver_updated_at, passenger_lat, passenger_lng, passenger_updated_at')
-        .eq('id', liveAgr.id)
-        .maybeSingle();
-      if (data) {
-        setLiveAgr((prev) => ({ ...prev, ...data }));
-      }
-    };
-
-    syncCoords();
-    const timer = setInterval(syncCoords, 3000);
-    return () => clearInterval(timer);
-  }, [isRideAgreement, liveAgr?.id, status]);
-
-  // Screen Wake Lock: ébren tartja a kijelzőt, amíg az élő GPS-követés ('started') fut
-  useEffect(() => {
-    let wakeLock = null;
-    const shouldKeepAwake = isRideAgreement && status === 'started';
-
-    const requestWakeLock = async () => {
-      if (!shouldKeepAwake) return;
-      try {
-        if ('wakeLock' in navigator && document.visibilityState === 'visible') {
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch {}
-    };
-
-    requestWakeLock();
-
-    const handleVis = () => {
-      if (document.visibilityState === 'visible' && shouldKeepAwake) {
-        requestWakeLock();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVis);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVis);
-      if (wakeLock) {
-        wakeLock.release().catch(() => {});
-      }
-    };
-  }, [isRideAgreement, status]);
-
-  // Sofőr élő GPS-közvetítése (csak status === 'started' esetén és csak a sofőrnél)
-  useEffect(() => {
-    const shouldBroadcast =
-      isLiveDbAgreement &&
-      isRideAgreement &&
-      isHelper &&
-      status === 'started' &&
-      typeof navigator !== 'undefined' &&
-      'geolocation' in navigator;
-
-    if (!shouldBroadcast) {
-      if (watchIdRef.current !== null && navigator?.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      setGpsActive(false);
-      return;
-    }
-
-    setGpsActive(true);
-    let lastSentAt = 0;
-
-    const pushCoords = async (lat, lng) => {
-      const now = Date.now();
-      if (now - lastSentAt < 3500) return;
-      lastSentAt = now;
-      await supabase
-        .from('agreements')
-        .update({
-          driver_lat: lat,
-          driver_lng: lng,
-          driver_updated_at: new Date().toISOString()
-        })
-        .eq('id', liveAgr.id);
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => pushCoords(pos.coords.latitude, pos.coords.longitude),
-      () => {},
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => pushCoords(pos.coords.latitude, pos.coords.longitude),
-      () => setGpsActive(false),
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-    );
-
-    return () => {
-      if (watchIdRef.current !== null && navigator?.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      setGpsActive(false);
-    };
-  }, [isLiveDbAgreement, isRideAgreement, isHelper, status, liveAgr?.id]);
-
-  // Élő mini-térkép inicializálása útközben
-  useEffect(() => {
-    const showLiveMap = isRideAgreement && status === 'started';
-    if (!showLiveMap || !liveMapContainerRef.current) {
-      if (liveMapRef.current) {
-        liveMapRef.current.remove();
-        liveMapRef.current = null;
-        liveLayerRef.current = null;
-      }
-      return;
-    }
-
-    if (!liveMapRef.current) {
-      const map = L.map(liveMapContainerRef.current, {
-        center: [47.676, 19.065],
-        zoom: 14,
-        zoomControl: false
-      });
-      L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-        { attribution: '&copy; Esri, OpenStreetMap' }
-      ).addTo(map);
-      liveLayerRef.current = L.layerGroup().addTo(map);
-      liveMapRef.current = map;
-      setTimeout(() => map.invalidateSize(), 150);
-    }
-  }, [isRideAgreement, status]);
+    return () => map.remove();
+  }, [agreement?.driver_lat, agreement?.driver_lng]);
 
   // Élő jelölők frissítése
   useEffect(() => {
