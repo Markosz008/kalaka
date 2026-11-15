@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { maskAddressForPublic } from '../constants/szentendreData.js';
-import { formatRemainingTime } from '../constants/szentendreData.js';
 
 export default function RideCard({
   hasExistingAgreement = false,
@@ -13,7 +12,6 @@ export default function RideCard({
   onEditRide,
   onDeleteRide
 }) {
-  const [selectedStop, setSelectedStop] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sharedCopied, setSharedCopied] = useState(false);
   const isOwner = Boolean(currentUserId && ride.user_id === currentUserId);
@@ -27,7 +25,6 @@ export default function RideCard({
   const expTime = ride.expires_at ? new Date(ride.expires_at).getTime() : 0;
   const showRecentlyStarted = !ride.is_recurring && depTime > 0 && depTime < now && expTime > now;
 
-  const activeBadge = formatRemainingTime(ride.expires_at);
   const isFull = ride.kind === 'offer' && Number(ride.seats) <= 0;
   const carLabel = ride.car_info || ride.author_car || null;
 
@@ -52,7 +49,7 @@ export default function RideCard({
           <button
             type="button"
             onClick={() => onShowOnMap(ride)}
-            className="text-[11px] font-semibold text-[#5C6B62] hover:text-pilis bg-limestone px-2 py-1 rounded-full border border-[#DFD9CE]"
+            className="text-[11px] font-semibold text-[#5C6B62] hover:text-pilis bg-limestone px-2.5 py-1 rounded-full border border-[#DFD9CE] transition"
           >
             Útvonal
           </button>
@@ -62,7 +59,7 @@ export default function RideCard({
             </span>
           )}
           <span
-            className={`text-[11px] font-bold px-2 py-1 rounded-full ${
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
               isFull
                 ? 'bg-gray-200 text-gray-600'
                 : ride.kind === 'offer'
@@ -85,37 +82,6 @@ export default function RideCard({
           <span className="truncate">{maskAddressForPublic(ride.dest_text)}</span>
         </div>
       </div>
-
-      {ride.stops && ride.stops.length > 0 && (
-        <div className="my-2.5 pt-2 border-t border-[#ECE7DC]">
-          <div className="text-[11px] font-medium text-[#5C6B62] mb-1.5">
-            Felszállási pontok útközben:
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-            {ride.stops.map((st) => {
-              const active = selectedStop?.name === st.name;
-              return (
-                <button
-                  key={st.name}
-                  type="button"
-                  onClick={() => {
-                    setSelectedStop(active ? null : st);
-                    onShowOnMap(ride);
-                  }}
-                  className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border transition flex items-center gap-1.5 ${
-                    active
-                      ? 'bg-pilis text-white border-pilis'
-                      : 'bg-limestone text-[#18261F] border-[#DFD9CE] hover:border-pilis'
-                  }`}
-                >
-                  <span className="font-bold">{st.time}</span>
-                  <span>{st.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {ride.note && (
         <p className="text-xs text-[#5C6B62] mb-2.5 leading-relaxed">{ride.note}</p>
@@ -206,7 +172,7 @@ export default function RideCard({
           <button
             type="button"
             disabled={isFull && !hasExistingAgreement}
-            onClick={() => onStartAgreement(ride, selectedStop)}
+            onClick={() => onStartAgreement(ride, null)}
             className={`${
               hasExistingAgreement
                 ? 'bg-pilis-soft text-pilis border border-pilis/30'
@@ -219,8 +185,6 @@ export default function RideCard({
               ? 'Egyeztetés ›'
               : isFull
               ? 'Betelt'
-              : selectedStop
-              ? `Felszállok (${selectedStop.time})`
               : ride.kind === 'offer'
               ? 'Csatlakozom'
               : 'Elviszem'}
@@ -230,4 +194,3 @@ export default function RideCard({
     </article>
   );
 }
-

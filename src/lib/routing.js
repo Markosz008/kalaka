@@ -1,14 +1,15 @@
-import { LOCAL_PLACES, resolveCoordsFromText } from '../constants/szentendreData.js';
+import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
 const routeCache = new Map();
 
-function addMinutesToTime(timeStr, minsToAdd) {
-  const [hh, mm] = (timeStr || '05:50').split(':').map(Number);
-  const totalMins = (hh * 60 + mm + minsToAdd + 1440) % 1440;
-  const nh = String(Math.floor(totalMins / 60)).padStart(2, '0');
-  const nm = String(totalMins % 60).padStart(2, '0');
-  return `${nh}:${nm}`;
-}
+// Kizárólag valódi főúti csomópontok a kereső/szűrő chipek támogatásához (mellékutcák nélkül)
+const MAIN_CORRIDOR_HUBS = [
+  { name: '11-es út • Papírgyár', lat: 47.6852, lng: 19.0732 },
+  { name: '11-es út • Sztaravodai csomópont', lat: 47.6761, lng: 19.0754 },
+  { name: 'Bükkös-part', lat: 47.6701, lng: 19.0739 },
+  { name: 'Szentendre HÉV-végállomás', lat: 47.6602, lng: 19.0738 },
+  { name: 'Pannóniatelep', lat: 47.6512, lng: 19.0715 }
+];
 
 function toMetersXY(lat, lng, refLat, refLng) {
   const latScale = 111132;
@@ -103,20 +104,9 @@ export async function fetchDrivingRoute(startCoord, endCoord) {
       } catch {}
       return result;
     }
-  } catch {
-    // Hálózati hiba vagy timeout esetén egyenes szakasz fallback
-  }
+  } catch {}
 
-  const fallback = {
-    coords: [
-      [startCoord.lat, startCoord.lng],
-      [endCoord.lat, endCoord.lng]
-    ],
-    distanceMeters: 5000,
-    durationSeconds: 600,
-    isFallback: true
-  };
-  return fallback;
+  return null;
 }
 
 export async function computeStopsAlongRoute(ride) {
@@ -124,12 +114,12 @@ export async function computeStopsAlongRoute(ride) {
 
   const startCoord =
     ride.origin_lat && ride.origin_lng
-      ? { lat: ride.origin_lat, lng: ride.origin_lng }
+      ? { lat: Number(ride.origin_lat), lng: Number(ride.origin_lng) }
       : resolveCoordsFromText(ride.origin_text);
 
   const endCoord =
     ride.dest_lat && ride.dest_lng
-      ? { lat: ride.dest_lat, lng: ride.dest_lng }
+      ? { lat: Number(ride.dest_lat), lng: Number(ride.dest_lng) }
       : resolveCoordsFromText(ride.dest_text);
 
   if (!startCoord || !endCoord) return [];
@@ -137,57 +127,16 @@ export async function computeStopsAlongRoute(ride) {
   const route = await fetchDrivingRoute(startCoord, endCoord);
   if (!route || !route.coords || route.coords.length < 2) return [];
 
-  const maxCorridorMeters = route.isFallback ? 350 : 260;
-  const candidates = [];
-
-  for (const place of LOCAL_PLACES) {
-    // Indulási és érkezési pont közvetlen környezetét (220 m) kihagyjuk
-    const distFromStart = Math.hypot(
-      (place.lat - startCoord.lat) * 111132,
-      (place.lng - startCoord.lng) * 74830
-    );
-    const distFromEnd = Math.hypot(
-      (place.lat - endCoord.lat) * 111132,
-      (place.lng - endCoord.lng) * 74830
-    );
-    if (distFromStart < 220 || distFromEnd < 220) continue;
-
-    const proj = projectPointToPolyline({ lat: place.lat, lng: place.lng }, route.coords);
+  const matchedHubs = [];
+  for (const hub of MAIN_CORRIDOR_HUBS) {
+    const proj = projectPointToPolyline({ lat: hub.lat, lng: hub.lng }, route.coords);
     if (!proj || proj.totalMeters < 400) continue;
-
     const fraction = proj.alongMeters / proj.totalMeters;
-    if (proj.distanceMeters <= maxCorridorMeters && fraction > 0.04 && fraction < 0.96) {
-      candidates.push({
-        name: place.name,
-        lat: place.lat,
-        lng: place.lng,
-        alongMeters: proj.alongMeters,
-        fraction
-      });
+    // Szigorú, 100 méteres távolság a főúttól, hogy mellékutca soha ne kerüljön bele
+    if (proj.distanceMeters <= 100 && fraction > 0.05 && fraction < 0.95) {
+      matchedHubs.push({ name: hub.name, lat: hub.lat, lng: hub.lng });
     }
   }
 
-  // Haladási irány szerinti sorbarendezés
-  candidates.sort((a, b) => a.alongMeters - b.alongMeters);
-
-  // Túl közeli (300 m-en belüli) megállók ritkítása
-  const deduped = [];
-  for (const c of candidates) {
-    if (
-      deduped.length === 0 ||
-      c.alongMeters - deduped[deduped.length - 1].alongMeters >= 300
-    ) {
-      deduped.push(c);
-    }
-  }
-
-  return deduped.slice(0, 6).map((c) => {
-    const minsFromStart = Math.max(1, Math.round((c.fraction * route.durationSeconds) / 60));
-    return {
-      time: addMinutesToTime(ride.time_label, minsFromStart),
-      name: c.name,
-      lat: c.lat,
-      lng: c.lng
-    };
-  });
+  return matchedHubs;
 }
