@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function HeaderRoadBar({
   session,
@@ -8,23 +8,44 @@ export default function HeaderRoadBar({
   onOpenAuthModal
 }) {
   const isLoggedIn = Boolean(session?.user);
-  const latestAlert = roadAlerts?.[0] || {
-    status_level: 'ok',
-    message: 'Folyamatos haladás a 11-es úton'
-  };
-  const activeCount = roadAlerts?.length || 0;
+  const alerts = roadAlerts && roadAlerts.length > 0
+    ? roadAlerts
+    : [
+        {
+          id: 'default-ok',
+          status_level: 'ok',
+          message: 'Folyamatos haladás a 11-es úton • HÉV P+R szabad'
+        }
+      ];
+
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [alerts.length]);
+
+  useEffect(() => {
+    if (alerts.length <= 1) return;
+    const timer = setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % alerts.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [alerts.length]);
+
+  const currentAlert = alerts[activeIndex] || alerts[0];
+  const activeCount = alerts.length;
   const cleanZone = (profile?.zone || '').replace(/\s*\(.*?\)\s*/g, '').trim();
 
   const statusStyles = {
     ok: 'bg-emerald-950/35 border-emerald-300/25 text-emerald-50',
-    warn: 'bg-amber-950/55 border-amber-300/40 text-amber-50',
-    danger: 'bg-red-950/55 border-red-300/40 text-red-50'
+    warn: 'bg-amber-950/60 border-amber-300/45 text-amber-50',
+    danger: 'bg-red-950/60 border-red-300/45 text-red-50'
   };
 
   const dotColor = {
     ok: 'bg-emerald-400',
-    warn: 'bg-amber-400',
-    danger: 'bg-red-400'
+    warn: 'bg-amber-400 animate-pulse',
+    danger: 'bg-red-400 animate-ping'
   };
 
   return (
@@ -65,20 +86,27 @@ export default function HeaderRoadBar({
         type="button"
         onClick={onOpenRoadModal}
         className={`mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs text-left transition hover:bg-white/10 ${
-          statusStyles[latestAlert.status_level] || statusStyles.ok
+          statusStyles[currentAlert.status_level] || statusStyles.ok
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span
             className={`w-2 h-2 rounded-full shrink-0 ${
-              dotColor[latestAlert.status_level] || dotColor.ok
+              dotColor[currentAlert.status_level] || dotColor.ok
             }`}
           />
-          <span className="truncate font-medium">{latestAlert.message}</span>
+          {activeCount > 1 && (
+            <span className="text-[10px] font-extrabold bg-white/20 px-1.5 py-0.2 rounded text-white shrink-0">
+              {activeIndex + 1}/{activeCount}
+            </span>
+          )}
+          <span className="truncate font-medium">{currentAlert.message}</span>
         </div>
 
         <span className="shrink-0 bg-white/15 px-2.5 py-0.5 rounded-full font-semibold text-[11px]">
-          {activeCount > 1 ? `${activeCount} jelzés ›` : 'Útinfó ›'}
+          {activeCount > 1 || currentAlert.id !== 'default-ok'
+            ? `Pulzus (${activeCount}) ›`
+            : '+ Helyi infó ›'}
         </span>
       </button>
     </header>

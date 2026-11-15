@@ -2228,17 +2228,22 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="11-es út és hegyi útinfó"
+          aria-label="Szentendre Pulzus – Élő helyi infók"
           className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
             <div className="flex justify-between items-center">
-              <h3 className="font-display font-extrabold text-lg">
-                11-es út és hegyi útinfó ({roadAlerts.length})
-              </h3>
+              <div>
+                <h3 className="font-display font-extrabold text-lg text-[#18261F]">
+                  Szentendre Pulzus ({roadAlerts.length})
+                </h3>
+                <p className="text-[11px] text-[#5C6B62]">
+                  Élő közösségi jelzések (mindenkinél azonnal megjelenik)
+                </p>
+              </div>
               <button
                 type="button"
-                aria-label="Útinfó ablak bezárása"
+                aria-label="Ablak bezárása"
                 onClick={() => setShowRoadModal(false)}
                 className="text-sm font-bold text-[#5C6B62] px-2 py-1"
               >
@@ -2255,7 +2260,7 @@ export default function App() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-[11px] text-[#5C6B62]">
                       <span className="font-bold text-[#18261F]">
-                        {al.author_name || 'Helyi autós'}
+                        {al.author_name || 'Szentendrei szomszéd'}
                       </span>
                       <span>
                         {new Date(al.created_at).toLocaleTimeString('hu-HU', {
@@ -2275,7 +2280,7 @@ export default function App() {
                         onClick={() => handleClearRoadAlert(al.id)}
                         className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full"
                       >
-                        ✓ Már tiszta
+                        ✓ Megoldódott
                       </button>
                     )}
                     {session?.user && al.reporter_id === session.user.id && (
@@ -2300,39 +2305,82 @@ export default function App() {
               className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5"
             >
               <div className="text-xs font-bold text-[#18261F]">
-                Új útinfó beküldése:
+                Mit látsz most Szentendrén?
               </div>
+
               <div className="grid grid-cols-3 gap-1 bg-limestone p-1 rounded-lg text-[11px] font-bold">
                 {[
-                  ['warn', 'Torlódás'],
-                  ['danger', 'Baleset / Jég'],
-                  ['ok', 'Tiszta út']
+                  ['warn', '🚗 11-es & HÉV'],
+                  ['danger', '⚠️ Hegyi / Közmű'],
+                  ['ok', '✅ Jó hír / Szabad']
                 ].map(([lvl, lbl]) => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => setCustomRoadLevel(lvl)}
-                    className={`py-1.5 rounded ${
-                      customRoadLevel === lvl ? 'bg-pilis text-white' : 'text-[#5C6B62]'
+                    className={`py-1.5 rounded transition ${
+                      customRoadLevel === lvl ? 'bg-pilis text-white shadow-sm' : 'text-[#5C6B62]'
                     }`}
                   >
                     {lbl}
                   </button>
                 ))}
               </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-[#7A867E] uppercase tracking-wide">
+                  1-koppintásos gyorsjelzések:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(customRoadLevel === 'warn'
+                    ? [
+                        '🅿️ HÉV P+R parkoló megtelt',
+                        '🚗 11-es beállt a Papírgyártól',
+                        '🚗 Sztaravodai lámpánál nagy a sor',
+                        '🚃 HÉV késik / kimaradás van'
+                      ]
+                    : customRoadLevel === 'danger'
+                    ? [
+                        '💧 Csőtörés / vízhiány: ',
+                        '⚡ Áramszünet van itt: ',
+                        '🚧 Utca elzárva / munkagép: ',
+                        '🐕 Elkóborolt kutya itt: '
+                      ]
+                    : [
+                        '✅ 11-es út újra szépen halad',
+                        '🅿️ Van szabad hely a HÉV P+R-ben',
+                        '✅ Hegyi utak tiszták, jól járhatók'
+                      ]
+                  ).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCustomRoadText(preset)}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
+                        customRoadText === preset
+                          ? 'bg-pilis text-white border-pilis'
+                          : 'bg-limestone hover:border-pilis text-[#18261F] border-[#DFD9CE]'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <input
                 type="text"
                 required
                 value={customRoadText}
                 onChange={(e) => setCustomRoadText(e.target.value)}
-                placeholder="Írd le, hol és mi történik..."
-                className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
+                placeholder="Válassz fent gyorsjelzést, vagy írd be saját szavaiddal..."
+                className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border focus:outline-none focus:border-pilis"
               />
               <button
                 type="submit"
-                className="w-full bg-pilis text-white font-bold py-2.5 rounded-xl text-xs"
+                className="w-full bg-pilis hover:bg-pilis-light text-white font-bold py-2.5 rounded-xl text-xs transition"
               >
-                Közzététel
+                Közzététel a közösségnek
               </button>
             </form>
           </div>
