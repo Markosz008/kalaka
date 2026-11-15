@@ -31,6 +31,7 @@ function formatPhotonFeature(feat) {
   return {
     label,
     subtitle: subtitle || 'Magyarország',
+    cityNorm: stripAccents(city),
     lat,
     lng
   };
@@ -44,6 +45,7 @@ export default function AddressAutocompleteInput({
   placeholder = 'Cím vagy megálló...',
   dotColor = 'border-terracotta',
   isSolidDot = false,
+  cityContext = 'Szentendre',
   biasCoords = { lat: 47.6694, lng: 19.0756 }
 }) {
   const [suggestions, setSuggestions] = useState([]);
@@ -83,22 +85,34 @@ export default function AddressAutocompleteInput({
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        // Ékezet-független szinonima kiegészítés országos vasúti/HÉV/megálló keresésekhez
-        const norm = stripAccents(q);
-        const queryTerm =
-          norm === 'hev' || norm.endsWith(' hev')
-            ? `${q} megálló`
-            : q;
+        const normQ = stripAccents(q);
+        const normCity = stripAccents(cityContext);
+        const baseQuery =
+          normQ === 'hev' || normQ.endsWith(' hev') ? `${q} megálló` : q;
 
-        const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
-          queryTerm
-        )}&lat=${biasCoords.lat}&lon=${biasCoords.lng}&limit=6`;
+        // Ha a user még nem írta be a város nevét, párhuzamosan kérdezzük le a városhoz kötött és az általános találatokat
+        const queries =
+          normCity && !normQ.includes(normCity)
+            ? [`${cityContext}, ${baseQuery}`, baseQuery]
+            : [baseQuery];
 
-        const res = await fetch(url, { signal: controller.signal });
-        const data = await res.json();
+        const responses = await Promise.all(
+          queries.map((qry) =>
+            fetch(
+              `https://photon.komoot.io/api/?q=${encodeURIComponent(qry)}&lat=${
+                biasCoords.lat
+              }&lon=${biasCoords.lng}&limit=6`,
+              { signal: controller.signal }
+            )
+              .then((r) => r.json())
+              .catch(() => ({ features: [] }))
+          )
+        );
 
+        const rawFeatures = responses.flatMap((d) => d?.features || []);
         const seen = new Set();
-        const parsed = (data?.features || [])
+
+        const parsed = rawFeatures
           .map(formatPhotonFeature)
           .filter((item) => {
             if (!item) return false;
@@ -106,6 +120,11 @@ export default function AddressAutocompleteInput({
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
+          })
+          .sort((a, b) => {
+            const aLocal = normCity && (a.cityNorm === normCity || stripAccents(a.label).startsWith(normCity)) ? 1 : 0;
+            const bLocal = normCity && (b.cityNorm === normCity || stripAccents(b.label).startsWith(normCity)) ? 1 : 0;
+            return bLocal - aLocal;
           })
           .slice(0, 5);
 
@@ -118,13 +137,13 @@ export default function AddressAutocompleteInput({
       } finally {
         setLoading(false);
       }
-    }, 260);
+    }, 250);
 
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [value, biasCoords.lat, biasCoords.lng]);
+  }, [value, cityContext, biasCoords.lat, biasCoords.lng]);
 
   const handleSelect = (item) => {
     skipNextFetchRef.current = true;
@@ -149,9 +168,7 @@ export default function AddressAutocompleteInput({
             if (onFocus) onFocus();
             if (suggestions.length > 0) setOpen(true);
           }}
-          onChange={(e) => {
-            onChange(e.target.value);
-          }}
+          onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
           className="w-full min-w-0 bg-transparent text-sm sm:text-base font-medium text-[#18261F] placeholder:text-[#7A867E] focus:outline-none"
@@ -179,7 +196,7 @@ export default function AddressAutocompleteInput({
       {open && suggestions.length > 0 && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-xl border border-[#DFD9CE] z-50 overflow-hidden divide-y divide-[#ECE7DC]"
+          className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-2xl border border-[#DFD9CE] z-[1000] overflow-hidden divide-y divide-[#ECE7DC]"
         >
           {suggestions.map((item, idx) => (
             <li key={`${item.label}-${idx}`}>
