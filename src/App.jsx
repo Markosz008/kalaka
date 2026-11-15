@@ -28,6 +28,13 @@ const BASE_QUICK_DESTINATIONS = [
   'Pannóniatelep'
 ];
 
+const ROAD_LOCATION_PREFIXES = [
+  '11-es út',
+  'HÉV / P+R',
+  'Pismány / Sztaravoda',
+  'Izbég / Szarvashegy'
+];
+
 function normalizeRouteToken(rawStr) {
   const s = stripAccents(rawStr);
   if (!s) return '';
@@ -304,6 +311,7 @@ export default function App() {
 
   const [customRoadText, setCustomRoadText] = useState('');
   const [customRoadLevel, setCustomRoadLevel] = useState('warn');
+  const roadInputRef = useRef(null);
 
   const [newKind, setNewKind] = useState('offer');
   const [newFrom, setNewFrom] = useState('');
@@ -434,7 +442,6 @@ export default function App() {
           effectiveDepIso = nextDep.toISOString();
         }
 
-        // Ha egy korábban mentett Fogoly utcai út még a régi, nyugatabbi koordinátával szerepel az adatbázisban, javítjuk
         let fixedOriginLat = r.origin_lat;
         let fixedOriginLng = r.origin_lng;
         if (
@@ -499,7 +506,7 @@ export default function App() {
       setRoadAlerts(
         alertRows.map((a) => ({
           ...a,
-          author_name: a.reporter?.display_name || 'Helyi autós'
+          author_name: a.reporter?.display_name || 'Helyi lakos'
         }))
       );
     } else {
@@ -1394,6 +1401,16 @@ export default function App() {
     fetchAllLiveData(session.user.id);
   };
 
+  const handleSelectRoadPrefix = (prefix) => {
+    setCustomRoadText((prev) => {
+      const stripped = (prev || '')
+        .replace(/^(11-es út|HÉV \/ P\+R|Pismány \/ Sztaravoda|Izbég \/ Szarvashegy):\s*/i, '')
+        .trim();
+      return stripped ? `${prefix}: ${stripped}` : `${prefix}: `;
+    });
+    setTimeout(() => roadInputRef.current?.focus(), 20);
+  };
+
   const handleAddRoadAlert = async (level, messageText) => {
     const cleanMsg = (messageText || '').trim();
     if (cleanMsg.length < 4) return;
@@ -1415,7 +1432,7 @@ export default function App() {
         return;
       }
       await fetchAllLiveData(session.user.id);
-      showNotice('Útinfó közzétéve ✓');
+      showNotice('Helyzetkép frissítve ✓');
     }
     setCustomRoadText('');
   };
@@ -1432,7 +1449,7 @@ export default function App() {
         .update({ expires_at: new Date().toISOString() })
         .eq('id', alertId);
       await fetchAllLiveData(session.user.id);
-      showNotice('Köszönjük! Az útinfó jelzés lezárva.');
+      showNotice('Jelzés lezárva ✓');
     }
   };
 
@@ -1676,7 +1693,7 @@ export default function App() {
               aria-expanded={showMap}
               className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg transition active:scale-95"
             >
-              {showMap ? 'Térkép ▴' : '🗺️ Térkép'}
+              {showMap ? 'Térkép ▴' : 'Térkép ▾'}
             </button>
           </div>
 
@@ -1823,7 +1840,7 @@ export default function App() {
                                 : 'bg-white hover:bg-pilis-soft text-pilis border-[#DFD9CE]'
                             }`}
                           >
-                            🕒 {slotTime}
+                            {slotTime}
                           </button>
                         ))}
                       </div>
@@ -1872,8 +1889,8 @@ export default function App() {
             <div className="flex items-center justify-between gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] shadow-sm">
               {[
                 ['all', `Minden út (${filteredRides.length})`],
-                ['offer', `🚗 Van hely (${filteredRides.filter((r) => r.kind === 'offer').length})`],
-                ['ask', `🙋 Utat keres (${filteredRides.filter((r) => r.kind === 'ask').length})`]
+                ['offer', `Van hely (${filteredRides.filter((r) => r.kind === 'offer').length})`],
+                ['ask', `Utat keres (${filteredRides.filter((r) => r.kind === 'ask').length})`]
               ].map(([k, lbl]) => (
                 <button
                   key={k}
@@ -2228,73 +2245,93 @@ export default function App() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Szentendre Pulzus – Élő helyi infók"
+          aria-label="Közlekedési és helyi helyzetkép"
           className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="font-display font-extrabold text-lg text-[#18261F]">
-                  Szentendre Pulzus ({roadAlerts.length})
+                  Közlekedési és helyi helyzetkép
                 </h3>
                 <p className="text-[11px] text-[#5C6B62]">
-                  Élő közösségi jelzések (mindenkinél azonnal megjelenik)
+                  A beküldött jelzések minden szentendrei felhasználónál megjelennek.
                 </p>
               </div>
               <button
                 type="button"
                 aria-label="Ablak bezárása"
                 onClick={() => setShowRoadModal(false)}
-                className="text-sm font-bold text-[#5C6B62] px-2 py-1"
+                className="text-sm font-bold text-[#5C6B62] px-2 py-1 shrink-0"
               >
                 Bezárás ✕
               </button>
             </div>
 
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {roadAlerts.map((al) => (
-                <div
-                  key={al.id}
-                  className="bg-white rounded-xl p-3 border border-[#DFD9CE] text-xs space-y-1 flex items-start justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-[11px] text-[#5C6B62]">
-                      <span className="font-bold text-[#18261F]">
-                        {al.author_name || 'Szentendrei szomszéd'}
-                      </span>
-                      <span>
-                        {new Date(al.created_at).toLocaleTimeString('hu-HU', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
+              {roadAlerts.map((al) => {
+                const badgeTone =
+                  al.status_level === 'danger'
+                    ? 'bg-red-100 text-red-900 border-red-200'
+                    : al.status_level === 'warn'
+                    ? 'bg-amber-100 text-amber-900 border-amber-200'
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-200';
+                const badgeLabel =
+                  al.status_level === 'danger'
+                    ? 'Akadály / Lezárás'
+                    : al.status_level === 'warn'
+                    ? 'Torlódás'
+                    : 'Normál';
+
+                return (
+                  <div
+                    key={al.id}
+                    className="bg-white rounded-xl p-3 border border-[#DFD9CE] text-xs space-y-1.5 flex items-start justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[11px] text-[#5C6B62]">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.2 rounded-full border ${badgeTone}`}
+                        >
+                          {badgeLabel}
+                        </span>
+                        <span className="font-bold text-[#18261F]">
+                          {al.author_name || 'Helyi lakos'}
+                        </span>
+                        <span>
+                          {new Date(al.created_at).toLocaleTimeString('hu-HU', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <div className="font-semibold text-[#18261F] break-words">
+                        {al.message}
+                      </div>
                     </div>
-                    <div className="font-semibold text-[#18261F] mt-0.5 break-words">
-                      {al.message}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {al.id !== 'default-ok' && (
+                        <button
+                          type="button"
+                          onClick={() => handleClearRoadAlert(al.id)}
+                          className="text-[10px] font-bold bg-limestone hover:bg-emerald-50 text-[#18261F] hover:text-emerald-900 border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
+                        >
+                          Megszűnt ✓
+                        </button>
+                      )}
+                      {session?.user && al.reporter_id === session.user.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRoadAlert(al.id)}
+                          className="text-[11px] font-bold text-red-700 hover:underline px-1"
+                        >
+                          Törlés
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {al.id !== 'default-ok' && (
-                      <button
-                        type="button"
-                        onClick={() => handleClearRoadAlert(al.id)}
-                        className="text-[10px] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full"
-                      >
-                        ✓ Megoldódott
-                      </button>
-                    )}
-                    {session?.user && al.reporter_id === session.user.id && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRoadAlert(al.id)}
-                        className="text-[11px] font-bold text-red-700 hover:underline"
-                      >
-                        Törlés
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <form
@@ -2305,21 +2342,23 @@ export default function App() {
               className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5"
             >
               <div className="text-xs font-bold text-[#18261F]">
-                Mit látsz most Szentendrén?
+                Új jelzés beküldése
               </div>
 
               <div className="grid grid-cols-3 gap-1 bg-limestone p-1 rounded-lg text-[11px] font-bold">
                 {[
-                  ['warn', '🚗 11-es & HÉV'],
-                  ['danger', '⚠️ Hegyi / Közmű'],
-                  ['ok', '✅ Jó hír / Szabad']
+                  ['warn', 'Torlódás'],
+                  ['danger', 'Akadály / Lezárás'],
+                  ['ok', 'Tiszta út']
                 ].map(([lvl, lbl]) => (
                   <button
                     key={lvl}
                     type="button"
                     onClick={() => setCustomRoadLevel(lvl)}
                     className={`py-1.5 rounded transition ${
-                      customRoadLevel === lvl ? 'bg-pilis text-white shadow-sm' : 'text-[#5C6B62]'
+                      customRoadLevel === lvl
+                        ? 'bg-pilis text-white shadow-sm'
+                        : 'text-[#5C6B62]'
                     }`}
                   >
                     {lbl}
@@ -2327,60 +2366,40 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="space-y-1">
-                <div className="text-[10px] font-bold text-[#7A867E] uppercase tracking-wide">
-                  1-koppintásos gyorsjelzések:
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(customRoadLevel === 'warn'
-                    ? [
-                        '🅿️ HÉV P+R parkoló megtelt',
-                        '🚗 11-es beállt a Papírgyártól',
-                        '🚗 Sztaravodai lámpánál nagy a sor',
-                        '🚃 HÉV késik / kimaradás van'
-                      ]
-                    : customRoadLevel === 'danger'
-                    ? [
-                        '💧 Csőtörés / vízhiány: ',
-                        '⚡ Áramszünet van itt: ',
-                        '🚧 Utca elzárva / munkagép: ',
-                        '🐕 Elkóborolt kutya itt: '
-                      ]
-                    : [
-                        '✅ 11-es út újra szépen halad',
-                        '🅿️ Van szabad hely a HÉV P+R-ben',
-                        '✅ Hegyi utak tiszták, jól járhatók'
-                      ]
-                  ).map((preset) => (
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                {ROAD_LOCATION_PREFIXES.map((locPrefix) => {
+                  const isActivePrefix = customRoadText.startsWith(`${locPrefix}:`);
+                  return (
                     <button
-                      key={preset}
+                      key={locPrefix}
                       type="button"
-                      onClick={() => setCustomRoadText(preset)}
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
-                        customRoadText === preset
-                          ? 'bg-pilis text-white border-pilis'
-                          : 'bg-limestone hover:border-pilis text-[#18261F] border-[#DFD9CE]'
+                      onClick={() => handleSelectRoadPrefix(locPrefix)}
+                      className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
+                        isActivePrefix
+                          ? 'bg-pilis-soft text-pilis border-pilis/40'
+                          : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-pilis'
                       }`}
                     >
-                      {preset}
+                      {locPrefix}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
 
               <input
+                ref={roadInputRef}
                 type="text"
                 required
                 value={customRoadText}
                 onChange={(e) => setCustomRoadText(e.target.value)}
-                placeholder="Válassz fent gyorsjelzést, vagy írd be saját szavaiddal..."
+                placeholder="Pl. 11-es út: Papírgyártól lépésben halad, vagy HÉV P+R megtelt..."
                 className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border focus:outline-none focus:border-pilis"
               />
               <button
                 type="submit"
                 className="w-full bg-pilis hover:bg-pilis-light text-white font-bold py-2.5 rounded-xl text-xs transition"
               >
-                Közzététel a közösségnek
+                Közzététel
               </button>
             </form>
           </div>
@@ -2518,7 +2537,7 @@ export default function App() {
                             : 'bg-white hover:bg-pilis-soft text-pilis border-[#DFD9CE]'
                         }`}
                       >
-                        🕒 {slotTime}
+                        {slotTime}
                       </button>
                     ))}
                   </div>

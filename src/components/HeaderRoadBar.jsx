@@ -8,15 +8,16 @@ export default function HeaderRoadBar({
   onOpenAuthModal
 }) {
   const isLoggedIn = Boolean(session?.user);
-  const alerts = roadAlerts && roadAlerts.length > 0
-    ? roadAlerts
-    : [
-        {
-          id: 'default-ok',
-          status_level: 'ok',
-          message: 'Folyamatos haladás a 11-es úton • HÉV P+R szabad'
-        }
-      ];
+  const alerts =
+    roadAlerts && roadAlerts.length > 0
+      ? roadAlerts
+      : [
+          {
+            id: 'default-ok',
+            status_level: 'ok',
+            message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták'
+          }
+        ];
 
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -28,7 +29,7 @@ export default function HeaderRoadBar({
     if (alerts.length <= 1) return;
     const timer = setInterval(() => {
       setActiveIndex((prev) => (prev + 1) % alerts.length);
-    }, 4000);
+    }, 4500);
     return () => clearInterval(timer);
   }, [alerts.length]);
 
@@ -38,14 +39,14 @@ export default function HeaderRoadBar({
 
   const statusStyles = {
     ok: 'bg-emerald-950/35 border-emerald-300/25 text-emerald-50',
-    warn: 'bg-amber-950/60 border-amber-300/45 text-amber-50',
-    danger: 'bg-red-950/60 border-red-300/45 text-red-50'
+    warn: 'bg-amber-950/55 border-amber-300/40 text-amber-50',
+    danger: 'bg-red-950/55 border-red-300/40 text-red-50'
   };
 
   const dotColor = {
     ok: 'bg-emerald-400',
-    warn: 'bg-amber-400 animate-pulse',
-    danger: 'bg-red-400 animate-ping'
+    warn: 'bg-amber-400',
+    danger: 'bg-red-400'
   };
 
   return (
@@ -96,7 +97,7 @@ export default function HeaderRoadBar({
             }`}
           />
           {activeCount > 1 && (
-            <span className="text-[10px] font-extrabold bg-white/20 px-1.5 py-0.2 rounded text-white shrink-0">
+            <span className="text-[10px] font-bold bg-white/15 px-1.5 py-0.5 rounded text-white/90 shrink-0">
               {activeIndex + 1}/{activeCount}
             </span>
           )}
@@ -104,9 +105,7 @@ export default function HeaderRoadBar({
         </div>
 
         <span className="shrink-0 bg-white/15 px-2.5 py-0.5 rounded-full font-semibold text-[11px]">
-          {activeCount > 1 || currentAlert.id !== 'default-ok'
-            ? `Pulzus (${activeCount}) ›`
-            : '+ Helyi infó ›'}
+          {activeCount > 1 ? `${activeCount} jelzés ›` : 'Útinfó ›'}
         </span>
       </button>
     </header>
