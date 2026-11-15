@@ -205,17 +205,14 @@ export default function AddressAutocompleteInput({
     setOpen(false);
 
     if (item.source === 'google' && item.placeId && GOOGLE_PLACES_KEY) {
-      const activeToken = sessionTokenRef.current;
       sessionTokenRef.current = createSessionToken();
       try {
         const detailRes = await fetch(
-          `https://places.googleapis.com/v1/places/${encodeURIComponent(
-            item.placeId
-          )}?languageCode=hu&sessionToken=${encodeURIComponent(activeToken)}`,
+          `https://places.googleapis.com/v1/places/${encodeURIComponent(item.placeId)}?languageCode=hu`,
           {
             headers: {
               'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
-              'X-Goog-FieldMask': 'id,formattedAddress,location'
+              'X-Goog-FieldMask': 'location'
             }
           }
         );
@@ -224,9 +221,23 @@ export default function AddressAutocompleteInput({
           const lat = detail?.location?.latitude;
           const lng = detail?.location?.longitude;
           if (typeof lat === 'number' && typeof lng === 'number') {
-            if (onSelectPlace) {
-              onSelectPlace({ ...item, lat, lng });
-            }
+            if (onSelectPlace) onSelectPlace({ ...item, lat, lng });
+            return;
+          }
+        }
+      } catch {}
+
+      // Tartalék geokódolás a pontos cím szövegére, ha a Place Details bármiért nem válaszolna
+      try {
+        const geoRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(item.label)}`
+        );
+        const geoArr = await geoRes.json();
+        if (Array.isArray(geoArr) && geoArr[0]) {
+          const lat = Number(geoArr[0].lat);
+          const lng = Number(geoArr[0].lon);
+          if (!isNaN(lat) && !isNaN(lng) && onSelectPlace) {
+            onSelectPlace({ ...item, lat, lng });
             return;
           }
         }
