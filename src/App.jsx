@@ -10,7 +10,7 @@ import AddressAutocompleteInput from './components/AddressAutocompleteInput.jsx'
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
-import ProsDirectoryView from './components/ProsDirectoryView.jsx';
+const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import LegalModal from './components/LegalModal.jsx';
@@ -1978,7 +1978,8 @@ export default function App() {
         )}
 
         {activeTab === 'pros' && (
-          <ProsDirectoryView
+          <React.Suspense fallback={<div className="bg-white rounded-2xl p-6 text-center text-xs font-bold text-[#5C6B62] border border-[#DFD9CE]">Szakemberek betöltése...</div>}>
+            <ProsDirectoryView
             pros={pros}
             session={session}
             profile={profile}
@@ -1994,6 +1995,7 @@ export default function App() {
             onRefreshPros={() => fetchAllLiveData(session?.user?.id)}
             onStartProAgreement={handleStartProAgreement}
           />
+          </React.Suspense>
         )}
         <div className="pt-4 pb-2 text-center">
           <button
