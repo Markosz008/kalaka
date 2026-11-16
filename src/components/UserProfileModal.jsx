@@ -193,11 +193,22 @@ export default function UserProfileModal({
     }
     setDeletingAccount(true);
     try {
-      await Promise.all([
+      try {
+        localStorage.removeItem(`kalaka_read_${userId}`);
+        localStorage.removeItem(`kalaka_hidden_${userId}`);
+        localStorage.removeItem(`kalaka_routines_${userId}`);
+      } catch {}
+
+      await Promise.allSettled([
+        supabase.from('messages').delete().eq('sender_id', userId),
+        supabase.from('road_alerts').delete().eq('reporter_id', userId),
+        supabase.from('pro_endorsements').delete().eq('user_id', userId),
+        supabase.from('pro_interactions').delete().eq('user_id', userId),
+        supabase.from('kudos').delete().or(`giver_id.eq.${userId},receiver_id.eq.${userId}`),
+        supabase.from('agreements').delete().or(`requester_id.eq.${userId},helper_id.eq.${userId}`),
         supabase.from('rides').delete().eq('user_id', userId),
         supabase.from('favors').delete().eq('user_id', userId),
-        supabase.from('local_pros').delete().eq('owner_id', userId),
-        supabase.from('agreements').delete().or(`requester_id.eq.${userId},helper_id.eq.${userId}`)
+        supabase.from('local_pros').delete().eq('owner_id', userId)
       ]);
       await supabase.from('profiles').delete().eq('id', userId);
       await supabase.auth.signOut();

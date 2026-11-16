@@ -7,7 +7,8 @@ export default function AuthModal({
   onClose,
   session,
   profile,
-  onProfileUpdated
+  onProfileUpdated,
+  onOpenLegalModal
 }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -15,7 +16,7 @@ export default function AuthModal({
   const [displayName, setDisplayName] = useState('');
   const [zone, setZone] = useState('Pismány');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
-  const [adultConfirmed, setAdultConfirmed] = useState(true);
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -55,7 +56,7 @@ export default function AuthModal({
           throw new Error('Add meg a keresztneved vagy beceneved.');
         }
         if (!adultConfirmed) {
-          throw new Error('A regisztrációhoz pipáld be a 18+ megerősítést.');
+          throw new Error('A regisztrációhoz fogadd el az ÁSZF-et és az Adatkezelési tájékoztatót.');
         }
 
         const { data, error } = await supabase.auth.signUp({
@@ -301,14 +302,28 @@ export default function AuthModal({
                     placeholder="Meghívókód (opcionális)"
                     className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2 text-base font-mono uppercase box-border"
                   />
-                  <label className="flex items-center gap-2 text-xs text-[#5C6B62] pt-1 cursor-pointer">
+                  <label className="flex items-start gap-2 text-xs text-[#5C6B62] pt-1 cursor-pointer leading-snug">
                     <input
                       type="checkbox"
                       checked={adultConfirmed}
                       onChange={(e) => setAdultConfirmed(e.target.checked)}
-                      className="accent-pilis w-4 h-4 shrink-0"
+                      className="accent-pilis w-4 h-4 mt-0.5 shrink-0"
                     />
-                    <span>Elmúltam 18 éves, és elfogadom a házirendet.</span>
+                    <span>
+                      Elmúltam 18 éves, elolvastam és elfogadom az{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (onOpenLegalModal) onOpenLegalModal();
+                        }}
+                        className="text-pilis font-bold underline"
+                      >
+                        ÁSZF-et, a Házirendet és az Adatkezelési tájékoztatót
+                      </button>
+                      .
+                    </span>
                   </label>
                 </>
               )}
@@ -335,4 +350,3 @@ export default function AuthModal({
     </div>
   );
 }
-
