@@ -18,19 +18,6 @@ const ENDORSEMENT_STRENGTH_TAGS = [
   'Segítőkész'
 ];
 
-const GROUP_ICON_SVGS = {
-  otthon:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
-  szepseg_egeszseg:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
-  auto_muhely:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>',
-  kezmuves_gasztro:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>',
-  mozgas_oktatas:
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
-};
-
 function isLivePresenceActive(pro) {
   if (!pro?.live_until || !pro?.live_lat || !pro?.live_lng) return false;
   return new Date(pro.live_until).getTime() > Date.now();
@@ -62,36 +49,6 @@ function buildNavigationUrl(pro) {
     return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pro.address_text.trim())}`;
   }
   return null;
-}
-
-function clusterPointsByPixelDistance(map, points, radiusPx = 36) {
-  const clusters = [];
-  for (const pt of points) {
-    const projected = map.project([pt.lng, pt.lat]);
-    let matched = null;
-    for (const c of clusters) {
-      const dist = Math.hypot(c.px - projected.x, c.py - projected.y);
-      if (dist <= radiusPx) {
-        matched = c;
-        break;
-      }
-    }
-    if (matched) {
-      const n = matched.items.length;
-      matched.lat = (matched.lat * n + pt.lat) / (n + 1);
-      matched.lng = (matched.lng * n + pt.lng) / (n + 1);
-      matched.items.push(pt);
-    } else {
-      clusters.push({
-        lat: pt.lat,
-        lng: pt.lng,
-        px: projected.x,
-        py: projected.y,
-        items: [pt]
-      });
-    }
-  }
-  return clusters;
 }
 
 export default function ProsDirectoryView({
@@ -146,13 +103,15 @@ export default function ProsDirectoryView({
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
-  const markersLayer = useRef([]);
-  const resolvedPointsRef = useRef([]);
-  const previewProIdRef = useRef(null);
+  const prosByIdRef = useRef({});
 
   useEffect(() => {
-    previewProIdRef.current = previewPro?.id || null;
-  }, [previewPro?.id]);
+    const lookup = {};
+    (pros || []).forEach((p) => {
+      lookup[String(p.id)] = p;
+    });
+    prosByIdRef.current = lookup;
+  }, [pros]);
 
   const allProfessions = useMemo(() => {
     const map = new Map();
@@ -269,81 +228,6 @@ export default function ProsDirectoryView({
     });
   }, [pros, groupFilter, professionFilter, searchQuery]);
 
-  const renderClusteredMarkers = () => {
-    const map = mapInstance.current;
-    if (!map) return;
-
-    (markersLayer.current || []).forEach((m) => m.remove());
-    markersLayer.current = [];
-
-    const points = resolvedPointsRef.current || [];
-    if (points.length === 0) return;
-
-    const currentZoom = map.getZoom();
-    const clusters =
-      currentZoom >= 15.2
-        ? points.map((pt) => ({ lat: pt.lat, lng: pt.lng, items: [pt] }))
-        : clusterPointsByPixelDistance(map, points, 34);
-
-    clusters.forEach((cl) => {
-      if (cl.items.length > 1) {
-        const hasLiveInCluster = cl.items.some((i) => i.liveNow);
-        const el = document.createElement('button');
-        el.type = 'button';
-        el.style.cssText = `width:30px;height:30px;border-radius:9999px;background:${
-          hasLiveInCluster ? '#047857' : '#1E4635'
-        };color:#ffffff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid #ffffff;box-shadow:0 3px 10px rgba(0,0,0,0.32);cursor:pointer`;
-        el.textContent = String(cl.items.length);
-        el.title = `${cl.items.length} helyi szakember ezen a környéken`;
-        el.onclick = (ev) => {
-          ev.stopPropagation();
-          map.flyTo({
-            center: [cl.lng, cl.lat],
-            zoom: Math.min(16.5, map.getZoom() + 2),
-            duration: 380
-          });
-        };
-
-        const mk = new maplibregl.Marker({ element: el })
-          .setLngLat([cl.lng, cl.lat])
-          .addTo(map);
-        markersLayer.current.push(mk);
-      } else {
-        const item = cl.items[0];
-        const p = item.pro;
-        const isSelected = previewProIdRef.current === p.id;
-        const grp = normalizeServiceGroup(p.category);
-        const svgIcon = GROUP_ICON_SVGS[grp] || GROUP_ICON_SVGS.otthon;
-        const bg = isSelected
-          ? '#C86446'
-          : item.liveNow
-          ? '#047857'
-          : item.hasExactPin
-          ? '#1E4635'
-          : '#5C6B62';
-
-        const el = document.createElement('button');
-        el.type = 'button';
-        el.style.cssText = `position:relative;width:${isSelected ? '32px' : '28px'};height:${
-          isSelected ? '32px' : '28px'
-        };border-radius:9999px;background:${bg};color:#ffffff;display:flex;align-items:center;justify-content:center;border:2px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.34);cursor:pointer;transition:transform 0.12s`;
-        el.innerHTML = item.liveNow
-          ? `${svgIcon}<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:9999px;background:#34D399;border:1.5px solid #ffffff"></span>`
-          : svgIcon;
-        el.title = `${p.business_name} (${p.profession_name || ''})`;
-        el.onclick = (ev) => {
-          ev.stopPropagation();
-          setPreviewPro(p);
-        };
-
-        const mk = new maplibregl.Marker({ element: el })
-          .setLngLat([item.lng, item.lat])
-          .addTo(map);
-        markersLayer.current.push(mk);
-      }
-    });
-  };
-
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
     let map = null;
@@ -356,23 +240,132 @@ export default function ProsDirectoryView({
         attributionControl: false
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
       map.on('load', () => {
+        map.addSource('pros-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 34
+        });
+
+        map.addLayer({
+          id: 'pros-clusters',
+          type: 'circle',
+          source: 'pros-source',
+          filter: ['has', 'point_count'],
+          paint: {
+            'circle-color': '#1E4635',
+            'circle-radius': 15,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#FFFFFF'
+          }
+        });
+
+        map.addLayer({
+          id: 'pros-cluster-count',
+          type: 'symbol',
+          source: 'pros-source',
+          filter: ['has', 'point_count'],
+          layout: {
+            'text-field': ['get', 'point_count_abbreviated'],
+            'text-font': ['Noto Sans Bold'],
+            'text-size': 12
+          },
+          paint: {
+            'text-color': '#FFFFFF'
+          }
+        });
+
+        map.addLayer({
+          id: 'pros-unclustered-point',
+          type: 'circle',
+          source: 'pros-source',
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': [
+              'case',
+              ['boolean', ['get', 'isSelected'], false],
+              '#C86446',
+              ['boolean', ['get', 'liveNow'], false],
+              '#047857',
+              ['boolean', ['get', 'hasExactPin'], false],
+              '#1E4635',
+              '#5C6B62'
+            ],
+            'circle-radius': [
+              'case',
+              ['boolean', ['get', 'isSelected'], false],
+              11,
+              9
+            ],
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#FFFFFF'
+          }
+        });
+
+        map.addLayer({
+          id: 'pros-unclustered-dot',
+          type: 'circle',
+          source: 'pros-source',
+          filter: ['!', ['has', 'point_count']],
+          paint: {
+            'circle-color': '#FFFFFF',
+            'circle-radius': 2.5
+          }
+        });
+
+        map.on('click', 'pros-clusters', async (e) => {
+          const features = map.queryRenderedFeatures(e.point, { layers: ['pros-clusters'] });
+          if (!features.length) return;
+          const clusterId = features[0].properties.cluster_id;
+          try {
+            const zoom = await map.getSource('pros-source').getClusterExpansionZoom(clusterId);
+            map.easeTo({
+              center: features[0].geometry.coordinates,
+              zoom: zoom + 0.5,
+              duration: 320
+            });
+          } catch {}
+        });
+
+        map.on('click', 'pros-unclustered-point', (e) => {
+          const feat = e.features?.[0];
+          if (!feat) return;
+          const proId = String(feat.properties?.id || '');
+          const hit = prosByIdRef.current[proId];
+          if (hit) {
+            setPreviewPro(hit);
+          }
+        });
+
+        map.on('click', (e) => {
+          const hits = map.queryRenderedFeatures(e.point, {
+            layers: ['pros-clusters', 'pros-unclustered-point']
+          });
+          if (!hits.length) {
+            setPreviewPro(null);
+          }
+        });
+
+        ['pros-clusters', 'pros-unclustered-point'].forEach((layerId) => {
+          map.on('mouseenter', layerId, () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+          map.on('mouseleave', layerId, () => {
+            map.getCanvas().style.cursor = '';
+          });
+        });
+
         map.resize();
         setMapReady(true);
       });
-      map.on('zoomend', () => {
-        renderClusteredMarkers();
-      });
-      map.on('click', () => {
-        setPreviewPro(null);
-      });
+
       mapInstance.current = map;
-      markersLayer.current = [];
     } catch {}
 
     return () => {
-      (markersLayer.current || []).forEach((m) => m.remove());
-      markersLayer.current = [];
       if (mapInstance.current) {
         try {
           mapInstance.current.remove();
@@ -386,9 +379,11 @@ export default function ProsDirectoryView({
   useEffect(() => {
     const map = mapInstance.current;
     if (!map || !showMap || !mapReady) return;
+    const src = map.getSource('pros-source');
+    if (!src) return;
 
     const bounds = new maplibregl.LngLatBounds();
-    const resolvedList = [];
+    const features = [];
 
     filteredPros.forEach((p, idx) => {
       const liveNow = isLivePresenceActive(p);
@@ -413,32 +408,33 @@ export default function ProsDirectoryView({
       }
 
       if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) return;
-      resolvedList.push({
-        pro: p,
-        lat: coord.lat,
-        lng: coord.lng,
-        liveNow,
-        hasExactPin
+
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [coord.lng, coord.lat]
+        },
+        properties: {
+          id: String(p.id),
+          liveNow,
+          hasExactPin,
+          isSelected: previewPro?.id === p.id
+        }
       });
       bounds.extend([coord.lng, coord.lat]);
     });
 
-    resolvedPointsRef.current = resolvedList;
+    src.setData({ type: 'FeatureCollection', features });
 
-    if (resolvedList.length === 1) {
-      map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 350 });
-    } else if (resolvedList.length > 1) {
-      map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
+    if (!previewPro) {
+      if (features.length === 1) {
+        map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 350 });
+      } else if (features.length > 1) {
+        map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
+      }
     }
-
-    renderClusteredMarkers();
-  }, [filteredPros, showMap, mapReady]);
-
-  useEffect(() => {
-    if (mapReady) {
-      renderClusteredMarkers();
-    }
-  }, [previewPro?.id, mapReady]);
+  }, [filteredPros, previewPro?.id, showMap, mapReady]);
 
   const handleToggleLivePresence = async (pro) => {
     if (!supabase || !currentUserId) return;
