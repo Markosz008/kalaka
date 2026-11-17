@@ -115,6 +115,17 @@ export default function InteractiveRouteMap({
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
       map.on('load', () => {
+        try {
+          const styleLayers = map.getStyle()?.layers || [];
+          styleLayers.forEach((lyr) => {
+            const idLow = (lyr.id || '').toLowerCase();
+            const srcLyr = (lyr['source-layer'] || '').toLowerCase();
+            if (idLow.includes('transit') || idLow.includes('bus') || srcLyr.includes('transit')) {
+              map.setLayoutProperty(lyr.id, 'visibility', 'none');
+            }
+          });
+        } catch {}
+
         if (!map.getSource('esri-sat')) {
           map.addSource('esri-sat', {
             type: 'raster',
@@ -143,11 +154,11 @@ export default function InteractiveRouteMap({
           id: 'bus-stops-circle',
           type: 'circle',
           source: 'szentendre-bus-stops',
-          minzoom: 13.8,
+          minzoom: 12.0,
           paint: {
-            'circle-color': '#1D4ED8',
-            'circle-radius': 5,
-            'circle-stroke-width': 1.5,
+            'circle-color': '#F59E0B',
+            'circle-radius': 7,
+            'circle-stroke-width': 2,
             'circle-stroke-color': '#FFFFFF'
           }
         });
@@ -156,19 +167,20 @@ export default function InteractiveRouteMap({
           id: 'bus-stops-label',
           type: 'symbol',
           source: 'szentendre-bus-stops',
-          minzoom: 14.8,
+          minzoom: 13.5,
           layout: {
             'text-field': ['get', 'shortName'],
             'text-font': ['Noto Sans Bold'],
-            'text-size': 10,
-            'text-offset': [0, 0.9],
+            'text-size': 11,
+            'text-offset': [0, 1.1],
             'text-anchor': 'top',
-            'text-allow-overlap': false
+            'text-allow-overlap': false,
+            'symbol-avoid-edges': true
           },
           paint: {
-            'text-color': '#1E3A8A',
+            'text-color': '#92400E',
             'text-halo-color': '#FFFFFF',
-            'text-halo-width': 1.5
+            'text-halo-width': 2
           }
         });
 
