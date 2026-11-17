@@ -22,6 +22,7 @@ export const SZENTENDRE_BUS_STOPS = [
   { id: 'bs_fokt', name: 'Szentendre, Római sánc', lines: '880, 882, 884, 889', zone: 'Belváros', lat: 47.6648, lng: 19.0748 },
   { id: 'bs_bukkos', name: 'Szentendre, Bükkös patak', lines: '870, 878, 879, 880, 882, 884, 889', zone: 'Bükkös-part', lat: 47.6701, lng: 19.0741 },
   { id: 'bs_dunakorzo', name: 'Szentendre, Dunakorzó / Lázár cár tér', lines: '880, 889', zone: 'Dunakorzó', lat: 47.6685, lng: 19.0778 },
+  { id: 'bs_szamarhegy_alja', name: 'Szentendre, Szamárhegy (Városháza)', lines: '870, 880, 889', zone: 'Szamárhegy', lat: 47.6718, lng: 19.0748 },
   { id: 'bs_sztaravodai_ut', name: 'Szentendre, Sztaravodai út (11-es út)', lines: '870, 878, 879, 880, 882, 884, 889', zone: 'Belváros', lat: 47.6761, lng: 19.0754 },
   { id: 'bs_papirgyar', name: 'Szentendre, Papírgyár', lines: '878, 879, 880, 882, 884, 889', zone: 'Pismány', lat: 47.6852, lng: 19.0732 },
   { id: 'bs_pismany_elag', name: 'Szentendre, Pismányi elágazás', lines: '878, 879, 880, 882, 884', zone: 'Pismány', lat: 47.6894, lng: 19.0762 },
@@ -40,9 +41,16 @@ export const SZENTENDRE_BUS_STOPS = [
   { id: 'bs_sztaravoda_forras', name: 'Szentendre, Sztaravoda forrás', lines: '870, 871', zone: 'Sztaravoda', lat: 47.6872, lng: 19.0505 },
   { id: 'bs_skanzen', name: 'Szentendre, Szabadtéri Néprajzi Múzeum (Skanzen)', lines: '870, 871', zone: 'Sztaravoda', lat: 47.6915, lng: 19.0445 },
 
-  { id: 'bs_vasuti_villasor', name: 'Szentendre, Vasúti villasor', lines: '872, 873, 874, 876, 877', zone: 'Vasúti villasor', lat: 47.6625, lng: 19.0695 },
+  { id: 'bs_vasuti_villasor', name: 'Szentendre, Vasúti villasor', lines: '872, 873, 874, 876, 877', zone: 'Vasúti villasor', lat: 47.6618, lng: 19.0695 },
+  { id: 'bs_baratsag_koz', name: 'Szentendre, Barátság köz', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6612, lng: 19.0668 },
+  { id: 'bs_tavaszi_utca', name: 'Szentendre, Tavaszi utca', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6608, lng: 19.0635 },
   { id: 'bs_puspokmajor_lakotelep', name: 'Szentendre, Püspökmajori lakótelep', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6635, lng: 19.0645 },
-  { id: 'bs_kalvaria_ut', name: 'Szentendre, Kálvária út (Rendelőintézet)', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6678, lng: 19.0635 },
+  { id: 'bs_vasvari_lakotelep', name: 'Szentendre, Vasvári lakótelep', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6675, lng: 19.0630 },
+  { id: 'bs_kalvaria_ut', name: 'Szentendre, Kálvária út (Rendelőintézet)', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6688, lng: 19.0650 },
+  { id: 'bs_jázmin_utca', name: 'Szentendre, Jázmin utca', lines: '875, 876, 877', zone: 'Pannóniatelep', lat: 47.6562, lng: 19.0698 },
+  { id: 'bs_egres_ut', name: 'Szentendre, Egres út', lines: '875, 876, 877', zone: 'Pannóniatelep', lat: 47.6545, lng: 19.0685 },
+
+  { id: 'bs_izbegi_elagazas', name: 'Szentendre, Izbégi elágazás', lines: '872, 873, 874', zone: 'Izbég', lat: 47.6745, lng: 19.0558 },
   { id: 'bs_szentlaszlo_iskola', name: 'Szentendre, Izbég, Szentlászlói út (Iskola)', lines: '872, 873, 874, 876, 877', zone: 'Izbég', lat: 47.6782, lng: 19.0485 },
   { id: 'bs_izbeg_templom', name: 'Szentendre, Izbég, Templom', lines: '872, 873, 874', zone: 'Izbég', lat: 47.6805, lng: 19.0435 },
   { id: 'bs_izbeg_sportpalya', name: 'Szentendre, Izbég, Sportpálya', lines: '872, 873, 874', zone: 'Izbég', lat: 47.6830, lng: 19.0365 },
@@ -52,8 +60,7 @@ export const SZENTENDRE_BUS_STOPS = [
   { id: 'bs_lajosforras_elag', name: 'Szentendre, Lajosforrási elágazás', lines: '874', zone: 'Szarvashegy', lat: 47.6945, lng: 19.0120 },
 
   { id: 'bs_derecske_bejarat', name: 'Szentendre, Derecske dűlő', lines: '875', zone: 'Derecske', lat: 47.6560, lng: 19.0540 },
-  { id: 'bs_bolcsode', name: 'Szentendre, Kőzúzó utca / Bölcsőde', lines: '875, 876, 877', zone: 'Derecske', lat: 47.6585, lng: 19.0605 },
-  { id: 'bs_szamarhegy_alja', name: 'Szentendre, Szamárhegy (Városháza / Fő tér)', lines: '870, 880, 889', zone: 'Szamárhegy', lat: 47.6715, lng: 19.0745 }
+  { id: 'bs_bolcsode', name: 'Szentendre, Kőzúzó utca / Bölcsőde', lines: '875, 876, 877', zone: 'Derecske', lat: 47.6585, lng: 19.0605 }
 ];
 
 export const ZONE_TRANSIT_INFO = {
