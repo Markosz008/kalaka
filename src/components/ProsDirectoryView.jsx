@@ -104,6 +104,7 @@ export default function ProsDirectoryView({
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const prosByIdRef = useRef({});
+  const lastFilterKeyRef = useRef('');
 
   useEffect(() => {
     const lookup = {};
@@ -228,8 +229,53 @@ export default function ProsDirectoryView({
     });
   }, [pros, groupFilter, professionFilter, searchQuery]);
 
+  const geoJsonData = useMemo(() => {
+    const features = [];
+    filteredPros.forEach((p, idx) => {
+      const liveNow = isLivePresenceActive(p);
+      let coord = null;
+      let hasExactPin = false;
+
+      if (liveNow) {
+        coord = { lat: Number(p.live_lat), lng: Number(p.live_lng) };
+        hasExactPin = true;
+      } else if (p.lat && p.lng) {
+        coord = { lat: Number(p.lat), lng: Number(p.lng) };
+        hasExactPin = true;
+      } else {
+        const fallbackText = p.address_text || p.active_zone_today || p.base_zone;
+        const resolved = resolveCoordsFromText(fallbackText);
+        if (resolved) {
+          coord = {
+            lat: resolved.lat + ((idx % 4) - 1.5) * 0.0005,
+            lng: resolved.lng + ((idx % 3) - 1) * 0.0005
+          };
+        }
+      }
+
+      if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) return;
+
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [coord.lng, coord.lat]
+        },
+        properties: {
+          id: String(p.id),
+          liveNow,
+          hasExactPin,
+          isSelected: previewPro?.id === p.id
+        }
+      });
+    });
+
+    return { type: 'FeatureCollection', features };
+  }, [filteredPros, previewPro?.id]);
+
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
+    lastFilterKeyRef.current = '';
     let map = null;
     try {
       map = new maplibregl.Map({
@@ -382,59 +428,24 @@ export default function ProsDirectoryView({
     const src = map.getSource('pros-source');
     if (!src) return;
 
-    const bounds = new maplibregl.LngLatBounds();
-    const features = [];
+    src.setData(geoJsonData);
 
-    filteredPros.forEach((p, idx) => {
-      const liveNow = isLivePresenceActive(p);
-      let coord = null;
-      let hasExactPin = false;
+    const filterKey = `${groupFilter}|${professionFilter}|${searchQuery.trim().toLowerCase()}|${geoJsonData.features.length}`;
+    if (lastFilterKeyRef.current === filterKey) return;
+    lastFilterKeyRef.current = filterKey;
 
-      if (liveNow) {
-        coord = { lat: Number(p.live_lat), lng: Number(p.live_lng) };
-        hasExactPin = true;
-      } else if (p.lat && p.lng) {
-        coord = { lat: Number(p.lat), lng: Number(p.lng) };
-        hasExactPin = true;
-      } else {
-        const fallbackText = p.address_text || p.active_zone_today || p.base_zone;
-        const resolved = resolveCoordsFromText(fallbackText);
-        if (resolved) {
-          coord = {
-            lat: resolved.lat + ((idx % 4) - 1.5) * 0.0005,
-            lng: resolved.lng + ((idx % 3) - 1) * 0.0005
-          };
-        }
-      }
-
-      if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) return;
-
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [coord.lng, coord.lat]
-        },
-        properties: {
-          id: String(p.id),
-          liveNow,
-          hasExactPin,
-          isSelected: previewPro?.id === p.id
-        }
+    if (geoJsonData.features.length === 1) {
+      map.flyTo({
+        center: geoJsonData.features[0].geometry.coordinates,
+        zoom: 15,
+        duration: 350
       });
-      bounds.extend([coord.lng, coord.lat]);
-    });
-
-    src.setData({ type: 'FeatureCollection', features });
-
-    if (!previewPro) {
-      if (features.length === 1) {
-        map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 350 });
-      } else if (features.length > 1) {
-        map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
-      }
+    } else if (geoJsonData.features.length > 1) {
+      const bounds = new maplibregl.LngLatBounds();
+      geoJsonData.features.forEach((f) => bounds.extend(f.geometry.coordinates));
+      map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
     }
-  }, [filteredPros, previewPro?.id, showMap, mapReady]);
+  }, [geoJsonData, groupFilter, professionFilter, searchQuery, showMap, mapReady]);
 
   const handleToggleLivePresence = async (pro) => {
     if (!supabase || !currentUserId) return;
