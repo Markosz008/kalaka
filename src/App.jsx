@@ -10,7 +10,7 @@ import HeaderRoadBar from './components/HeaderRoadBar.jsx';
 import AddressAutocompleteInput, { stripAccents } from './components/AddressAutocompleteInput.jsx';
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
-import FavorCard from './components/FavorCard.jsx';
+import FavorCard, { parseFavorTag } from './components/FavorCard.jsx';
 import KalakaQuickComposer from './components/KalakaQuickComposer.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
@@ -357,6 +357,7 @@ export default function App() {
   const roadInputRef = useRef(null);
 
   const [newKind, setNewKind] = useState('offer');
+  const [newFavorMode, setNewFavorMode] = useState('ask');
   const [newFrom, setNewFrom] = useState('');
   const [newTo, setNewTo] = useState('');
   const [newFromCoords, setNewFromCoords] = useState(null);
@@ -1107,9 +1108,11 @@ export default function App() {
   };
 
   const handleOpenEditFavor = (favor) => {
+    const { isOffer, cleanTitle } = parseFavorTag(favor.title);
     setEditingItemId(favor.id);
     setNewKind('favor');
-    setNewFrom(favor.title);
+    setNewFavorMode(isOffer ? 'offer' : 'ask');
+    setNewFrom(cleanTitle);
     setNewNote(favor.description || '');
     setNewMinHearts(favor.min_favor_hearts || 0);
     setNewValidMins(1440);
@@ -1128,10 +1131,12 @@ export default function App() {
     if (newKind === 'favor') {
       const validMinutes = Number(newValidMins) || 1440;
       const expIso = new Date(Date.now() + validMinutes * 60 * 1000).toISOString();
+      const rawClean = newFrom.replace(/^\[(Felajánlás|Kérés)\]\s*/i, '').trim();
+      if (!rawClean) return;
 
-      if (!newFrom.trim()) return;
+      const prefix = newFavorMode === 'offer' ? '[Felajánlás] ' : '[Kérés] ';
       const favPayload = {
-        title: newFrom.trim(),
+        title: `${prefix}${rawClean}`,
         description: newNote.trim(),
         zone: profile.zone || 'Pismány',
         min_favor_hearts: Number(newMinHearts) || 0,
@@ -2313,6 +2318,7 @@ export default function App() {
                 setEditingItemId(null);
                 if (activeTab === 'favors') {
                   setNewKind('favor');
+                  setNewFavorMode('ask');
                   setNewFrom('');
                   setNewTo('');
                   setShowModalAdvanced(false);
@@ -2596,7 +2602,10 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setNewKind(k);
-                    if (k === 'favor') setNewFrom('');
+                    if (k === 'favor') {
+                      setNewFrom('');
+                      setShowModalAdvanced(false);
+                    }
                   }}
                   className={`py-2 rounded-lg truncate px-1 ${
                     newKind === k ? 'bg-white text-pilis shadow-sm' : 'text-[#5C6B62]'
@@ -2608,14 +2617,45 @@ export default function App() {
             </div>
 
             {newKind === 'favor' ? (
-              <input
-                type="text"
-                required
-                value={newFrom}
-                onChange={(e) => setNewFrom(e.target.value)}
-                placeholder="Miben kérsz vagy ajánlasz segítséget?"
-                className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
-              />
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setNewFavorMode('ask')}
+                    className={`py-2 rounded-lg transition ${
+                      newFavorMode === 'ask'
+                        ? 'bg-terracotta text-white shadow-sm'
+                        : 'text-[#5C6B62]'
+                    }`}
+                  >
+                    Segítséget kérek
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewFavorMode('offer')}
+                    className={`py-2 rounded-lg transition ${
+                      newFavorMode === 'offer'
+                        ? 'bg-pilis text-white shadow-sm'
+                        : 'text-[#5C6B62]'
+                    }`}
+                  >
+                    Felajánlok
+                  </button>
+                </div>
+
+                <input
+                  type="text"
+                  required
+                  value={newFrom}
+                  onChange={(e) => setNewFrom(e.target.value)}
+                  placeholder={
+                    newFavorMode === 'offer'
+                      ? 'Mit ajánlasz fel a szomszédoknak?'
+                      : 'Miben kérsz segítséget?'
+                  }
+                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+                />
+              </div>
             ) : (
               <div className="bg-white rounded-xl p-2 border border-[#DFD9CE] space-y-1.5">
                 <AddressAutocompleteInput
@@ -2717,16 +2757,21 @@ export default function App() {
                   className="text-xs font-bold text-[#5C6B62] hover:text-pilis text-left"
                 >
                   {showModalAdvanced
-                    ? 'Részletek és feltétel elrejtése ▴'
-                    : 'Időtartam vagy kölcsönzési feltétel beállítása ▾'}
+                    ? 'Időtartam és feltétel elrejtése ▴'
+                    : 'Időtartam vagy bizalmi feltétel beállítása ▾'}
                 </button>
 
                 {showModalAdvanced && (
                   <>
-                    <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
-                      <label className="text-xs font-bold block mb-1">
-                        Kölcsönzés feltétele: legalább {newMinHearts} korábbi segítés
-                      </label>
+                    <div className="bg-white border border-[#DFD9CE] rounded-xl p-3 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-[#18261F]">Ki jelentkezhet?</span>
+                        <span className="font-bold text-pilis">
+                          {Number(newMinHearts) === 0
+                            ? 'Bárki'
+                            : `Min. ${newMinHearts} visszaigazolt segítség`}
+                        </span>
+                      </div>
                       <input
                         type="range"
                         min="0"

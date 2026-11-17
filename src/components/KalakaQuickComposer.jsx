@@ -155,17 +155,20 @@ export default function KalakaQuickComposer({
               </select>
             </div>
 
-            <div className="bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-[#18261F]">
-                Min. segítés: {minHearts}
-              </span>
+            <div className="bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-[#18261F]">Ki jelentkezhet?</span>
+                <span className="font-bold text-pilis">
+                  {Number(minHearts) === 0 ? 'Bárki' : `Min. ${minHearts} visszaigazolt segítség`}
+                </span>
+              </div>
               <input
                 type="range"
                 min="0"
                 max="10"
                 value={minHearts}
                 onChange={(e) => setMinHearts(Number(e.target.value))}
-                className="w-24 accent-pilis"
+                className="w-full accent-pilis"
               />
             </div>
           </div>
