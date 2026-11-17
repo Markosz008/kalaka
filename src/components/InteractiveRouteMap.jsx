@@ -28,6 +28,7 @@ export default function InteractiveRouteMap({
   fromCoords = null,
   toCoords = null,
   selectedRide = null,
+  isVisible = true,
   onSelectRideOnMap,
   onPickLocation,
   onUpdatePinCoords
@@ -127,6 +128,12 @@ export default function InteractiveRouteMap({
       setMapReady(false);
     };
   }, []);
+
+  useEffect(() => {
+    if (isVisible && mapRef.current) {
+      mapRef.current.resize();
+    }
+  }, [isVisible]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -318,6 +325,14 @@ export default function InteractiveRouteMap({
   return (
     <div className="relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
       <div ref={mapContainerRef} className="w-full h-full" />
+
+      {!mapReady && (
+        <div className="absolute inset-0 grid place-items-center bg-[#ECE7DC]/90 pointer-events-none z-20">
+          <span className="text-xs font-bold text-[#5C6B62] bg-white/90 px-3 py-1.5 rounded-full border border-[#DFD9CE] shadow-sm">
+            Térkép betöltése...
+          </span>
+        </div>
+      )}
 
       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none z-10">
         <div className="flex bg-white/95 backdrop-blur rounded-xl p-0.5 shadow-sm border border-[#DFD9CE] pointer-events-auto text-[11px] font-bold">

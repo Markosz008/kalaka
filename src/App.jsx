@@ -292,6 +292,12 @@ export default function App() {
   const [showMap, setShowMap] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 768
   );
+  const [hasOpenedMap, setHasOpenedMap] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 768
+  );
+  useEffect(() => {
+    if (showMap) setHasOpenedMap(true);
+  }, [showMap]);
   const [selectedRideForMap, setSelectedRideForMap] = useState(null);
 
   const [inlineComposerMode, setInlineComposerMode] = useState(null);
@@ -1723,23 +1729,26 @@ export default function App() {
             </button>
           </div>
 
-          {showMap && (
-            <InteractiveRouteMap
-              rides={filteredRides}
-              fromText={filterFrom}
-              toText={filterTo}
-              fromCoords={fromCoords || resolveCoordsFromText(filterFrom)}
-              toCoords={toCoords || resolveCoordsFromText(filterTo)}
-              selectedRide={selectedRideForMap}
-              onSelectRideOnMap={(rideObj) => setSelectedRideForMap(rideObj)}
-              onPickLocation={(label, coordsObj, forcedField) =>
-                handleSelectQuickLocation(label, coordsObj, forcedField)
-              }
-              onUpdatePinCoords={(which, coordsObj) => {
-                if (which === 'from') setFromCoords(coordsObj);
-                else setToCoords(coordsObj);
-              }}
-            />
+          {hasOpenedMap && (
+            <div className={showMap ? 'block' : 'hidden'}>
+              <InteractiveRouteMap
+                isVisible={showMap}
+                rides={filteredRides}
+                fromText={filterFrom}
+                toText={filterTo}
+                fromCoords={fromCoords || resolveCoordsFromText(filterFrom)}
+                toCoords={toCoords || resolveCoordsFromText(filterTo)}
+                selectedRide={selectedRideForMap}
+                onSelectRideOnMap={(rideObj) => setSelectedRideForMap(rideObj)}
+                onPickLocation={(label, coordsObj, forcedField) =>
+                  handleSelectQuickLocation(label, coordsObj, forcedField)
+                }
+                onUpdatePinCoords={(which, coordsObj) => {
+                  if (which === 'from') setFromCoords(coordsObj);
+                  else setToCoords(coordsObj);
+                }}
+              />
+            </div>
           )}
 
           {hasBothRouteEnds && (
