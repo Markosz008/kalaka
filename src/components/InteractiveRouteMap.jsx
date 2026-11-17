@@ -1,9 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import {
-  SZENTENDRE_BUS_STOPS,
-  resolveCoordsFromText
-} from '../constants/szentendreData.js';
+import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
 const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -39,25 +36,6 @@ function resolveAlertCoords(msgText) {
   }
   return { lat: 47.6761, lng: 19.0754 };
 }
-
-const BUS_STOPS_GEOJSON = {
-  type: 'FeatureCollection',
-  features: SZENTENDRE_BUS_STOPS.map((s) => ({
-    type: 'Feature',
-    geometry: {
-      type: 'Point',
-      coordinates: [s.lng, s.lat]
-    },
-    properties: {
-      id: s.id,
-      name: s.name,
-      shortName: s.name.replace(/^Szentendre,\s*/i, ''),
-      lines: s.lines,
-      lat: s.lat,
-      lng: s.lng
-    }
-  }))
-};
 
 export default function InteractiveRouteMap({
   rides = [],
@@ -115,17 +93,6 @@ export default function InteractiveRouteMap({
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
       map.on('load', () => {
-        try {
-          const styleLayers = map.getStyle()?.layers || [];
-          styleLayers.forEach((lyr) => {
-            const idLow = (lyr.id || '').toLowerCase();
-            const srcLyr = (lyr['source-layer'] || '').toLowerCase();
-            if (idLow.includes('transit') || idLow.includes('bus') || srcLyr.includes('transit')) {
-              map.setLayoutProperty(lyr.id, 'visibility', 'none');
-            }
-          });
-        } catch {}
-
         if (!map.getSource('esri-sat')) {
           map.addSource('esri-sat', {
             type: 'raster',
@@ -145,72 +112,11 @@ export default function InteractiveRouteMap({
           });
         }
 
-        map.addSource('szentendre-bus-stops', {
-          type: 'geojson',
-          data: BUS_STOPS_GEOJSON
-        });
-
-        map.addLayer({
-          id: 'bus-stops-circle',
-          type: 'circle',
-          source: 'szentendre-bus-stops',
-          minzoom: 12.0,
-          paint: {
-            'circle-color': '#F59E0B',
-            'circle-radius': 7,
-            'circle-stroke-width': 2,
-            'circle-stroke-color': '#FFFFFF'
-          }
-        });
-
-        map.addLayer({
-          id: 'bus-stops-label',
-          type: 'symbol',
-          source: 'szentendre-bus-stops',
-          minzoom: 13.5,
-          layout: {
-            'text-field': ['get', 'shortName'],
-            'text-font': ['Noto Sans Bold'],
-            'text-size': 11,
-            'text-offset': [0, 1.1],
-            'text-anchor': 'top',
-            'text-allow-overlap': false,
-            'symbol-avoid-edges': true
-          },
-          paint: {
-            'text-color': '#92400E',
-            'text-halo-color': '#FFFFFF',
-            'text-halo-width': 2
-          }
-        });
-
-        map.on('click', 'bus-stops-circle', (e) => {
-          const feat = e.features?.[0];
-          if (!feat || !onPickLocationRef.current) return;
-          const props = feat.properties || {};
-          onPickLocationRef.current(props.name, {
-            lat: Number(props.lat),
-            lng: Number(props.lng)
-          });
-        });
-
-        map.on('mouseenter', 'bus-stops-circle', () => {
-          map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', 'bus-stops-circle', () => {
-          map.getCanvas().style.cursor = '';
-        });
-
         map.resize();
         setMapReady(true);
       });
 
       map.on('click', async (e) => {
-        const stopHits = map.queryRenderedFeatures(e.point, {
-          layers: ['bus-stops-circle']
-        });
-        if (stopHits.length > 0) return;
-
         if (!onPickLocationRef.current) return;
         const { lat, lng } = e.lngLat;
         try {
