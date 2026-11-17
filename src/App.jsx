@@ -1510,7 +1510,7 @@ export default function App() {
     await supabase.from('messages').insert({
       agreement_id: createdAgr.id,
       sender_id: session.user.id,
-      body: `Szia! Érdeklődnék (${pro.profession_name || pro.business_name}).`
+      body: 'Szia! Szeretnék érdeklődni, mikor lenne szabad időpontod.'
     });
 
     handleOpenAgreement({

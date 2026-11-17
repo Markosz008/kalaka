@@ -517,7 +517,7 @@ export default function AgreementChatModal({
   };
 
   const handleCancelAgreement = async () => {
-    if (!isLiveDbAgreement || busy) return;
+    if (!isLiveDbAgreement || isProInquiry || busy) return;
     setBusy(true);
     setErrorBanner(null);
     try {
@@ -662,7 +662,7 @@ export default function AgreementChatModal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {['chatting', 'agreed', 'started'].includes(status) && (
+            {!isProInquiry && ['chatting', 'agreed', 'started'].includes(status) && (
               <button
                 type="button"
                 disabled={busy}
