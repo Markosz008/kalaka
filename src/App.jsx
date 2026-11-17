@@ -11,6 +11,7 @@ import AddressAutocompleteInput, { stripAccents } from './components/AddressAuto
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
+import KalakaQuickComposer from './components/KalakaQuickComposer.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import SzentendrePulseBar from './components/SzentendrePulseBar.jsx';
@@ -366,6 +367,7 @@ export default function App() {
   const [newValidMins, setNewValidMins] = useState(720);
   const [newNote, setNewNote] = useState('');
   const [newMinHearts, setNewMinHearts] = useState(0);
+  const [showModalAdvanced, setShowModalAdvanced] = useState(false);
 
   const showNotice = useCallback((text, tone = 'info') => {
     setAppNotice({ text, tone });
@@ -1111,6 +1113,7 @@ export default function App() {
     setNewNote(favor.description || '');
     setNewMinHearts(favor.min_favor_hearts || 0);
     setNewValidMins(1440);
+    setShowModalAdvanced(Boolean(favor.min_favor_hearts > 0));
     setShowNewModal(true);
   };
 
@@ -1952,11 +1955,18 @@ export default function App() {
               nowTick={nowTick}
               userZone={profile?.zone || 'Pismány'}
               rides={rides}
-              onSelectHevRoute={(zoneName) => {
-                setFilterFrom(`Szentendre, ${zoneName}`);
-                setFilterTo('Szentendre HÉV-végállomás');
-                setFromCoords(resolveCoordsFromText(zoneName));
-                setToCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
+              onSelectHevRoute={(zoneName, direction = 'to_hev') => {
+                if (direction === 'from_hev') {
+                  setFilterFrom('Szentendre HÉV-végállomás');
+                  setFilterTo(`Szentendre, ${zoneName}`);
+                  setFromCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
+                  setToCoords(resolveCoordsFromText(zoneName));
+                } else {
+                  setFilterFrom(`Szentendre, ${zoneName}`);
+                  setFilterTo('Szentendre HÉV-végállomás');
+                  setFromCoords(resolveCoordsFromText(zoneName));
+                  setToCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
+                }
                 setInlineSeats(1);
                 setInlineComposerMode('ask');
                 setShowMap(true);
@@ -2075,25 +2085,40 @@ export default function App() {
 
         {activeTab === 'favors' && (
           <>
+            <KalakaQuickComposer
+              userZone={profile?.zone || 'Pismány'}
+              onSubmitFavor={async ({ title, description, validMins, minHearts }) => {
+                if (!session?.user) {
+                  setShowAuthModal(true);
+                  return false;
+                }
+                const expIso = new Date(Date.now() + validMins * 60 * 1000).toISOString();
+                const { error } = await supabase.from('favors').insert({
+                  user_id: session.user.id,
+                  title,
+                  description,
+                  zone: profile?.zone || 'Pismány',
+                  min_favor_hearts: minHearts,
+                  expires_at: expIso
+                });
+                if (error) {
+                  showNotice(`Mentési hiba: ${error.message}`, 'err');
+                  return false;
+                }
+                showNotice('Kaláka-kiírás közzétéve ✓');
+                await fetchAllLiveData(session.user.id);
+                return true;
+              }}
+            />
+
             {favors.length === 0 ? (
               <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
                 <div className="text-sm font-bold text-[#18261F]">
                   Még nincs aktív Kaláka-kérés.
                 </div>
                 <p className="text-xs text-[#5C6B62]">
-                  Kérj kölcsön egy szerszámot a szomszédtól, vagy ajánlj fel segítséget!
+                  Írd be fentre egy sorban, mire van szükséged vagy miben tudsz segíteni a szomszédoknak!
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingItemId(null);
-                    setNewKind('favor');
-                    setShowNewModal(true);
-                  }}
-                  className="bg-pilis text-white font-bold text-xs px-4 py-2.5 rounded-xl"
-                >
-                  + Új Kaláka-kérés
-                </button>
               </div>
             ) : (
               favors.map((fav) => (
@@ -2104,6 +2129,7 @@ export default function App() {
                   kudosCount={kudosCountByUser[fav.user_id] || 0}
                   onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}
+                  currentUserZone={profile?.zone || ''}
                   userFavorHearts={profile.favor_hearts}
                   onStartFavorAgreement={handleStartFavorAgreement}
                   onEditFavor={handleOpenEditFavor}
@@ -2285,12 +2311,18 @@ export default function App() {
               aria-label="Új kiírás létrehozása"
               onClick={() => {
                 setEditingItemId(null);
-                setNewFrom(filterFrom);
-                setNewTo(filterTo);
-                setNewFromCoords(fromCoords);
-                setNewToCoords(toCoords);
-                if (activeTab === 'favors') setNewKind('favor');
-                else if (newKind === 'favor') setNewKind('offer');
+                if (activeTab === 'favors') {
+                  setNewKind('favor');
+                  setNewFrom('');
+                  setNewTo('');
+                  setShowModalAdvanced(false);
+                } else {
+                  if (newKind === 'favor') setNewKind('offer');
+                  setNewFrom(filterFrom);
+                  setNewTo(filterTo);
+                  setNewFromCoords(fromCoords);
+                  setNewToCoords(toCoords);
+                }
                 setShowNewModal(true);
               }}
               className="bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-xs px-4 py-2 rounded-full shadow-md transition active:scale-95"
@@ -2562,7 +2594,10 @@ export default function App() {
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setNewKind(k)}
+                  onClick={() => {
+                    setNewKind(k);
+                    if (k === 'favor') setNewFrom('');
+                  }}
                   className={`py-2 rounded-lg truncate px-1 ${
                     newKind === k ? 'bg-white text-pilis shadow-sm' : 'text-[#5C6B62]'
                   }`}
@@ -2676,36 +2711,50 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
-                  <label className="text-xs font-bold block mb-1">
-                    Kölcsönzés feltétele: legalább {newMinHearts} korábbi segítés
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    value={newMinHearts}
-                    onChange={(e) => setNewMinHearts(e.target.value)}
-                    className="w-full accent-pilis"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowModalAdvanced((v) => !v)}
+                  className="text-xs font-bold text-[#5C6B62] hover:text-pilis text-left"
+                >
+                  {showModalAdvanced
+                    ? 'Részletek és feltétel elrejtése ▴'
+                    : 'Időtartam vagy kölcsönzési feltétel beállítása ▾'}
+                </button>
 
-                <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-[#18261F]">
-                    Érvényesség
-                  </span>
-                  <select
-                    value={newValidMins}
-                    onChange={(e) => setNewValidMins(Number(e.target.value))}
-                    className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
-                  >
-                    {VALIDITY_OPTIONS.map((opt) => (
-                      <option key={opt.minutes} value={opt.minutes}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {showModalAdvanced && (
+                  <>
+                    <div className="bg-white border border-[#DFD9CE] rounded-xl p-3">
+                      <label className="text-xs font-bold block mb-1">
+                        Kölcsönzés feltétele: legalább {newMinHearts} korábbi segítés
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        value={newMinHearts}
+                        onChange={(e) => setNewMinHearts(e.target.value)}
+                        className="w-full accent-pilis"
+                      />
+                    </div>
+
+                    <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-[#18261F]">
+                        Érvényesség
+                      </span>
+                      <select
+                        value={newValidMins}
+                        onChange={(e) => setNewValidMins(Number(e.target.value))}
+                        className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
+                      >
+                        {VALIDITY_OPTIONS.map((opt) => (
+                          <option key={opt.minutes} value={opt.minutes}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
