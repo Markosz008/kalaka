@@ -1,12 +1,24 @@
 import React, { useState } from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
 
+export function parseFavorTag(rawTitle) {
+  const m = (rawTitle || '').match(/^\[(Felajánlás|Kérés)\]\s*(.*)$/i);
+  if (!m) {
+    return { isOffer: false, cleanTitle: rawTitle || '' };
+  }
+  return {
+    isOffer: m[1].toLowerCase() === 'felajánlás',
+    cleanTitle: m[2]
+  };
+}
+
 export default function FavorCard({
   hasExistingAgreement = false,
   kudosCount = 0,
   onInspectUser,
   favor,
   currentUserId,
+  currentUserZone = '',
   userFavorHearts,
   onStartFavorAgreement,
   onEditFavor,
@@ -18,6 +30,12 @@ export default function FavorCard({
   const isLocked = !isOwner && minReq > 0 && userFavorHearts < minReq;
   const isFeaturedHelper = (favor.author_favor_hearts || 0) >= 10;
   const activeBadge = formatRemainingTime(favor.expires_at);
+  const { isOffer, cleanTitle } = parseFavorTag(favor.title);
+  const isSameZone =
+    !isOwner &&
+    currentUserZone &&
+    favor.zone &&
+    currentUserZone.trim().toLowerCase() === favor.zone.trim().toLowerCase();
 
   return (
     <article
@@ -27,11 +45,28 @@ export default function FavorCard({
           : 'border-[#DFD9CE]'
       }`}
     >
-      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-bold bg-[#ECE7DC] text-[#5C6B62] px-2.5 py-0.5 rounded-full">
-            📍 {favor.zone}
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span
+            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+              isOffer
+                ? 'bg-[#E6F2EC] text-pilis'
+                : 'bg-terracotta-soft text-terracotta'
+            }`}
+          >
+            {isOffer ? 'Felajánlom' : 'Segítséget kérek'}
           </span>
+
+          <span
+            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+              isSameZone
+                ? 'bg-emerald-100 text-emerald-950'
+                : 'bg-[#ECE7DC] text-[#5C6B62]'
+            }`}
+          >
+            {isSameZone ? `Szomszédod • ${favor.zone}` : favor.zone}
+          </span>
+
           {activeBadge && (
             <span className="text-[11px] font-medium text-[#5C6B62]">
               • {activeBadge}
@@ -60,7 +95,7 @@ export default function FavorCard({
       </div>
 
       <h3 className="font-display font-bold text-base text-[#18261F]">
-        {favor.title}
+        {cleanTitle}
       </h3>
       {favor.description && (
         <p className="text-xs text-[#5C6B62] mt-1 mb-3 leading-relaxed">
@@ -68,7 +103,7 @@ export default function FavorCard({
         </p>
       )}
 
-      <div className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2">
+      <div className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2 mt-2">
         <button
           type="button"
           onClick={(e) => {
@@ -139,11 +174,16 @@ export default function FavorCard({
                 : 'bg-pilis hover:bg-pilis-light text-white'
             }`}
           >
-            {hasExistingAgreement ? 'Egyeztetés ›' : isLocked ? `Legalább ${minReq} segítés` : 'Segítek / Írok'}
+            {hasExistingAgreement
+              ? 'Egyeztetés ›'
+              : isLocked
+              ? `Legalább ${minReq} segítés`
+              : isOffer
+              ? 'Érdekel / Írok'
+              : 'Segítek / Írok'}
           </button>
         )}
       </div>
     </article>
   );
 }
-

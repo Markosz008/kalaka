@@ -64,6 +64,7 @@ export default function SzentendrePulseBar({
   const driveMins = ZONE_DRIVE_MINS[userZone] || 8;
   const firstTrain = nextTrains[0];
   const secondTrain = nextTrains[1];
+  const isAfternoon = new Date(nowTick).getHours() >= 13;
 
   const nextRegularRide = useMemo(() => {
     return (rides || []).find((r) => r.is_recurring && r.kind === 'offer') || null;
@@ -74,28 +75,35 @@ export default function SzentendrePulseBar({
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-pilis shrink-0" />
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isAfternoon ? 'bg-terracotta' : 'bg-pilis'}`} />
             <span className="text-[11px] font-extrabold text-pilis uppercase tracking-wide">
-              H5 HÉV • Batthyány tér felé
+              {isAfternoon ? `Hazafelé • HÉV → ${userZone}` : 'H5 HÉV • Batthyány tér felé'}
             </span>
           </div>
           {firstTrain && (
             <div className="text-xs font-semibold text-[#18261F] mt-0.5 truncate">
-              Indul: <strong>{firstTrain.timeStr}</strong> ({firstTrain.inMins} perc múlva)
-              {secondTrain ? ` • utána ${secondTrain.timeStr}` : ''}
+              {isAfternoon
+                ? `HÉV indulás: ${firstTrain.timeStr} (${firstTrain.inMins} p) • Hegyre fel: ~${driveMins} perc`
+                : <>Indul: <strong>{firstTrain.timeStr}</strong> ({firstTrain.inMins} perc múlva){secondTrain ? ` • utána ${secondTrain.timeStr}` : ''}</>}
             </div>
           )}
-          <div className="text-[11px] text-[#5C6B62]">
-            {userZone} térségéből autóval kb. {driveMins} perc a végállomás
-          </div>
+          {!isAfternoon && (
+            <div className="text-[11px] text-[#5C6B62]">
+              {userZone} térségéből autóval kb. {driveMins} perc a végállomás
+            </div>
+          )}
         </div>
 
         <button
           type="button"
-          onClick={() => onSelectHevRoute && onSelectHevRoute(userZone)}
-          className="shrink-0 bg-pilis-soft hover:bg-pilis text-pilis hover:text-white font-bold text-[11px] px-3 py-2 rounded-xl border border-pilis/20 transition active:scale-95"
+          onClick={() => onSelectHevRoute && onSelectHevRoute(userZone, isAfternoon ? 'from_hev' : 'to_hev')}
+          className={`shrink-0 font-bold text-[11px] px-3 py-2 rounded-xl border transition active:scale-95 ${
+            isAfternoon
+              ? 'bg-terracotta-soft hover:bg-terracotta text-terracotta hover:text-white border-terracotta/25'
+              : 'bg-pilis-soft hover:bg-pilis text-pilis hover:text-white border-pilis/20'
+          }`}
         >
-          Fuvart kérek a HÉV-hez ›
+          {isAfternoon ? 'HÉV-től felfelé ›' : 'Fuvart kérek a HÉV-hez ›'}
         </button>
       </div>
 
