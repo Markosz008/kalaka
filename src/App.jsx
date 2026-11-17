@@ -13,6 +13,7 @@ import RideCard from './components/RideCard.jsx';
 import FavorCard from './components/FavorCard.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
+import SzentendrePulseBar from './components/SzentendrePulseBar.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 
@@ -35,6 +36,29 @@ const ROAD_LOCATION_PREFIXES = [
   'Pismány / Sztaravoda',
   'Izbég / Szarvashegy'
 ];
+
+const ROAD_QUICK_PRESETS = {
+  '11-es út': [
+    { level: 'warn', label: 'Lépésben halad', text: '11-es út: Lépésben halad a sor a Papírgyár / belváros felé' },
+    { level: 'danger', label: 'Baleset / Torlódás', text: '11-es út: Nagy torlódás, érdemes kerülni' },
+    { level: 'ok', label: 'Tiszta, halad', text: '11-es út: Folyamatos, zavartalan haladás' }
+  ],
+  'HÉV / P+R': [
+    { level: 'warn', label: 'P+R megtelt', text: 'HÉV / P+R: A parkoló megtelt, nehezen van hely' },
+    { level: 'danger', label: 'HÉV késés / pótlás', text: 'HÉV / P+R: H5 HÉV fennakadás vagy késés' },
+    { level: 'ok', label: 'Van szabad hely', text: 'HÉV / P+R: Van még szabad parkolóhely' }
+  ],
+  'Pismány / Sztaravoda': [
+    { level: 'warn', label: 'Lassú haladás', text: 'Pismány / Sztaravoda: Lassabb haladás a hegyi szakaszon' },
+    { level: 'danger', label: 'Útakadály / Csúszós', text: 'Pismány / Sztaravoda: Útakadály vagy csúszós úttest' },
+    { level: 'ok', label: 'Járható, tiszta', text: 'Pismány / Sztaravoda: Tiszta, jól járható utak' }
+  ],
+  'Izbég / Szarvashegy': [
+    { level: 'warn', label: 'Torlódás az iskolánál', text: 'Izbég / Szarvashegy: Torlódás a Szentlászlói úton' },
+    { level: 'danger', label: 'Útzár / Akadály', text: 'Izbég / Szarvashegy: Útakadály a szarvashegyi szakaszon' },
+    { level: 'ok', label: 'Tiszta út', text: 'Izbég / Szarvashegy: Folyamatos haladás' }
+  ]
+};
 
 function formatAgreementRideTitle(originText, destText, agrStatus) {
   const isApproved = ['agreed', 'started', 'arrived', 'completed'].includes(agrStatus);
@@ -328,6 +352,7 @@ export default function App() {
 
   const [customRoadText, setCustomRoadText] = useState('');
   const [customRoadLevel, setCustomRoadLevel] = useState('warn');
+  const [selectedRoadHub, setSelectedRoadHub] = useState('11-es út');
   const roadInputRef = useRef(null);
 
   const [newKind, setNewKind] = useState('offer');
@@ -1419,6 +1444,7 @@ export default function App() {
   };
 
   const handleSelectRoadPrefix = (prefix) => {
+    setSelectedRoadHub(prefix);
     setCustomRoadText((prev) => {
       const stripped = (prev || '')
         .replace(/^(11-es út|HÉV \/ P\+R|Pismány \/ Sztaravoda|Izbég \/ Szarvashegy):\s*/i, '')
@@ -1734,6 +1760,7 @@ export default function App() {
               <InteractiveRouteMap
                 isVisible={showMap}
                 rides={filteredRides}
+                roadAlerts={roadAlerts}
                 fromText={filterFrom}
                 toText={filterTo}
                 fromCoords={fromCoords || resolveCoordsFromText(filterFrom)}
@@ -1921,6 +1948,25 @@ export default function App() {
       <main className="px-3 sm:px-4 mt-4 space-y-3">
         {activeTab === 'rides' && (
           <>
+            <SzentendrePulseBar
+              nowTick={nowTick}
+              userZone={profile?.zone || 'Pismány'}
+              rides={rides}
+              onSelectHevRoute={(zoneName) => {
+                setFilterFrom(`Szentendre, ${zoneName}`);
+                setFilterTo('Szentendre HÉV-végállomás');
+                setFromCoords(resolveCoordsFromText(zoneName));
+                setToCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
+                setInlineSeats(1);
+                setInlineComposerMode('ask');
+                setShowMap(true);
+              }}
+              onSelectRide={(rideObj) => {
+                setSelectedRideForMap(rideObj);
+                setShowMap(true);
+              }}
+            />
+
             <div className="flex items-center justify-between gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] shadow-sm">
               {[
                 ['all', `Minden út (${filteredRides.length})`],
@@ -2419,7 +2465,7 @@ export default function App() {
 
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
                 {ROAD_LOCATION_PREFIXES.map((locPrefix) => {
-                  const isActivePrefix = customRoadText.startsWith(`${locPrefix}:`);
+                  const isActivePrefix = selectedRoadHub === locPrefix;
                   return (
                     <button
                       key={locPrefix}
@@ -2436,6 +2482,27 @@ export default function App() {
                   );
                 })}
               </div>
+
+              {ROAD_QUICK_PRESETS[selectedRoadHub] && (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {ROAD_QUICK_PRESETS[selectedRoadHub].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => handleAddRoadAlert(preset.level, preset.text)}
+                      className={`text-[11px] font-bold py-2 px-2 rounded-xl border text-center leading-tight transition active:scale-95 ${
+                        preset.level === 'danger'
+                          ? 'bg-red-50 hover:bg-red-100 text-red-900 border-red-200'
+                          : preset.level === 'warn'
+                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-amber-200'
+                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <input
                 ref={roadInputRef}

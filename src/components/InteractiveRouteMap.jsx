@@ -23,8 +23,23 @@ function createPinElement(letter, bgColor) {
   return el;
 }
 
+function resolveAlertCoords(msgText) {
+  const s = (msgText || '').toLowerCase();
+  if (s.includes('hév') || s.includes('hev') || s.includes('p+r')) {
+    return { lat: 47.6602, lng: 19.0738 };
+  }
+  if (s.includes('pismány') || s.includes('pismany') || s.includes('sztaravoda')) {
+    return { lat: 47.6852, lng: 19.0645 };
+  }
+  if (s.includes('izbég') || s.includes('izbeg') || s.includes('szarvashegy')) {
+    return { lat: 47.6782, lng: 19.0485 };
+  }
+  return { lat: 47.6761, lng: 19.0754 };
+}
+
 export default function InteractiveRouteMap({
   rides = [],
+  roadAlerts = [],
   fromCoords = null,
   toCoords = null,
   selectedRide = null,
@@ -38,6 +53,7 @@ export default function InteractiveRouteMap({
   const markerARef = useRef(null);
   const markerBRef = useRef(null);
   const rideMarkersRef = useRef([]);
+  const alertMarkersRef = useRef([]);
 
   const [mapMode, setMapMode] = useState('street');
   const [routeStats, setRouteStats] = useState(null);
@@ -302,6 +318,31 @@ export default function InteractiveRouteMap({
       rideMarkersRef.current.push(mk);
     });
   }, [rides, effectiveFrom, effectiveTo, mapReady, onSelectRideOnMap]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    alertMarkersRef.current.forEach((m) => m.remove());
+    alertMarkersRef.current = [];
+
+    (roadAlerts || [])
+      .filter((a) => a.status_level === 'warn' || a.status_level === 'danger')
+      .forEach((al) => {
+        const pt = resolveAlertCoords(al.message);
+        const el = document.createElement('div');
+        const isDanger = al.status_level === 'danger';
+        el.style.cssText = `background:${isDanger ? '#991B1B' : '#B45309'};color:#fff;font-weight:800;font-size:10px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);white-space:nowrap;pointer-events:none`;
+        const shortLabel = (al.message || '').split(':')[0].slice(0, 18);
+        el.textContent = `! ${shortLabel}`;
+        el.title = al.message;
+
+        const mk = new maplibregl.Marker({ element: el })
+          .setLngLat([pt.lng, pt.lat])
+          .addTo(map);
+        alertMarkersRef.current.push(mk);
+      });
+  }, [roadAlerts, mapReady]);
 
   const handleCenterGps = () => {
     if (!navigator.geolocation || !mapRef.current) return;
