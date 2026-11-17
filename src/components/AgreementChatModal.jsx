@@ -3,7 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
-const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;

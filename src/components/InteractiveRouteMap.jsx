@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
-const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
 function createPinElement(letter, bgColor) {
   const el = document.createElement('div');
@@ -316,7 +316,7 @@ export default function InteractiveRouteMap({
   }
 
   return (
-    <div className="relative w-full h-60 sm:h-64 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
+    <div className="relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
       <div ref={mapContainerRef} className="w-full h-full" />
 
       <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none z-10">

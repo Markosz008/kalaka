@@ -9,7 +9,7 @@ import {
   resolveCoordsFromText
 } from '../constants/szentendreData.js';
 
-const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
 const ENDORSEMENT_STRENGTH_TAGS = [
   'Pontos',

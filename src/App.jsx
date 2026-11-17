@@ -289,7 +289,9 @@ export default function App() {
   const [fromCoords, setFromCoords] = useState(null);
   const [toCoords, setToCoords] = useState(null);
   const [activeSearchField, setActiveSearchField] = useState('from');
-  const [showMap, setShowMap] = useState(false);
+  const [showMap, setShowMap] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 768
+  );
   const [selectedRideForMap, setSelectedRideForMap] = useState(null);
 
   const [inlineComposerMode, setInlineComposerMode] = useState(null);
@@ -856,7 +858,7 @@ export default function App() {
       setFromCoords(null);
       setToCoords(null);
       setInlineComposerMode(null);
-      setShowMap(false);
+      setShowMap(typeof window !== 'undefined' && window.innerWidth >= 768);
       return;
     }
     setShowMap(true);
