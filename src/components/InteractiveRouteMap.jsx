@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
-import { resolveCoordsFromText } from '../constants/szentendreData.js';
+import {
+  SZENTENDRE_BUS_STOPS,
+  resolveCoordsFromText
+} from '../constants/szentendreData.js';
 
 const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -37,6 +40,25 @@ function resolveAlertCoords(msgText) {
   return { lat: 47.6761, lng: 19.0754 };
 }
 
+const BUS_STOPS_GEOJSON = {
+  type: 'FeatureCollection',
+  features: SZENTENDRE_BUS_STOPS.map((s) => ({
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [s.lng, s.lat]
+    },
+    properties: {
+      id: s.id,
+      name: s.name,
+      shortName: s.name.replace(/^Szentendre,\s*/i, ''),
+      lines: s.lines,
+      lat: s.lat,
+      lng: s.lng
+    }
+  }))
+};
+
 export default function InteractiveRouteMap({
   rides = [],
   roadAlerts = [],
@@ -54,6 +76,11 @@ export default function InteractiveRouteMap({
   const markerBRef = useRef(null);
   const rideMarkersRef = useRef([]);
   const alertMarkersRef = useRef([]);
+  const onPickLocationRef = useRef(onPickLocation);
+
+  useEffect(() => {
+    onPickLocationRef.current = onPickLocation;
+  }, [onPickLocation]);
 
   const [mapMode, setMapMode] = useState('street');
   const [routeStats, setRouteStats] = useState(null);
@@ -106,12 +133,73 @@ export default function InteractiveRouteMap({
             layout: { visibility: 'none' }
           });
         }
+
+        map.addSource('szentendre-bus-stops', {
+          type: 'geojson',
+          data: BUS_STOPS_GEOJSON
+        });
+
+        map.addLayer({
+          id: 'bus-stops-circle',
+          type: 'circle',
+          source: 'szentendre-bus-stops',
+          minzoom: 13.8,
+          paint: {
+            'circle-color': '#1D4ED8',
+            'circle-radius': 5,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#FFFFFF'
+          }
+        });
+
+        map.addLayer({
+          id: 'bus-stops-label',
+          type: 'symbol',
+          source: 'szentendre-bus-stops',
+          minzoom: 14.8,
+          layout: {
+            'text-field': ['get', 'shortName'],
+            'text-font': ['Noto Sans Bold'],
+            'text-size': 10,
+            'text-offset': [0, 0.9],
+            'text-anchor': 'top',
+            'text-allow-overlap': false
+          },
+          paint: {
+            'text-color': '#1E3A8A',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5
+          }
+        });
+
+        map.on('click', 'bus-stops-circle', (e) => {
+          const feat = e.features?.[0];
+          if (!feat || !onPickLocationRef.current) return;
+          const props = feat.properties || {};
+          onPickLocationRef.current(props.name, {
+            lat: Number(props.lat),
+            lng: Number(props.lng)
+          });
+        });
+
+        map.on('mouseenter', 'bus-stops-circle', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'bus-stops-circle', () => {
+          map.getCanvas().style.cursor = '';
+        });
+
         map.resize();
         setMapReady(true);
       });
 
       map.on('click', async (e) => {
-        if (!onPickLocation) return;
+        const stopHits = map.queryRenderedFeatures(e.point, {
+          layers: ['bus-stops-circle']
+        });
+        if (stopHits.length > 0) return;
+
+        if (!onPickLocationRef.current) return;
         const { lat, lng } = e.lngLat;
         try {
           const res = await fetch(
@@ -122,9 +210,9 @@ export default function InteractiveRouteMap({
           const city = addr.city || addr.town || addr.village || 'Szentendre';
           const road = addr.road || addr.pedestrian || addr.suburb || 'Kijelölt pont';
           const house = addr.house_number ? ` ${addr.house_number}.` : '';
-          onPickLocation(`${city}, ${road}${house}`, { lat, lng });
+          onPickLocationRef.current(`${city}, ${road}${house}`, { lat, lng });
         } catch {
-          onPickLocation('Kijelölt pont a térképen', { lat, lng });
+          onPickLocationRef.current('Kijelölt pont a térképen', { lat, lng });
         }
       });
 

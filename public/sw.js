@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kalaka-szentendre-v2026-11-17';
+const CACHE_NAME = 'kalaka-szentendre-v2026-11-17-c';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

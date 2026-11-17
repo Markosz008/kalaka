@@ -15,6 +15,64 @@ export const SZENTENDRE_ZONES = [
   { id: 'derecske', name: 'Derecske', lat: 47.6560, lng: 19.0540 }
 ];
 
+export const SZENTENDRE_BUS_STOPS = [
+  { id: 'bs_hev', name: 'Szentendre autóbusz-állomás (HÉV)', lines: 'H5, 870–889', zone: 'Vasúti villasor', lat: 47.6602, lng: 19.0738 },
+  { id: 'bs_pannonia', name: 'Szentendre, Pannóniatelep HÉV', lines: 'H5, 880, 882, 884, 889', zone: 'Pannóniatelep', lat: 47.6512, lng: 19.0715 },
+  { id: 'bs_egri', name: 'Szentendre, Egri utca', lines: '880, 882, 884, 889', zone: 'Pannóniatelep', lat: 47.6548, lng: 19.0725 },
+  { id: 'bs_fokt', name: 'Szentendre, Római sánc', lines: '880, 882, 884, 889', zone: 'Belváros', lat: 47.6648, lng: 19.0748 },
+  { id: 'bs_bukkos', name: 'Szentendre, Bükkös patak', lines: '870, 878, 879, 880, 882, 884, 889', zone: 'Bükkös-part', lat: 47.6701, lng: 19.0741 },
+  { id: 'bs_dunakorzo', name: 'Szentendre, Dunakorzó / Lázár cár tér', lines: '880, 889', zone: 'Dunakorzó', lat: 47.6685, lng: 19.0778 },
+  { id: 'bs_sztaravodai_ut', name: 'Szentendre, Sztaravodai út (11-es út)', lines: '870, 878, 879, 880, 882, 884, 889', zone: 'Belváros', lat: 47.6761, lng: 19.0754 },
+  { id: 'bs_papirgyar', name: 'Szentendre, Papírgyár', lines: '878, 879, 880, 882, 884, 889', zone: 'Pismány', lat: 47.6852, lng: 19.0732 },
+  { id: 'bs_pismany_elag', name: 'Szentendre, Pismányi elágazás', lines: '878, 879, 880, 882, 884', zone: 'Pismány', lat: 47.6894, lng: 19.0762 },
+  { id: 'bs_dera', name: 'Szentendre, Dera-patak / Híd', lines: '880, 882, 884, 889', zone: 'Tyúkosdűlő és Dera-part', lat: 47.6952, lng: 19.0795 },
+  { id: 'bs_tyukosdulo', name: 'Szentendre, Tyúkosdűlő', lines: '880, 882, 884, 889', zone: 'Tyúkosdűlő és Dera-part', lat: 47.6992, lng: 19.0818 },
+
+  { id: 'bs_barackos', name: 'Szentendre, Barackos út', lines: '878, 879', zone: 'Pismány', lat: 47.6860, lng: 19.0620 },
+  { id: 'bs_szilvas', name: 'Szentendre, Szilvás utca', lines: '878, 879', zone: 'Pismány', lat: 47.6881, lng: 19.0588 },
+  { id: 'bs_cseresznyes', name: 'Szentendre, Cseresznyés út', lines: '878, 879', zone: 'Pismány', lat: 47.6902, lng: 19.0558 },
+  { id: 'bs_mandulas', name: 'Szentendre, Mandulás utca', lines: '878, 879', zone: 'Pismány', lat: 47.6924, lng: 19.0512 },
+  { id: 'bs_szabadsagforras', name: 'Szentendre, Szabadságforrás (buszforduló)', lines: '878, 879', zone: 'Pismány', lat: 47.6948, lng: 19.0462 },
+
+  { id: 'bs_kalvaria_ter', name: 'Szentendre, Kálvária tér', lines: '870, 871, 876, 877', zone: 'Kálvária', lat: 47.6712, lng: 19.0672 },
+  { id: 'bs_canissa', name: 'Szentendre, Canissa utca', lines: '870, 871', zone: 'Kálvária', lat: 47.6752, lng: 19.0655 },
+  { id: 'bs_tehenesz', name: 'Szentendre, Tehenész utca', lines: '870, 871', zone: 'Sztaravoda', lat: 47.6815, lng: 19.0575 },
+  { id: 'bs_sztaravoda_forras', name: 'Szentendre, Sztaravoda forrás', lines: '870, 871', zone: 'Sztaravoda', lat: 47.6872, lng: 19.0505 },
+  { id: 'bs_skanzen', name: 'Szentendre, Szabadtéri Néprajzi Múzeum (Skanzen)', lines: '870, 871', zone: 'Sztaravoda', lat: 47.6915, lng: 19.0445 },
+
+  { id: 'bs_vasuti_villasor', name: 'Szentendre, Vasúti villasor', lines: '872, 873, 874, 876, 877', zone: 'Vasúti villasor', lat: 47.6625, lng: 19.0695 },
+  { id: 'bs_puspokmajor_lakotelep', name: 'Szentendre, Püspökmajori lakótelep', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6635, lng: 19.0645 },
+  { id: 'bs_kalvaria_ut', name: 'Szentendre, Kálvária út (Rendelőintézet)', lines: '876, 877', zone: 'Püspökmajor', lat: 47.6678, lng: 19.0635 },
+  { id: 'bs_szentlaszlo_iskola', name: 'Szentendre, Izbég, Szentlászlói út (Iskola)', lines: '872, 873, 874, 876, 877', zone: 'Izbég', lat: 47.6782, lng: 19.0485 },
+  { id: 'bs_izbeg_templom', name: 'Szentendre, Izbég, Templom', lines: '872, 873, 874', zone: 'Izbég', lat: 47.6805, lng: 19.0435 },
+  { id: 'bs_izbeg_sportpalya', name: 'Szentendre, Izbég, Sportpálya', lines: '872, 873, 874', zone: 'Izbég', lat: 47.6830, lng: 19.0365 },
+  { id: 'bs_szarvashegy_elag', name: 'Szentendre, Szarvashegyi elágazás', lines: '872, 873, 874', zone: 'Szarvashegy', lat: 47.6855, lng: 19.0268 },
+  { id: 'bs_szarvashegy_tolgyfa', name: 'Szentendre, Szarvashegy, Tölgyfa utca', lines: '872, 873, 874', zone: 'Szarvashegy', lat: 47.6890, lng: 19.0220 },
+  { id: 'bs_szarvashegy_fordulo', name: 'Szentendre, Szarvashegy, autóbusz-forduló', lines: '872, 873, 874', zone: 'Szarvashegy', lat: 47.6928, lng: 19.0175 },
+  { id: 'bs_lajosforras_elag', name: 'Szentendre, Lajosforrási elágazás', lines: '874', zone: 'Szarvashegy', lat: 47.6945, lng: 19.0120 },
+
+  { id: 'bs_derecske_bejarat', name: 'Szentendre, Derecske dűlő', lines: '875', zone: 'Derecske', lat: 47.6560, lng: 19.0540 },
+  { id: 'bs_bolcsode', name: 'Szentendre, Kőzúzó utca / Bölcsőde', lines: '875, 876, 877', zone: 'Derecske', lat: 47.6585, lng: 19.0605 },
+  { id: 'bs_szamarhegy_alja', name: 'Szentendre, Szamárhegy (Városháza / Fő tér)', lines: '870, 880, 889', zone: 'Szamárhegy', lat: 47.6715, lng: 19.0745 }
+];
+
+export const ZONE_TRANSIT_INFO = {
+  'Pismány': { lines: '878, 879', busMinsAfterHev: [18, 48], driveMins: 9 },
+  'Sztaravoda': { lines: '870, 871', busMinsAfterHev: [25, 55], driveMins: 8 },
+  'Izbég': { lines: '872, 873, 874', busMinsAfterHev: [12, 42], driveMins: 8 },
+  'Szarvashegy': { lines: '872, 873, 874', busMinsAfterHev: [12, 42], driveMins: 12 },
+  'Püspökmajor': { lines: '876, 877', busMinsAfterHev: [10, 30, 50], driveMins: 6 },
+  'Kálvária': { lines: '870, 876, 877', busMinsAfterHev: [10, 40], driveMins: 6 },
+  'Derecske': { lines: '875, 876', busMinsAfterHev: [15, 45], driveMins: 7 },
+  'Tyúkosdűlő és Dera-part': { lines: '880, 882, 884, 889', busMinsAfterHev: [8, 28, 48], driveMins: 10 },
+  'Pannóniatelep': { lines: 'H5, 880, 889', busMinsAfterHev: [5, 25, 45], driveMins: 4 },
+  'Belváros': { lines: '870, 880, 889', busMinsAfterHev: [8, 28, 48], driveMins: 4 },
+  'Bükkös-part': { lines: '870, 878, 880', busMinsAfterHev: [8, 28, 48], driveMins: 5 },
+  'Dunakorzó': { lines: '880, 889', busMinsAfterHev: [8, 28, 48], driveMins: 5 },
+  'Szamárhegy': { lines: '870, 880', busMinsAfterHev: [10, 40], driveMins: 6 },
+  'Vasúti villasor': { lines: 'H5, 872–877', busMinsAfterHev: [5, 25, 45], driveMins: 3 }
+};
+
 export const SERVICE_GROUPS = [
   { id: 'all', label: 'Összes' },
   { id: 'otthon', label: 'Otthon és szerelés' },
@@ -58,20 +116,13 @@ export const PRO_CATEGORIES = SERVICE_GROUPS;
 
 export const LOCAL_PLACES = [
   { name: 'Szentendre, Fogoly utca', subtitle: '2000 Szentendre (Pismány)', lat: 47.69031, lng: 19.06172 },
-  { name: 'Szabadságforrás buszforduló', subtitle: 'Szentendre, Felső-Pismány', lat: 47.6948, lng: 19.0462 },
-  { name: 'Pismány, Cseresznyés út sarok', subtitle: 'Szabadságforrás út • Pismány', lat: 47.6902, lng: 19.0558 },
-  { name: 'Alsó-Pismány, Barackos út', subtitle: '2000 Szentendre', lat: 47.6860, lng: 19.0620 },
-  { name: '11-es út • Papírgyár megálló', subtitle: 'Szabadságforrás út torkolat', lat: 47.6852, lng: 19.0732 },
-  { name: '11-es út • Sztaravodai csomópont', subtitle: 'ALDI / Lukoil kereszteződés', lat: 47.6761, lng: 19.0754 },
-  { name: 'Bükkös-part • 11-es út sarok', subtitle: 'Apor híd lábánál', lat: 47.6701, lng: 19.0739 },
-  { name: 'Szentendre HÉV-végállomás', subtitle: 'Állomás tér P+R', lat: 47.6602, lng: 19.0738 },
-  { name: 'Pannóniatelep HÉV-megálló', subtitle: '11-es út déli csomópont', lat: 47.6512, lng: 19.0715 },
+  ...SZENTENDRE_BUS_STOPS.map((s) => ({
+    name: s.name,
+    subtitle: `${s.zone} • Járatok: ${s.lines}`,
+    lat: s.lat,
+    lng: s.lng
+  })),
   { name: 'Szentendre, Fő tér', subtitle: 'Belváros', lat: 47.6673, lng: 19.0756 },
-  { name: 'Izbég, Szentlászlói út (Iskola)', subtitle: '2000 Szentendre', lat: 47.6782, lng: 19.0485 },
-  { name: 'Szarvashegyi elágazás', subtitle: 'Szentlászlói út • Buszöböl', lat: 47.6855, lng: 19.0268 },
-  { name: 'Szarvashegy, Tölgyfa utca', subtitle: '2000 Szentendre', lat: 47.6890, lng: 19.0220 },
-  { name: 'Skanzen bejárat', subtitle: 'Sztaravodai út', lat: 47.6915, lng: 19.0445 },
-  { name: 'Püspökmajori lakótelep', subtitle: 'Kálvária út', lat: 47.6635, lng: 19.0645 },
   { name: 'Újpest-Városkapu (M3 metró)', subtitle: 'Budapest, XIII./IV. kerület', lat: 47.5605, lng: 19.0792 },
   { name: 'Budapest, Batthyány tér', subtitle: 'Budapest, I. kerület (H5 HÉV)', lat: 47.5065, lng: 19.0399 },
   { name: 'Budapest, Göncz Árpád városközpont', subtitle: 'Budapest, Árpád híd', lat: 47.5325, lng: 19.0660 }
@@ -79,12 +130,13 @@ export const LOCAL_PLACES = [
 
 export const PRESET_LOCATIONS = LOCAL_PLACES;
 
-export const MAP_TRANSIT_POINTS = LOCAL_PLACES.slice(1, 13).map((p, idx) => ({
-  id: `pt_${idx}`,
-  name: p.name,
-  short: p.name.split('•').pop().split(',')[0].trim(),
-  lat: p.lat,
-  lng: p.lng
+export const MAP_TRANSIT_POINTS = SZENTENDRE_BUS_STOPS.map((s) => ({
+  id: s.id,
+  name: s.name,
+  short: s.name.replace(/^Szentendre,\s*/i, ''),
+  lines: s.lines,
+  lat: s.lat,
+  lng: s.lng
 }));
 
 export const VALIDITY_OPTIONS = [
@@ -123,19 +175,20 @@ export function resolveCoordsFromText(text) {
   const q = text.trim().toLowerCase();
 
   if (q.includes('hév') || q.includes('hev') || q.includes('állomás tér')) {
-    return { lat: 47.6602, lng: 19.0738, label: 'Szentendre HÉV-végállomás' };
+    return { lat: 47.6602, lng: 19.0738, label: 'Szentendre autóbusz-állomás (HÉV)' };
   }
   if (q.includes('fogoly')) {
     return { lat: 47.69031, lng: 19.06172, label: text };
   }
-  if (q.includes('bükkös') || q.includes('bukkos')) {
-    return { lat: 47.6701, lng: 19.0739, label: 'Bükkös-part' };
-  }
-  if (q.includes('papírgyár') || q.includes('papirgyar')) {
-    return { lat: 47.6852, lng: 19.0732, label: '11-es út • Papírgyár' };
-  }
-  if (q.includes('pismány') || q.includes('pismany')) {
-    return { lat: 47.6895, lng: 19.0555, label: 'Pismány' };
+
+  const busHit = SZENTENDRE_BUS_STOPS.find(
+    (s) =>
+      s.name.toLowerCase() === q ||
+      s.name.toLowerCase().includes(q) ||
+      q.includes(s.name.replace(/^Szentendre,\s*/i, '').toLowerCase())
+  );
+  if (busHit) {
+    return { lat: busHit.lat, lng: busHit.lng, label: busHit.name };
   }
 
   const exactOrPartial = LOCAL_PLACES.find(
