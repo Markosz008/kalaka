@@ -18,6 +18,19 @@ const ENDORSEMENT_STRENGTH_TAGS = [
   'Segítőkész'
 ];
 
+const GROUP_ICON_SVGS = {
+  otthon:
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  szepseg_egeszseg:
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>',
+  auto_muhely:
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>',
+  kezmuves_gasztro:
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>',
+  mozgas_oktatas:
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>'
+};
+
 function isLivePresenceActive(pro) {
   if (!pro?.live_until || !pro?.live_lat || !pro?.live_lng) return false;
   return new Date(pro.live_until).getTime() > Date.now();
@@ -51,6 +64,36 @@ function buildNavigationUrl(pro) {
   return null;
 }
 
+function clusterPointsByPixelDistance(map, points, radiusPx = 36) {
+  const clusters = [];
+  for (const pt of points) {
+    const projected = map.project([pt.lng, pt.lat]);
+    let matched = null;
+    for (const c of clusters) {
+      const dist = Math.hypot(c.px - projected.x, c.py - projected.y);
+      if (dist <= radiusPx) {
+        matched = c;
+        break;
+      }
+    }
+    if (matched) {
+      const n = matched.items.length;
+      matched.lat = (matched.lat * n + pt.lat) / (n + 1);
+      matched.lng = (matched.lng * n + pt.lng) / (n + 1);
+      matched.items.push(pt);
+    } else {
+      clusters.push({
+        lat: pt.lat,
+        lng: pt.lng,
+        px: projected.x,
+        py: projected.y,
+        items: [pt]
+      });
+    }
+  }
+  return clusters;
+}
+
 export default function ProsDirectoryView({
   pros,
   session,
@@ -67,6 +110,7 @@ export default function ProsDirectoryView({
   const [showMap, setShowMap] = useState(true);
   const [mapReady, setMapReady] = useState(false);
 
+  const [previewPro, setPreviewPro] = useState(null);
   const [selectedPro, setSelectedPro] = useState(null);
 
   const [interactionsByPro, setInteractionsByPro] = useState({});
@@ -103,6 +147,12 @@ export default function ProsDirectoryView({
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersLayer = useRef([]);
+  const resolvedPointsRef = useRef([]);
+  const previewProIdRef = useRef(null);
+
+  useEffect(() => {
+    previewProIdRef.current = previewPro?.id || null;
+  }, [previewPro?.id]);
 
   const allProfessions = useMemo(() => {
     const map = new Map();
@@ -219,6 +269,81 @@ export default function ProsDirectoryView({
     });
   }, [pros, groupFilter, professionFilter, searchQuery]);
 
+  const renderClusteredMarkers = () => {
+    const map = mapInstance.current;
+    if (!map) return;
+
+    (markersLayer.current || []).forEach((m) => m.remove());
+    markersLayer.current = [];
+
+    const points = resolvedPointsRef.current || [];
+    if (points.length === 0) return;
+
+    const currentZoom = map.getZoom();
+    const clusters =
+      currentZoom >= 15.2
+        ? points.map((pt) => ({ lat: pt.lat, lng: pt.lng, items: [pt] }))
+        : clusterPointsByPixelDistance(map, points, 34);
+
+    clusters.forEach((cl) => {
+      if (cl.items.length > 1) {
+        const hasLiveInCluster = cl.items.some((i) => i.liveNow);
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.style.cssText = `width:30px;height:30px;border-radius:9999px;background:${
+          hasLiveInCluster ? '#047857' : '#1E4635'
+        };color:#ffffff;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid #ffffff;box-shadow:0 3px 10px rgba(0,0,0,0.32);cursor:pointer`;
+        el.textContent = String(cl.items.length);
+        el.title = `${cl.items.length} helyi szakember ezen a környéken`;
+        el.onclick = (ev) => {
+          ev.stopPropagation();
+          map.flyTo({
+            center: [cl.lng, cl.lat],
+            zoom: Math.min(16.5, map.getZoom() + 2),
+            duration: 380
+          });
+        };
+
+        const mk = new maplibregl.Marker({ element: el })
+          .setLngLat([cl.lng, cl.lat])
+          .addTo(map);
+        markersLayer.current.push(mk);
+      } else {
+        const item = cl.items[0];
+        const p = item.pro;
+        const isSelected = previewProIdRef.current === p.id;
+        const grp = normalizeServiceGroup(p.category);
+        const svgIcon = GROUP_ICON_SVGS[grp] || GROUP_ICON_SVGS.otthon;
+        const bg = isSelected
+          ? '#C86446'
+          : item.liveNow
+          ? '#047857'
+          : item.hasExactPin
+          ? '#1E4635'
+          : '#5C6B62';
+
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.style.cssText = `position:relative;width:${isSelected ? '32px' : '28px'};height:${
+          isSelected ? '32px' : '28px'
+        };border-radius:9999px;background:${bg};color:#ffffff;display:flex;align-items:center;justify-content:center;border:2px solid #ffffff;box-shadow:0 2px 8px rgba(0,0,0,0.34);cursor:pointer;transition:transform 0.12s`;
+        el.innerHTML = item.liveNow
+          ? `${svgIcon}<span style="position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:9999px;background:#34D399;border:1.5px solid #ffffff"></span>`
+          : svgIcon;
+        el.title = `${p.business_name} (${p.profession_name || ''})`;
+        el.onclick = (ev) => {
+          ev.stopPropagation();
+          setPreviewPro(p);
+        };
+
+        const mk = new maplibregl.Marker({ element: el })
+          .setLngLat([item.lng, item.lat])
+          .addTo(map);
+        markersLayer.current.push(mk);
+      }
+    });
+  };
+
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
     let map = null;
@@ -234,6 +359,12 @@ export default function ProsDirectoryView({
       map.on('load', () => {
         map.resize();
         setMapReady(true);
+      });
+      map.on('zoomend', () => {
+        renderClusteredMarkers();
+      });
+      map.on('click', () => {
+        setPreviewPro(null);
       });
       mapInstance.current = map;
       markersLayer.current = [];
@@ -256,59 +387,58 @@ export default function ProsDirectoryView({
     const map = mapInstance.current;
     if (!map || !showMap || !mapReady) return;
 
-    (markersLayer.current || []).forEach((m) => m.remove());
-    markersLayer.current = [];
-
     const bounds = new maplibregl.LngLatBounds();
-    let count = 0;
+    const resolvedList = [];
 
     filteredPros.forEach((p, idx) => {
       const liveNow = isLivePresenceActive(p);
       let coord = null;
+      let hasExactPin = false;
 
       if (liveNow) {
         coord = { lat: Number(p.live_lat), lng: Number(p.live_lng) };
+        hasExactPin = true;
       } else if (p.lat && p.lng) {
         coord = { lat: Number(p.lat), lng: Number(p.lng) };
+        hasExactPin = true;
       } else {
         const fallbackText = p.address_text || p.active_zone_today || p.base_zone;
         const resolved = resolveCoordsFromText(fallbackText);
         if (resolved) {
           coord = {
-            lat: resolved.lat + ((idx % 4) - 1.5) * 0.0006,
-            lng: resolved.lng + ((idx % 3) - 1) * 0.0006
+            lat: resolved.lat + ((idx % 4) - 1.5) * 0.0005,
+            lng: resolved.lng + ((idx % 3) - 1) * 0.0005
           };
         }
       }
 
       if (!coord || isNaN(coord.lat) || isNaN(coord.lng)) return;
-
-      const badgeBg = liveNow ? '#047857' : p.lat && p.lng ? '#1E4635' : '#5C6B62';
-      const shortProf = (p.profession_name || p.business_name || '').slice(0, 14);
-      const labelText = liveNow ? `● ${shortProf}` : shortProf;
-
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.style.cssText = `display:inline-flex;align-items:center;justify-content:center;background:${badgeBg};color:#fff;font-weight:700;font-size:10px;line-height:1;padding:4px 8px;border-radius:99px;border:1.5px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.32);white-space:nowrap;cursor:pointer`;
-      el.textContent = labelText;
-      el.title = `${p.business_name} • ${p.address_text || p.base_zone || 'Szentendre'}`;
-      el.onclick = () => setSelectedPro(p);
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([coord.lng, coord.lat])
-        .addTo(map);
-
-      markersLayer.current.push(marker);
+      resolvedList.push({
+        pro: p,
+        lat: coord.lat,
+        lng: coord.lng,
+        liveNow,
+        hasExactPin
+      });
       bounds.extend([coord.lng, coord.lat]);
-      count += 1;
     });
 
-    if (count === 1) {
-      map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 400 });
-    } else if (count > 1) {
-      map.fitBounds(bounds, { padding: 32, maxZoom: 14, duration: 400 });
+    resolvedPointsRef.current = resolvedList;
+
+    if (resolvedList.length === 1) {
+      map.flyTo({ center: bounds.getCenter(), zoom: 15, duration: 350 });
+    } else if (resolvedList.length > 1) {
+      map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
     }
+
+    renderClusteredMarkers();
   }, [filteredPros, showMap, mapReady]);
+
+  useEffect(() => {
+    if (mapReady) {
+      renderClusteredMarkers();
+    }
+  }, [previewPro?.id, mapReady]);
 
   const handleToggleLivePresence = async (pro) => {
     if (!supabase || !currentUserId) return;
@@ -662,7 +792,10 @@ export default function ProsDirectoryView({
           </h2>
           <button
             type="button"
-            onClick={() => setShowMap((v) => !v)}
+            onClick={() => {
+              setPreviewPro(null);
+              setShowMap((v) => !v);
+            }}
             className="shrink-0 text-xs font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-lg"
           >
             {showMap ? 'Térkép elrejtése' : 'Térkép'}
@@ -673,14 +806,20 @@ export default function ProsDirectoryView({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setPreviewPro(null);
+              setSearchQuery(e.target.value);
+            }}
             placeholder="Keress szakmára vagy névre (pl. fodrász, ötvös, autószerelő)..."
             className="w-full text-base bg-transparent focus:outline-none text-[#18261F]"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setPreviewPro(null);
+                setSearchQuery('');
+              }}
               className="text-xs font-bold text-[#5C6B62] px-1"
             >
               ✕
@@ -694,6 +833,7 @@ export default function ProsDirectoryView({
               key={g.id}
               type="button"
               onClick={() => {
+                setPreviewPro(null);
                 setGroupFilter(g.id);
                 setProfessionFilter('all');
               }}
@@ -712,7 +852,10 @@ export default function ProsDirectoryView({
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#ECE7DC]">
             <button
               type="button"
-              onClick={() => setProfessionFilter('all')}
+              onClick={() => {
+                setPreviewPro(null);
+                setProfessionFilter('all');
+              }}
               className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
                 professionFilter === 'all'
                   ? 'bg-[#18261F] text-white border-[#18261F]'
@@ -725,11 +868,12 @@ export default function ProsDirectoryView({
               <button
                 key={profName}
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  setPreviewPro(null);
                   setProfessionFilter(
                     professionFilter === profName ? 'all' : profName
-                  )
-                }
+                  );
+                }}
                 className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition ${
                   professionFilter === profName
                     ? 'bg-[#18261F] text-white border-[#18261F]'
@@ -743,8 +887,52 @@ export default function ProsDirectoryView({
         )}
 
         {showMap && (
-          <div className="rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
-            <div ref={mapRef} className="w-full h-48 sm:h-60" />
+          <div className="relative rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
+            <div ref={mapRef} className="w-full h-52 sm:h-64" />
+
+            {previewPro && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute bottom-2.5 left-2.5 right-2.5 z-20 bg-white/95 backdrop-blur rounded-2xl p-3 shadow-xl border border-[#DFD9CE] flex items-center justify-between gap-2.5"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold bg-pilis-soft text-pilis px-2 py-0.5 rounded-full shrink-0">
+                      {previewPro.profession_name}
+                    </span>
+                    <span className="text-[11px] font-bold text-[#5C6B62] truncate">
+                      • {previewPro.endorsement_count || 0} ajánlás
+                    </span>
+                  </div>
+                  <div className="font-display font-bold text-sm text-[#18261F] truncate mt-0.5">
+                    {previewPro.business_name}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <a
+                    href={`tel:${previewPro.phone}`}
+                    onClick={() => handleRecordInteraction(previewPro, 'call')}
+                    className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3 py-2 rounded-xl transition"
+                  >
+                    Hívás
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = previewPro;
+                      setPreviewPro(null);
+                      setSelectedTags([]);
+                      setEndorseNote('');
+                      setSelectedPro(target);
+                    }}
+                    className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-xl transition"
+                  >
+                    Adatlap ›
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
