@@ -840,10 +840,15 @@ export default function App() {
     };
   }, [loadUserProfile, fetchAllLiveData, scheduleDebouncedRefresh, session?.user?.id]);
 
-  const filteredRides = useMemo(() => {
-    const activeTimeRides = rides.filter(
-      (r) => r.is_recurring || !r.expires_at || new Date(r.expires_at).getTime() > nowTick
-    );
+  const activeTimeRides = useMemo(
+    () =>
+      rides.filter(
+        (r) => r.is_recurring || !r.expires_at || new Date(r.expires_at).getTime() > nowTick
+      ),
+    [rides, nowTick]
+  );
+
+  const exactFilteredRides = useMemo(() => {
     const qFromRaw = stripAccents(filterFrom);
     const qToRaw = stripAccents(filterTo);
     if (!qFromRaw && !qToRaw) return activeTimeRides;
@@ -882,7 +887,12 @@ export default function App() {
 
       return matchFrom && matchTo;
     });
-  }, [rides, filterFrom, filterTo, nowTick]);
+  }, [activeTimeRides, filterFrom, filterTo]);
+
+  const hasRouteFilter = Boolean(filterFrom.trim() || filterTo.trim());
+  const showingCityFallbackRides =
+    hasRouteFilter && exactFilteredRides.length === 0 && activeTimeRides.length > 0;
+  const filteredRides = showingCityFallbackRides ? activeTimeRides : exactFilteredRides;
 
   const smartQuickChips = useMemo(() => {
     const hour = new Date().getHours();
@@ -895,7 +905,7 @@ export default function App() {
     return BASE_QUICK_DESTINATIONS.filter((lbl) => !savedLabelsSet.has(lbl.toLowerCase()))
       .map((label) => {
         const needle = label.replace('Szentendre ', '').toLowerCase();
-        const liveCount = filteredRides.filter((r) => {
+        const liveCount = activeTimeRides.filter((r) => {
           const routeStr = `${r.origin_text} ${r.dest_text}`.toLowerCase();
           const stopMatch = (r.stops || []).some((s) =>
             (s.name || '').toLowerCase().includes(needle)
@@ -917,7 +927,7 @@ export default function App() {
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 6);
-  }, [filteredRides, searchStatsMap, savedPlaces]);
+  }, [activeTimeRides, searchStatsMap, savedPlaces]);
 
   const visibleAgreements = useMemo(
     () => myAgreements.filter((a) => !hiddenAgreementIds.includes(a.id)),
@@ -946,15 +956,21 @@ export default function App() {
     }).length;
   }, [visibleAgreements, session?.user?.id]);
 
+  const handleClearRouteInputs = () => {
+    setSelectedRideForMap(null);
+    setFilterFrom('');
+    setFilterTo('');
+    setFromCoords(null);
+    setToCoords(null);
+    setInlineComposerMode(null);
+    setActiveSearchField('from');
+    setShowMap(typeof window !== 'undefined' && window.innerWidth >= 768);
+  };
+
   const handleSelectQuickLocation = (locName, coordsObj = null, forcedField = null) => {
     setSelectedRideForMap(null);
     if (locName === 'Mind') {
-      setFilterFrom('');
-      setFilterTo('');
-      setFromCoords(null);
-      setToCoords(null);
-      setInlineComposerMode(null);
-      setShowMap(typeof window !== 'undefined' && window.innerWidth >= 768);
+      handleClearRouteInputs();
       return;
     }
     setShowMap(true);
@@ -1773,6 +1789,17 @@ export default function App() {
               >
                 ⇅
               </button>
+              {hasRouteFilter && (
+                <button
+                  type="button"
+                  onClick={handleClearRouteInputs}
+                  aria-label="Útvonal törlése"
+                  title="Útvonal törlése"
+                  className="w-8 h-7 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 grid place-items-center text-xs font-bold transition active:scale-95"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
@@ -1796,18 +1823,6 @@ export default function App() {
 
           <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-[#ECE7DC] min-w-0">
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5 pr-3 min-w-0 flex-1 [mask-image:linear-gradient(to_right,black_88%,transparent_100%)]">
-              <button
-                type="button"
-                onClick={() => handleSelectQuickLocation('Mind')}
-                className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border transition ${
-                  !filterFrom && !filterTo
-                    ? 'bg-pilis text-white border-pilis'
-                    : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-pilis'
-                }`}
-              >
-                Mind
-              </button>
-
               {savedPlaces.map((sp) => {
                 const isSelected =
                   filterFrom === sp.label || filterTo === sp.label;
@@ -2158,6 +2173,22 @@ export default function App() {
               ))}
             </div>
 
+            {showingCityFallbackRides && (
+              <div className="bg-pilis-soft/60 border border-pilis/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#18261F]">
+                <span>
+                  Erre a pontos szakaszra most nincs kiírt út — mutatjuk a többi{' '}
+                  <strong>{activeTimeRides.length} aktív szentendrei utat</strong>.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearRouteInputs}
+                  className="shrink-0 font-bold text-pilis underline"
+                >
+                  Keresés törlése
+                </button>
+              </div>
+            )}
+
             {initialLoading ? (
               <div className="space-y-2.5">
                 {[1, 2].map((n) => (
@@ -2179,46 +2210,45 @@ export default function App() {
             ) : displayedRides.length === 0 ? (
               <div className="bg-white rounded-2xl p-5 sm:p-6 text-center border border-[#DFD9CE] space-y-2.5">
                 <div className="text-sm font-bold text-[#18261F]">
-                  {filterFrom || filterTo || rideKindFilter !== 'all'
+                  {hasRouteFilter || rideKindFilter !== 'all'
                     ? 'Nincs aktív út erre a szűrésre.'
                     : 'Még nincs kiírt út a következő órákra.'}
                 </div>
                 <p className="text-xs text-[#5C6B62] leading-relaxed">
-                  {filterFrom || filterTo || rideKindFilter !== 'all'
-                    ? 'Próbálj meg másik megállót választani, vagy töröld a szűrőket.'
+                  {hasRouteFilter || rideKindFilter !== 'all'
+                    ? 'Válts vissza az összes útra, vagy töröld a keresést.'
                     : 'Indulsz valahová Szentendrén belül vagy a HÉV-hez? Írd ki 10 másodperc alatt!'}
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1">
-                  {(filterFrom || filterTo || rideKindFilter !== 'all') && (
+                  {(hasRouteFilter || rideKindFilter !== 'all') && (
                     <button
                       type="button"
                       onClick={() => {
-                        setFilterFrom('');
-                        setFilterTo('');
-                        setFromCoords(null);
-                        setToCoords(null);
+                        handleClearRouteInputs();
                         setRideKindFilter('all');
                       }}
                       className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3.5 py-2 rounded-xl"
                     >
-                      Szűrők törlése
+                      Szűrés törlése
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingItemId(null);
-                      setNewFrom(filterFrom);
-                      setNewTo(filterTo);
-                      setNewFromCoords(fromCoords);
-                      setNewToCoords(toCoords);
-                      setNewKind('offer');
-                      setShowNewModal(true);
-                    }}
-                    className="bg-pilis text-white font-bold text-xs px-4 py-2 rounded-xl"
-                  >
-                    + Útvonal kiírása
-                  </button>
+                  {!hasBothRouteEnds && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingItemId(null);
+                        setNewFrom(filterFrom);
+                        setNewTo(filterTo);
+                        setNewFromCoords(fromCoords);
+                        setNewToCoords(toCoords);
+                        setNewKind('offer');
+                        setShowNewModal(true);
+                      }}
+                      className="bg-pilis text-white font-bold text-xs px-4 py-2 rounded-xl"
+                    >
+                      + Útvonal kiírása
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (

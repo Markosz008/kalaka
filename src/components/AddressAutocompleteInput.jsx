@@ -24,6 +24,16 @@ function cleanHungarianAddress(rawText) {
     .trim();
 }
 
+function deduplicateCityInLabel(label) {
+  const m = (label || '').match(/^([^,]+),\s*(.+)$/);
+  if (!m) return label || '';
+  const city = m[1].trim();
+  const rest = m[2].trim();
+  const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const cleanedRest = rest.replace(new RegExp(`\\b${escapedCity}\\s+`, 'gi'), '').trim();
+  return cleanedRest ? `${city}, ${cleanedRest}` : city;
+}
+
 function expandStreetAbbreviations(addrStr) {
   return (addrStr || '')
     .replace(/\bu\.\s*/gi, 'utca ')
@@ -55,14 +65,14 @@ function formatPhotonFallback(feat, fallbackHouseNum = '') {
       : streetBase || city;
   if (!withHouse) return null;
 
-  const label =
+  const rawLabel =
     city && !stripAccents(withHouse).includes(stripAccents(city))
       ? `${city}, ${withHouse}`
       : withHouse;
 
   return {
     source: 'photon',
-    label,
+    label: deduplicateCityInLabel(rawLabel),
     subtitle: [p.postcode, city, p.district || p.suburb].filter(Boolean).join(' • ') || 'Magyarország',
     lat,
     lng
@@ -174,7 +184,7 @@ export default function AddressAutocompleteInput({
                 return {
                   source: 'google',
                   placeId: pred.placeId,
-                  label: cityPrefix,
+                  label: deduplicateCityInLabel(cityPrefix),
                   subtitle: secondaryText || fullClean
                 };
               })
