@@ -9,26 +9,7 @@ import {
   resolveCoordsFromText
 } from '../constants/szentendreData.js';
 
-const OSM_RASTER_STYLE = {
-  version: 8,
-  sources: {
-    'osm-raster': {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap'
-    }
-  },
-  layers: [
-    {
-      id: 'osm-layer',
-      type: 'raster',
-      source: 'osm-raster',
-      minzoom: 0,
-      maxzoom: 19
-    }
-  ]
-};
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 
 const ENDORSEMENT_STRENGTH_TAGS = [
   'Pontos',
@@ -244,7 +225,7 @@ export default function ProsDirectoryView({
     try {
       map = new maplibregl.Map({
         container: mapRef.current,
-        style: OSM_RASTER_STYLE,
+        style: VECTOR_STYLE_URL,
         center: [19.066, 47.674],
         zoom: 13,
         attributionControl: false

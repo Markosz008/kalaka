@@ -3,26 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
-const OSM_RASTER_STYLE = {
-  version: 8,
-  sources: {
-    'osm-raster': {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap'
-    }
-  },
-  layers: [
-    {
-      id: 'osm-layer',
-      type: 'raster',
-      source: 'osm-raster',
-      minzoom: 0,
-      maxzoom: 19
-    }
-  ]
-};
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -80,7 +61,6 @@ export default function AgreementChatModal({
     ? Boolean(liveAgr?.requester_agreed)
     : Boolean(liveAgr?.helper_agreed);
 
-  // 1. Megállapodás és üzenetek betöltése + Realtime szinkron
   useEffect(() => {
     setLiveAgr(agreement || null);
     setErrorBanner(null);
@@ -139,7 +119,6 @@ export default function AgreementChatModal({
     };
   }, [agreement?.id]);
 
-  // 2. Sofőr élő GPS megosztása, amíg az út 'started' státuszban van
   useEffect(() => {
     if (!isLiveDbAgreement || !isRideAgreement || status !== 'started' || !isHelper) {
       if (watchIdRef.current !== null && navigator.geolocation) {
@@ -189,7 +168,6 @@ export default function AgreementChatModal({
     };
   }, [isLiveDbAgreement, isRideAgreement, status, isHelper, liveAgr?.id]);
 
-  // 3. Élő mini-térkép kirajzolása (OSM raszteres csempékkel, valódi map.on('load') eseménnyel)
   useEffect(() => {
     if (!liveMapContainerRef.current || status !== 'started') return;
 
@@ -215,7 +193,7 @@ export default function AgreementChatModal({
     try {
       map = new maplibregl.Map({
         container: liveMapContainerRef.current,
-        style: OSM_RASTER_STYLE,
+        style: VECTOR_STYLE_URL,
         center: [centerCoord.lng, centerCoord.lat],
         zoom: 14.5,
         attributionControl: false

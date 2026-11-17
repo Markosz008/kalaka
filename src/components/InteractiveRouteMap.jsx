@@ -2,43 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
-const COMBINED_MAP_STYLE = {
-  version: 8,
-  sources: {
-    'osm-raster': {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap'
-    },
-    'esri-sat': {
-      type: 'raster',
-      tiles: [
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-      ],
-      tileSize: 256,
-      attribution: '© Esri'
-    }
-  },
-  layers: [
-    {
-      id: 'osm-layer',
-      type: 'raster',
-      source: 'osm-raster',
-      minzoom: 0,
-      maxzoom: 19,
-      layout: { visibility: 'visible' }
-    },
-    {
-      id: 'esri-sat-layer',
-      type: 'raster',
-      source: 'esri-sat',
-      minzoom: 0,
-      maxzoom: 19,
-      layout: { visibility: 'none' }
-    }
-  ]
-};
+const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 
 function createPinElement(letter, bgColor) {
   const el = document.createElement('div');
@@ -98,7 +62,7 @@ export default function InteractiveRouteMap({
     try {
       map = new maplibregl.Map({
         container: mapContainerRef.current,
-        style: COMBINED_MAP_STYLE,
+        style: VECTOR_STYLE_URL,
         center: [19.068, 47.675],
         zoom: 13.2,
         attributionControl: false
@@ -107,6 +71,24 @@ export default function InteractiveRouteMap({
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
       map.on('load', () => {
+        if (!map.getSource('esri-sat')) {
+          map.addSource('esri-sat', {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+            ],
+            tileSize: 256,
+            attribution: '© Esri'
+          });
+          map.addLayer({
+            id: 'esri-sat-layer',
+            type: 'raster',
+            source: 'esri-sat',
+            minzoom: 0,
+            maxzoom: 19,
+            layout: { visibility: 'none' }
+          });
+        }
         map.resize();
         setMapReady(true);
       });
@@ -153,9 +135,6 @@ export default function InteractiveRouteMap({
       const isSat = mapMode === 'satellite';
       if (map.getLayer('esri-sat-layer')) {
         map.setLayoutProperty('esri-sat-layer', 'visibility', isSat ? 'visible' : 'none');
-      }
-      if (map.getLayer('osm-layer')) {
-        map.setLayoutProperty('osm-layer', 'visibility', isSat ? 'none' : 'visible');
       }
     } catch {}
   }, [mapMode, mapReady]);
@@ -258,7 +237,7 @@ export default function InteractiveRouteMap({
             paint: {
               'line-color': '#1E4635',
               'line-width': 4.5,
-              'line-opacity': 0.9
+              'line-opacity': 0.92
             }
           });
         })
