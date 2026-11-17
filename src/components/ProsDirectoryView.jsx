@@ -45,6 +45,15 @@ function registerMapCategoryIcons(map) {
   });
 }
 
+function getSavedProIds(userId) {
+  const key = `kalaka_fav_pros_${userId || 'guest'}`;
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
+
 function isLivePresenceActive(pro) {
   if (!pro?.live_until || !pro?.live_lat || !pro?.live_lng) return false;
   return new Date(pro.live_until).getTime() > Date.now();
@@ -91,6 +100,8 @@ export default function ProsDirectoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [professionFilter, setProfessionFilter] = useState('all');
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [favoriteProIds, setFavoriteProIds] = useState(() => getSavedProIds(currentUserId));
   const [showMap, setShowMap] = useState(true);
   const [mapReady, setMapReady] = useState(false);
 
@@ -130,8 +141,30 @@ export default function ProsDirectoryView({
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
+  const userLocationMarkerRef = useRef(null);
   const prosByIdRef = useRef({});
   const lastFilterKeyRef = useRef('');
+
+  useEffect(() => {
+    setFavoriteProIds(getSavedProIds(currentUserId));
+  }, [currentUserId]);
+
+  const toggleFavoritePro = (e, proId) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const idStr = String(proId);
+    const key = `kalaka_fav_pros_${currentUserId || 'guest'}`;
+    setFavoriteProIds((prev) => {
+      const exists = prev.includes(idStr);
+      const next = exists ? prev.filter((x) => x !== idStr) : [idStr, ...prev];
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     const lookup = {};
@@ -240,6 +273,7 @@ export default function ProsDirectoryView({
   const filteredPros = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return (pros || []).filter((p) => {
+      if (onlyFavorites && !favoriteProIds.includes(String(p.id))) return false;
       const grp = normalizeServiceGroup(p.category);
       if (groupFilter !== 'all' && grp !== groupFilter) return false;
       if (
@@ -254,7 +288,7 @@ export default function ProsDirectoryView({
       }
       return true;
     });
-  }, [pros, groupFilter, professionFilter, searchQuery]);
+  }, [pros, groupFilter, professionFilter, searchQuery, onlyFavorites, favoriteProIds]);
 
   const geoJsonData = useMemo(() => {
     const features = [];
@@ -481,6 +515,12 @@ export default function ProsDirectoryView({
     } catch {}
 
     return () => {
+      if (userLocationMarkerRef.current) {
+        try {
+          userLocationMarkerRef.current.remove();
+        } catch {}
+        userLocationMarkerRef.current = null;
+      }
       if (mapInstance.current) {
         try {
           mapInstance.current.remove();
@@ -499,7 +539,7 @@ export default function ProsDirectoryView({
 
     src.setData(geoJsonData);
 
-    const filterKey = `${groupFilter}|${professionFilter}|${searchQuery.trim().toLowerCase()}|${geoJsonData.features.length}`;
+    const filterKey = `${onlyFavorites}|${groupFilter}|${professionFilter}|${searchQuery.trim().toLowerCase()}|${geoJsonData.features.length}`;
     if (lastFilterKeyRef.current === filterKey) return;
     lastFilterKeyRef.current = filterKey;
 
@@ -514,7 +554,38 @@ export default function ProsDirectoryView({
       geoJsonData.features.forEach((f) => bounds.extend(f.geometry.coordinates));
       map.fitBounds(bounds, { padding: 36, maxZoom: 14.2, duration: 350 });
     }
-  }, [geoJsonData, groupFilter, professionFilter, searchQuery, showMap, mapReady]);
+  }, [geoJsonData, onlyFavorites, groupFilter, professionFilter, searchQuery, showMap, mapReady]);
+
+  const handleCenterUserGps = () => {
+    if (!navigator.geolocation || !mapInstance.current) {
+      setProBanner('A böngésződ nem támogatja a helymeghatározást.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        const map = mapInstance.current;
+        if (!map) return;
+
+        if (!userLocationMarkerRef.current) {
+          const el = document.createElement('div');
+          el.style.cssText =
+            'width:16px;height:16px;border-radius:9999px;background:#2563EB;border:3px solid #FFFFFF;box-shadow:0 0 0 4px rgba(37,99,235,0.28)';
+          userLocationMarkerRef.current = new maplibregl.Marker({ element: el })
+            .setLngLat([lng, lat])
+            .addTo(map);
+        } else {
+          userLocationMarkerRef.current.setLngLat([lng, lat]);
+        }
+
+        map.flyTo({ center: [lng, lat], zoom: 15.2, duration: 400 });
+      },
+      () => {
+        setProBanner('Engedélyezd a helymeghatározást a böngészőben.');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   const handleToggleLivePresence = async (pro) => {
     if (!supabase || !currentUserId) return;
@@ -904,6 +975,22 @@ export default function ProsDirectoryView({
         </div>
 
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              setPreviewPro(null);
+              setOnlyFavorites((v) => !v);
+            }}
+            className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition flex items-center gap-1 ${
+              onlyFavorites
+                ? 'bg-amber-500 text-white border-amber-500'
+                : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-amber-400'
+            }`}
+          >
+            <span>{onlyFavorites ? '★' : '☆'}</span>
+            <span>Kedvenceim{favoriteProIds.length > 0 ? ` (${favoriteProIds.length})` : ''}</span>
+          </button>
+
           {SERVICE_GROUPS.map((g) => (
             <button
               key={g.id}
@@ -966,6 +1053,16 @@ export default function ProsDirectoryView({
           <div className="relative rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
             <div ref={mapRef} className="w-full h-52 sm:h-64" />
 
+            <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+              <button
+                type="button"
+                onClick={handleCenterUserGps}
+                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-sm border border-[#DFD9CE] pointer-events-auto"
+              >
+                Saját helyzet
+              </button>
+            </div>
+
             {previewPro && (
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -986,6 +1083,18 @@ export default function ProsDirectoryView({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => toggleFavoritePro(e, previewPro.id)}
+                    aria-label="Kedvenc"
+                    className={`w-8 h-8 rounded-xl border grid place-items-center text-sm font-bold transition ${
+                      favoriteProIds.includes(String(previewPro.id))
+                        ? 'bg-amber-50 text-amber-500 border-amber-300'
+                        : 'bg-limestone text-[#7A867E] border-[#DFD9CE]'
+                    }`}
+                  >
+                    {favoriteProIds.includes(String(previewPro.id)) ? '★' : '☆'}
+                  </button>
                   <a
                     href={`tel:${previewPro.phone}`}
                     onClick={() => handleRecordInteraction(previewPro, 'call')}
@@ -1024,22 +1133,37 @@ export default function ProsDirectoryView({
       {filteredPros.length === 0 ? (
         <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
           <div className="text-sm font-bold text-[#18261F]">
-            Nincs találat erre a szűrésre.
+            {onlyFavorites
+              ? 'Még nincs kedvencnek jelölt szakembered.'
+              : 'Nincs találat erre a szűrésre.'}
           </div>
           <p className="text-xs text-[#5C6B62]">
-            Ismerős vagy te magad dolgozol ezen a területen Szentendrén? Vedd fel új szakmaként!
+            {onlyFavorites
+              ? 'Jelöld meg csillaggal (☆) a bevált szakikat, és itt azonnal elérheted őket.'
+              : 'Ismerős vagy te magad dolgozol ezen a területen Szentendrén? Vedd fel új szakmaként!'}
           </p>
-          <button
-            type="button"
-            onClick={openCreateForm}
-            className="bg-pilis text-white font-bold text-xs px-4 py-2.5 rounded-xl"
-          >
-            + Új szakma és szolgáltató felvétele
-          </button>
+          {onlyFavorites ? (
+            <button
+              type="button"
+              onClick={() => setOnlyFavorites(false)}
+              className="bg-limestone text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-4 py-2 rounded-xl"
+            >
+              Összes szaki mutatása
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="bg-pilis text-white font-bold text-xs px-4 py-2.5 rounded-xl"
+            >
+              + Új szakma és szolgáltató felvétele
+            </button>
+          )}
         </div>
       ) : (
         filteredPros.map((pro) => {
           const isOwner = Boolean(currentUserId && pro.owner_id === currentUserId);
+          const isFav = favoriteProIds.includes(String(pro.id));
           const liveNow = isLivePresenceActive(pro);
           const proEndorsements = endorsementsByPro[pro.id] || [];
           const firstRecommender = proEndorsements[0];
@@ -1108,9 +1232,24 @@ export default function ProsDirectoryView({
                   </p>
                 </div>
 
-                <span className="text-xs font-bold text-[#5C6B62] shrink-0 pt-0.5">
-                  Részletek ›
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => toggleFavoritePro(e, pro.id)}
+                    aria-label={isFav ? 'Eltávolítás a kedvencekből' : 'Mentés kedvencnek'}
+                    title={isFav ? 'Mentve a kedvencek közé' : 'Mentés kedvencnek'}
+                    className={`w-7 h-7 rounded-full border grid place-items-center text-sm font-bold transition ${
+                      isFav
+                        ? 'bg-amber-50 text-amber-500 border-amber-300'
+                        : 'bg-limestone text-[#9AA59E] hover:text-amber-500 border-[#DFD9CE]'
+                    }`}
+                  >
+                    {isFav ? '★' : '☆'}
+                  </button>
+                  <span className="text-xs font-bold text-[#5C6B62]">
+                    Részletek ›
+                  </span>
+                </div>
               </div>
 
               {isOwner && (
@@ -1197,6 +1336,7 @@ export default function ProsDirectoryView({
 
       {selectedPro && (() => {
         const isOwner = Boolean(currentUserId && selectedPro.owner_id === currentUserId);
+        const isFav = favoriteProIds.includes(String(selectedPro.id));
         const liveNow = isLivePresenceActive(selectedPro);
         const eligibility = getEndorsementEligibility(selectedPro);
         const proEndorsements = endorsementsByPro[selectedPro.id] || [];
@@ -1234,13 +1374,26 @@ export default function ProsDirectoryView({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedPro(null)}
-                  className="text-sm font-bold text-[#5C6B62] hover:text-black px-2 py-1 shrink-0"
-                >
-                  Bezárás ✕
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => toggleFavoritePro(e, selectedPro.id)}
+                    className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border transition ${
+                      isFav
+                        ? 'bg-amber-50 text-amber-700 border-amber-300'
+                        : 'bg-white text-[#5C6B62] border-[#DFD9CE]'
+                    }`}
+                  >
+                    {isFav ? '★ Kedvenc' : '☆ Mentés'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPro(null)}
+                    className="text-sm font-bold text-[#5C6B62] hover:text-black px-2 py-1 shrink-0"
+                  >
+                    Bezárás ✕
+                  </button>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">

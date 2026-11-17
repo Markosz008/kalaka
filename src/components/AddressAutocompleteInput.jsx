@@ -74,6 +74,8 @@ export default function AddressAutocompleteInput({
   onChange,
   onSelectPlace,
   onFocus,
+  isSavedPlace = false,
+  onToggleSavePlace = null,
   placeholder = 'Cím vagy megálló...',
   dotColor = 'border-terracotta',
   isSolidDot = false,
@@ -102,7 +104,6 @@ export default function AddressAutocompleteInput({
   }, []);
 
   useEffect(() => {
-    // Csak akkor keresünk és nyitjuk ki a listát, ha a felhasználó ténylegesen gépelt!
     if (!isUserTypingRef.current) {
       return;
     }
@@ -329,6 +330,19 @@ export default function AddressAutocompleteInput({
         />
         {loading && (
           <span className="text-[10px] font-bold text-[#7A867E] shrink-0">…</span>
+        )}
+        {value && value.trim().length >= 3 && onToggleSavePlace && (
+          <button
+            type="button"
+            onClick={onToggleSavePlace}
+            title={isSavedPlace ? 'Eltávolítás a saját helyek közül' : 'Mentés a saját helyek közé'}
+            aria-label={isSavedPlace ? 'Eltávolítás a saját helyek közül' : 'Mentés a saját helyek közé'}
+            className={`text-sm font-bold px-1 shrink-0 transition ${
+              isSavedPlace ? 'text-amber-500' : 'text-[#9AA59E] hover:text-amber-500'
+            }`}
+          >
+            {isSavedPlace ? '★' : '☆'}
+          </button>
         )}
         {value && (
           <button

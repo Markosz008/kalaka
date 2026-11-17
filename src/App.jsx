@@ -134,16 +134,17 @@ function getHiddenAgreements(userId) {
 }
 
 function getPersonalRoutines(userId) {
-  if (!userId) return [];
+  const key = `kalaka_routines_${userId || 'guest'}`;
   try {
-    return JSON.parse(localStorage.getItem(`kalaka_routines_${userId}`) || '[]');
+    return JSON.parse(localStorage.getItem(key) || '[]');
   } catch {
     return [];
   }
 }
 
 function recordPersonalRoutine(userId, origin, dest, originCoords = null, destCoords = null) {
-  if (!userId || !origin?.trim() || !dest?.trim()) return;
+  if (!origin?.trim() || !dest?.trim()) return;
+  const keyStorage = `kalaka_routines_${userId || 'guest'}`;
   try {
     const cleanO = origin.trim();
     const cleanD = dest.trim();
@@ -180,8 +181,17 @@ function recordPersonalRoutine(userId, origin, dest, originCoords = null, destCo
       });
     }
     list.sort((a, b) => (b.count - a.count) || (b.updatedAt - a.updatedAt));
-    localStorage.setItem(`kalaka_routines_${userId}`, JSON.stringify(list.slice(0, 4)));
+    localStorage.setItem(keyStorage, JSON.stringify(list.slice(0, 5)));
   } catch {}
+}
+
+function getSavedPlaces(userId) {
+  const key = `kalaka_places_${userId || 'guest'}`;
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
 }
 
 function playSoftNotificationTone() {
@@ -339,7 +349,8 @@ export default function App() {
   const [inspectedUser, setInspectedUser] = useState(null);
   const [kudosCountByUser, setKudosCountByUser] = useState({});
   const [searchStatsMap, setSearchStatsMap] = useState({});
-  const [personalRoutines, setPersonalRoutines] = useState([]);
+  const [personalRoutines, setPersonalRoutines] = useState(() => getPersonalRoutines(null));
+  const [savedPlaces, setSavedPlaces] = useState(() => getSavedPlaces(null));
   const [locatingOriginGps, setLocatingOriginGps] = useState(false);
   const [incomingToast, setIncomingToast] = useState(null);
   const [appNotice, setAppNotice] = useState(null);
@@ -374,6 +385,51 @@ export default function App() {
     setAppNotice({ text, tone });
     setTimeout(() => setAppNotice(null), 4000);
   }, []);
+
+  const toggleSavePersonalPlace = useCallback(
+    async (rawLabel, explicitCoords = null) => {
+      const cleanLabel = (rawLabel || '').trim();
+      if (cleanLabel.length < 3) return;
+      const uid = session?.user?.id || null;
+      const storageKey = `kalaka_places_${uid || 'guest'}`;
+
+      const exists = savedPlaces.some(
+        (p) => p.label.toLowerCase() === cleanLabel.toLowerCase()
+      );
+      if (exists) {
+        const next = savedPlaces.filter(
+          (p) => p.label.toLowerCase() !== cleanLabel.toLowerCase()
+        );
+        setSavedPlaces(next);
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {}
+        showNotice('Hely eltávolítva a saját helyek közül.');
+        return;
+      }
+
+      let resolved = explicitCoords || resolveCoordsFromText(cleanLabel);
+      if (!resolved) {
+        resolved = await geocodeAddressFallback(cleanLabel);
+      }
+
+      const next = [
+        {
+          label: cleanLabel,
+          lat: resolved?.lat || null,
+          lng: resolved?.lng || null
+        },
+        ...savedPlaces
+      ].slice(0, 6);
+
+      setSavedPlaces(next);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+      showNotice('Elmentve a saját helyeid közé ★');
+    },
+    [savedPlaces, session?.user?.id, showNotice]
+  );
 
   const loadUserProfile = useCallback(async (authUser) => {
     if (!supabase || !authUser) return;
@@ -417,6 +473,7 @@ export default function App() {
       setProfile(data);
       setHiddenAgreementIds(getHiddenAgreements(data.id));
       setPersonalRoutines(getPersonalRoutines(data.id));
+      setSavedPlaces(getSavedPlaces(data.id));
     }
   }, []);
 
@@ -713,6 +770,8 @@ export default function App() {
           favor_hearts: 0
         });
         setMyAgreements([]);
+        setPersonalRoutines(getPersonalRoutines(null));
+        setSavedPlaces(getSavedPlaces(null));
       }
     });
 
@@ -831,31 +890,34 @@ export default function App() {
     const morningHubs = new Set(['Szentendre HÉV-végállomás', 'Újpest-Városkapu', 'Papírgyár', 'Bükkös-part']);
     const afternoonHubs = new Set(['Szentendre HÉV-végállomás', 'Pismány', 'Szarvashegy', 'Izbég', 'Pannóniatelep']);
 
-    return BASE_QUICK_DESTINATIONS.map((label) => {
-      const needle = label.replace('Szentendre ', '').toLowerCase();
-      const liveCount = filteredRides.filter((r) => {
-        const routeStr = `${r.origin_text} ${r.dest_text}`.toLowerCase();
-        const stopMatch = (r.stops || []).some((s) =>
-          (s.name || '').toLowerCase().includes(needle)
-        );
-        return routeStr.includes(needle) || stopMatch;
-      }).length;
+    const savedLabelsSet = new Set(savedPlaces.map((p) => p.label.toLowerCase()));
 
-      const searches = searchStatsMap[label] || 0;
-      const timeBoost = isMorning
-        ? morningHubs.has(label)
+    return BASE_QUICK_DESTINATIONS.filter((lbl) => !savedLabelsSet.has(lbl.toLowerCase()))
+      .map((label) => {
+        const needle = label.replace('Szentendre ', '').toLowerCase();
+        const liveCount = filteredRides.filter((r) => {
+          const routeStr = `${r.origin_text} ${r.dest_text}`.toLowerCase();
+          const stopMatch = (r.stops || []).some((s) =>
+            (s.name || '').toLowerCase().includes(needle)
+          );
+          return routeStr.includes(needle) || stopMatch;
+        }).length;
+
+        const searches = searchStatsMap[label] || 0;
+        const timeBoost = isMorning
+          ? morningHubs.has(label)
+            ? 8
+            : 0
+          : afternoonHubs.has(label)
           ? 8
-          : 0
-        : afternoonHubs.has(label)
-        ? 8
-        : 0;
+          : 0;
 
-      const score = liveCount * 25 + searches + timeBoost;
-      return { label, liveCount, score };
-    })
+        const score = liveCount * 25 + searches + timeBoost;
+        return { label, liveCount, score };
+      })
       .sort((a, b) => b.score - a.score)
       .slice(0, 6);
-  }, [filteredRides, searchStatsMap]);
+  }, [filteredRides, searchStatsMap, savedPlaces]);
 
   const visibleAgreements = useMemo(
     () => myAgreements.filter((a) => !hiddenAgreementIds.includes(a.id)),
@@ -897,15 +959,23 @@ export default function App() {
     }
     setShowMap(true);
 
+    const savedHit = savedPlaces.find(
+      (p) => p.label.toLowerCase() === locName.toLowerCase()
+    );
+    const resolvedPoint =
+      coordsObj ||
+      (savedHit?.lat && savedHit?.lng ? { lat: savedHit.lat, lng: savedHit.lng } : null) ||
+      resolveCoordsFromText(locName);
+
     const targetField =
       forcedField || (activeSearchField === 'to' || (filterFrom && !filterTo) ? 'to' : 'from');
     if (targetField === 'to') {
       setFilterTo(locName);
-      setToCoords(coordsObj || resolveCoordsFromText(locName));
+      setToCoords(resolvedPoint);
       setActiveSearchField('from');
     } else {
       setFilterFrom(locName);
-      setFromCoords(coordsObj || resolveCoordsFromText(locName));
+      setFromCoords(resolvedPoint);
       setActiveSearchField('to');
     }
   };
@@ -1525,7 +1595,19 @@ export default function App() {
   };
 
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
-  const topPersonalRoutine = personalRoutines[0] || null;
+  const isFromSaved = savedPlaces.some(
+    (p) => p.label.toLowerCase() === filterFrom.trim().toLowerCase()
+  );
+  const isToSaved = savedPlaces.some(
+    (p) => p.label.toLowerCase() === filterTo.trim().toLowerCase()
+  );
+  const isCurrentRouteSaved =
+    hasBothRouteEnds &&
+    personalRoutines.some(
+      (r) =>
+        r.origin.toLowerCase() === filterFrom.trim().toLowerCase() &&
+        r.dest.toLowerCase() === filterTo.trim().toLowerCase()
+    );
   const displayedRides = useMemo(
     () => filteredRides.filter((r) => rideKindFilter === 'all' || r.kind === rideKindFilter),
     [filteredRides, rideKindFilter]
@@ -1634,6 +1716,8 @@ export default function App() {
               <AddressAutocompleteInput
                 value={filterFrom}
                 onFocus={() => setActiveSearchField('from')}
+                isSavedPlace={isFromSaved}
+                onToggleSavePlace={() => toggleSavePersonalPlace(filterFrom, fromCoords)}
                 onChange={(val) => {
                   setSelectedRideForMap(null);
                   setFromCoords(null);
@@ -1652,6 +1736,8 @@ export default function App() {
                 <AddressAutocompleteInput
                   value={filterTo}
                   onFocus={() => setActiveSearchField('to')}
+                  isSavedPlace={isToSaved}
+                  onToggleSavePlace={() => toggleSavePersonalPlace(filterTo, toCoords)}
                   onChange={(val) => {
                     setSelectedRideForMap(null);
                     setToCoords(null);
@@ -1690,21 +1776,21 @@ export default function App() {
             </div>
           </div>
 
-          {topPersonalRoutine && !filterFrom && !filterTo && (
-            <div className="flex items-center justify-between gap-2 bg-pilis-soft/45 px-2.5 py-1.5 rounded-xl border border-pilis/15 text-xs">
-              <span className="truncate text-[#18261F] font-medium">
-                Szokásos:{' '}
-                <strong className="font-bold">
-                  {topPersonalRoutine.origin} → {topPersonalRoutine.dest}
-                </strong>
+          {personalRoutines.length > 0 && !filterFrom && !filterTo && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              <span className="shrink-0 text-[11px] font-bold text-[#5C6B62]">
+                Útvonalaid:
               </span>
-              <button
-                type="button"
-                onClick={() => handleLoadPersonalRoutine(topPersonalRoutine)}
-                className="shrink-0 bg-pilis text-white font-bold text-[11px] px-2.5 py-1 rounded-lg transition active:scale-95"
-              >
-                Betöltés ›
-              </button>
+              {personalRoutines.slice(0, 3).map((rt) => (
+                <button
+                  key={rt.key}
+                  type="button"
+                  onClick={() => handleLoadPersonalRoutine(rt)}
+                  className="shrink-0 bg-pilis-soft/60 hover:bg-pilis text-pilis hover:text-white border border-pilis/20 text-[11px] font-bold px-2.5 py-1 rounded-xl transition active:scale-95"
+                >
+                  {rt.origin.replace(/^Szentendre,\s*/i, '')} → {rt.dest.replace(/^Szentendre,\s*/i, '')}
+                </button>
+              ))}
             </div>
           )}
 
@@ -1721,6 +1807,31 @@ export default function App() {
               >
                 Mind
               </button>
+
+              {savedPlaces.map((sp) => {
+                const isSelected =
+                  filterFrom === sp.label || filterTo === sp.label;
+                return (
+                  <button
+                    key={`saved-${sp.label}`}
+                    type="button"
+                    onClick={() =>
+                      handleSelectQuickLocation(
+                        sp.label,
+                        sp.lat && sp.lng ? { lat: sp.lat, lng: sp.lng } : null
+                      )
+                    }
+                    className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full border transition flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-amber-50 text-amber-950 border-amber-300 hover:border-amber-500'
+                    }`}
+                  >
+                    <span>★</span>
+                    <span>{sp.label.replace(/^Szentendre,\s*/i, '')}</span>
+                  </button>
+                );
+              })}
 
               {smartQuickChips.map((chipObj) => {
                 const isSelected =
@@ -1789,10 +1900,54 @@ export default function App() {
           {hasBothRouteEnds && (
             <div className="pt-2.5 border-t border-[#ECE7DC]">
               {!inlineComposerMode ? (
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-limestone p-2.5 rounded-xl border border-[#DFD9CE]">
-                  <span className="text-xs font-bold text-[#18261F] px-1">
-                    Kiírod ezt az útvonalat?
-                  </span>
+                <div className="space-y-2 bg-limestone p-2.5 rounded-xl border border-[#DFD9CE]">
+                  <div className="flex items-center justify-between gap-2 px-1">
+                    <span className="text-xs font-bold text-[#18261F]">
+                      Kiírod ezt az útvonalat?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isCurrentRouteSaved) {
+                          const uid = session?.user?.id || null;
+                          const next = personalRoutines.filter(
+                            (r) =>
+                              !(
+                                r.origin.toLowerCase() === filterFrom.trim().toLowerCase() &&
+                                r.dest.toLowerCase() === filterTo.trim().toLowerCase()
+                              )
+                          );
+                          setPersonalRoutines(next);
+                          try {
+                            localStorage.setItem(
+                              `kalaka_routines_${uid || 'guest'}`,
+                              JSON.stringify(next)
+                            );
+                          } catch {}
+                          showNotice('Útvonal eltávolítva.');
+                        } else {
+                          const startPt = fromCoords || resolveCoordsFromText(filterFrom);
+                          const endPt = toCoords || resolveCoordsFromText(filterTo);
+                          recordPersonalRoutine(
+                            session?.user?.id || null,
+                            filterFrom.trim(),
+                            filterTo.trim(),
+                            startPt,
+                            endPt
+                          );
+                          setPersonalRoutines(getPersonalRoutines(session?.user?.id || null));
+                          showNotice('Útvonal elmentve ★');
+                        }
+                      }}
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border transition ${
+                        isCurrentRouteSaved
+                          ? 'bg-amber-50 text-amber-800 border-amber-300'
+                          : 'bg-white text-[#5C6B62] border-[#DFD9CE] hover:border-amber-400'
+                      }`}
+                    >
+                      {isCurrentRouteSaved ? '★ Mentett útvonal' : '☆ Útvonal mentése'}
+                    </button>
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
