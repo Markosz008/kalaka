@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kalaka-szentendre-v2026-11-18-b';
+const CACHE_NAME = 'kalaka-szentendre-v2026-11-18-c';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -14,6 +14,41 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'Kaláka Szentendre', body: 'Új üzenet érkezett' };
+  try {
+    if (event.data) {
+      data = event.data.json();
+    }
+  } catch {}
+
+  const options = {
+    body: data.body || 'Új értesítés a szomszédságból',
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    tag: 'kalaka-push-notif',
+    vibrate: [120, 60, 120]
+  };
+
+  event.waitUntil(self.registration.showNotification(data.title || 'Kaláka Szentendre', options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
   );
 });
 
