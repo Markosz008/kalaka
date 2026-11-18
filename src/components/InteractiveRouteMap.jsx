@@ -61,6 +61,7 @@ export default function InteractiveRouteMap({
   }, [onPickLocation]);
 
   const [mapMode, setMapMode] = useState('street');
+  const [isExpanded, setIsExpanded] = useState(false);
   const [routeStats, setRouteStats] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -152,10 +153,20 @@ export default function InteractiveRouteMap({
   }, []);
 
   useEffect(() => {
-    if (isVisible && mapRef.current) {
-      mapRef.current.resize();
+    if ((isVisible || isExpanded) && mapRef.current) {
+      const t = setTimeout(() => mapRef.current?.resize(), 30);
+      return () => clearTimeout(t);
     }
-  }, [isVisible]);
+  }, [isVisible, isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isExpanded]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -363,31 +374,41 @@ export default function InteractiveRouteMap({
 
   if (mapError) {
     return (
-      <div className="w-full h-56 rounded-2xl bg-limestone border border-[#DFD9CE] grid place-items-center text-xs text-[#5C6B62] font-bold">
+      <div className="w-full h-56 rounded-2xl bg-limestone border border-[#DFD9CE] grid place-items-center text-xs text-[#4A5850] font-bold">
         Térkép betöltési hiba. A keresés és az útinfó ettől függetlenül működik.
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
+    <div
+      className={
+        isExpanded
+          ? 'fixed inset-0 z-50 w-screen h-[100dvh] bg-[#ECE7DC]'
+          : 'relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]'
+      }
+    >
       <div ref={mapContainerRef} className="w-full h-full" />
 
       {!mapReady && (
         <div className="absolute inset-0 grid place-items-center bg-[#ECE7DC]/90 pointer-events-none z-20">
-          <span className="text-xs font-bold text-[#5C6B62] bg-white/90 px-3 py-1.5 rounded-full border border-[#DFD9CE] shadow-sm">
+          <span className="text-xs font-bold text-[#4A5850] bg-white/90 px-3 py-1.5 rounded-full border border-[#DFD9CE] shadow-sm">
             Térkép betöltése...
           </span>
         </div>
       )}
 
-      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none z-10">
-        <div className="flex bg-white/95 backdrop-blur rounded-xl p-0.5 shadow-sm border border-[#DFD9CE] pointer-events-auto text-[11px] font-bold">
+      <div
+        className={`absolute left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none z-10 ${
+          isExpanded ? 'top-[calc(0.75rem+env(safe-area-inset-top))]' : 'top-2.5'
+        }`}
+      >
+        <div className="flex bg-white/95 backdrop-blur rounded-xl p-0.5 shadow-sm border border-[#DFD9CE] pointer-events-auto text-xs font-bold">
           <button
             type="button"
             onClick={() => setMapMode('street')}
-            className={`px-2.5 py-1 rounded-lg transition ${
-              mapMode === 'street' ? 'bg-pilis text-white' : 'text-[#5C6B62]'
+            className={`px-2.5 py-1.5 rounded-lg transition ${
+              mapMode === 'street' ? 'bg-pilis text-white' : 'text-[#4A5850]'
             }`}
           >
             Térkép
@@ -395,8 +416,8 @@ export default function InteractiveRouteMap({
           <button
             type="button"
             onClick={() => setMapMode('satellite')}
-            className={`px-2.5 py-1 rounded-lg transition ${
-              mapMode === 'satellite' ? 'bg-pilis text-white' : 'text-[#5C6B62]'
+            className={`px-2.5 py-1.5 rounded-lg transition ${
+              mapMode === 'satellite' ? 'bg-pilis text-white' : 'text-[#4A5850]'
             }`}
           >
             Műhold
@@ -404,19 +425,39 @@ export default function InteractiveRouteMap({
         </div>
 
         {routeStats && (
-          <div className="bg-[#18261F]/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm">
+          <div className="bg-[#18261F]/90 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">
             {routeStats.km} km • ~{routeStats.mins} p
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleCenterGps}
-          className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-sm border border-[#DFD9CE] pointer-events-auto"
-        >
-          Saját helyzet
-        </button>
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          <button
+            type="button"
+            onClick={handleCenterGps}
+            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+          >
+            Saját helyzet
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsExpanded((v) => !v)}
+            aria-label={isExpanded ? 'Térkép kicsinyítése' : 'Térkép nagyítása'}
+            title={isExpanded ? 'Bezárás' : 'Nagyítás'}
+            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+          >
+            {isExpanded ? 'Bezárás ✕' : '⛶'}
+          </button>
+        </div>
       </div>
+
+      {isExpanded && (
+        <div className="absolute bottom-5 left-3 right-14 z-10 pointer-events-none">
+          <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-1.5 rounded-xl shadow border border-[#DFD9CE]">
+            Bökj bárhová a térképen, vagy húzd az A / B jelölőt a pontos pontra.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
