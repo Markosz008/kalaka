@@ -140,6 +140,13 @@ export default function ProsDirectoryView({
   const [formError, setFormError] = useState(null);
   const [proBanner, setProBanner] = useState(null);
   const [confirmDeleteProId, setConfirmDeleteProId] = useState(null);
+  const [claimRequests, setClaimRequests] = useState([]);
+  const [showClaimFormForId, setShowClaimFormForId] = useState(null);
+  const [claimPhone, setClaimPhone] = useState('');
+  const [claimNote, setClaimNote] = useState('');
+  const [claimSaving, setClaimSaving] = useState(false);
+  const [reviewingClaimId, setReviewingClaimId] = useState(null);
+  const isAdminUser = Boolean(profile?.is_admin);
 
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
@@ -255,16 +262,73 @@ export default function ProsDirectoryView({
         agrMap[a.pro_id] = a;
       });
       setAgreementsByPro(agrMap);
+
+      let claimQuery = supabase
+        .from('pro_claim_requests')
+        .select('*, claimant:profiles!pro_claim_requests_claimant_id_fkey(display_name, zone), pro:local_pros(business_name, phone)')
+        .order('created_at', { ascending: false });
+
+      if (isAdminUser) {
+        claimQuery = claimQuery.eq('status', 'pending');
+      } else {
+        claimQuery = claimQuery.eq('claimant_id', currentUserId);
+      }
+
+      const { data: claimsData } = await claimQuery;
+      setClaimRequests(claimsData || []);
     } else {
       setInteractionsByPro({});
       setAgreementsByPro({});
       setEndorsedProIds(new Set());
+      setClaimRequests([]);
     }
   };
 
   useEffect(() => {
     loadInteractionAndEndorsementState();
-  }, [currentUserId, pros?.length]);
+  }, [currentUserId, isAdminUser, pros?.length]);
+
+  const handleSubmitClaim = async (e, pro) => {
+    e.preventDefault();
+    if (!currentUserId) {
+      onOpenAuthModal();
+      return;
+    }
+    if (!claimPhone.trim()) return;
+    setClaimSaving(true);
+    const { error } = await supabase.from('pro_claim_requests').insert({
+      pro_id: pro.id,
+      claimant_id: currentUserId,
+      contact_phone: claimPhone.trim(),
+      verification_note: claimNote.trim() || null
+    });
+    setClaimSaving(false);
+    if (error) {
+      setProBanner(`Nem sikerült beküldeni az igénylést: ${error.message}`);
+      return;
+    }
+    setShowClaimFormForId(null);
+    setClaimPhone('');
+    setClaimNote('');
+    setProBanner('Profilátvételi kérelmedet rögzítettük, hamarosan ellenőrizzük.');
+    loadInteractionAndEndorsementState();
+  };
+
+  const handleReviewClaim = async (requestId, approve) => {
+    setReviewingClaimId(requestId);
+    const { error } = await supabase.rpc('review_pro_claim', {
+      p_request_id: requestId,
+      p_approve: approve
+    });
+    setReviewingClaimId(null);
+    if (error) {
+      setProBanner(`Hiba az elbírálásnál: ${error.message}`);
+      return;
+    }
+    setProBanner(approve ? 'Profilátvétel jóváhagyva ✓' : 'Profilátvétel elutasítva');
+    await loadInteractionAndEndorsementState();
+    if (onRefresh) onRefresh();
+  };
 
   useEffect(() => {
     if (!selectedPro) return;
@@ -966,6 +1030,56 @@ export default function ProsDirectoryView({
           <button type="button" onClick={() => setProBanner(null)} className="font-bold px-1">✕</button>
         </div>
       )}
+
+      {isAdminUser && claimRequests.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 space-y-2.5">
+          <div className="text-xs font-extrabold uppercase tracking-wide text-amber-900">
+            Függőben lévő szaki profilátvételek ({claimRequests.length})
+          </div>
+          {claimRequests.map((req) => (
+            <div key={req.id} className="bg-white rounded-xl p-3 border border-amber-200 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs font-bold text-[#18261F]">
+                    {req.pro?.business_name || 'Szaki adatlap'}
+                  </div>
+                  <div className="text-[11px] text-[#5C6B62]">
+                    Igénylő: <span className="font-semibold text-[#18261F]">{req.claimant?.display_name || 'Felhasználó'}</span> ({req.claimant?.zone || 'Szentendre'})
+                  </div>
+                  <div className="text-[11px] text-[#5C6B62]">
+                    Megadott telefon: <a href={`tel:${req.contact_phone}`} className="font-bold text-pilis underline">{req.contact_phone}</a>
+                    {req.pro?.phone ? ` (Kártyán: ${req.pro.phone})` : ''}
+                  </div>
+                  {req.verification_note && (
+                    <div className="text-[11px] text-[#18261F] bg-limestone px-2 py-1 rounded-lg mt-1">
+                      {req.verification_note}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={reviewingClaimId === req.id}
+                  onClick={() => handleReviewClaim(req.id, true)}
+                  className="flex-1 bg-pilis hover:bg-pilis-light text-white font-bold text-xs py-2 rounded-xl transition"
+                >
+                  Jóváhagyás ✓
+                </button>
+                <button
+                  type="button"
+                  disabled={reviewingClaimId === req.id}
+                  onClick={() => handleReviewClaim(req.id, false)}
+                  className="bg-white hover:bg-red-50 text-red-700 border border-red-200 font-bold text-xs px-3 py-2 rounded-xl transition"
+                >
+                  Elutasítás ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] shadow-sm space-y-2.5 box-border">
         <div className="flex items-center justify-between gap-2">
           <h2 className="font-display font-bold text-base text-[#18261F] truncate">
@@ -1520,13 +1634,73 @@ export default function ProsDirectoryView({
                       </a>
                     </div>
                   ) : (
-                    <a
-                      href={`tel:${selectedPro.phone}`}
-                      onClick={() => handleRecordInteraction(selectedPro, 'call')}
-                      className="block w-full bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
-                    >
-                      Hívás indítása ({selectedPro.phone})
-                    </a>
+                    <div className="space-y-2">
+                      <a
+                        href={`tel:${selectedPro.phone}`}
+                        onClick={() => handleRecordInteraction(selectedPro, 'call')}
+                        className="block w-full bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
+                      >
+                        Hívás indítása ({selectedPro.phone})
+                      </a>
+
+                      {claimRequests.some((c) => c.pro_id === selectedPro.id && c.status === 'pending') ? (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold p-2.5 rounded-xl text-center">
+                          Profilátvételi kérelmed elbírálás alatt áll.
+                        </div>
+                      ) : showClaimFormForId === selectedPro.id ? (
+                        <form onSubmit={(e) => handleSubmitClaim(e, selectedPro)} className="bg-limestone border border-[#DFD9CE] rounded-xl p-3 space-y-2">
+                          <div className="text-xs font-bold text-[#18261F]">
+                            Vállalkozás igazolása
+                          </div>
+                          <input
+                            type="tel"
+                            required
+                            value={claimPhone}
+                            onChange={(e) => setClaimPhone(e.target.value)}
+                            placeholder="Vállalkozás telefonszáma (+36...)"
+                            className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-sm box-border"
+                          />
+                          <input
+                            type="text"
+                            value={claimNote}
+                            onChange={(e) => setClaimNote(e.target.value)}
+                            placeholder="Céges e-mail, weboldal vagy rövid igazolás"
+                            className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-sm box-border"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={claimSaving}
+                              className="flex-1 bg-pilis text-white font-bold text-xs py-2 rounded-xl"
+                            >
+                              {claimSaving ? 'Küldés...' : 'Igénylés beküldése'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowClaimFormForId(null)}
+                              className="bg-white text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl"
+                            >
+                              Mégse
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!currentUserId) {
+                              onOpenAuthModal();
+                              return;
+                            }
+                            setShowClaimFormForId(selectedPro.id);
+                            setClaimPhone(selectedPro.phone || '');
+                          }}
+                          className="w-full bg-white hover:bg-limestone text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl transition"
+                        >
+                          Ez az én vállalkozásom – profil átvétele
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : (

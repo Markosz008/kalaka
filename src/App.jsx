@@ -436,7 +436,7 @@ export default function App() {
     if (!supabase || !authUser) return;
     let { data } = await supabase
       .from('profiles')
-      .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
+      .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -456,7 +456,7 @@ export default function App() {
             fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
           zone: cleanZone
         })
-        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
+        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
         .single();
       data = inserted;
     } else if (data.display_name === 'Belépés') {
@@ -465,7 +465,7 @@ export default function App() {
         .from('profiles')
         .update({ display_name: fixedName })
         .eq('id', authUser.id)
-        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code')
+        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
         .single();
       if (fixed) data = fixed;
     }
