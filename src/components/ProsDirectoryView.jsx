@@ -122,6 +122,7 @@ export default function ProsDirectoryView({
 
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingProId, setEditingProId] = useState(null);
+  const [bizIsSelfProvider, setBizIsSelfProvider] = useState(false);
   const [bizName, setBizName] = useState('');
   const [bizGroup, setBizGroup] = useState('szepseg_egeszseg');
   const [professionInput, setProfessionInput] = useState('');
@@ -908,7 +909,11 @@ export default function ProsDirectoryView({
       } else {
         const { error } = await supabase
           .from('local_pros')
-          .insert({ ...payload, owner_id: currentUserId, endorsement_count: 0 });
+          .insert({
+            ...payload,
+            owner_id: bizIsSelfProvider ? currentUserId : null,
+            endorsement_count: 0
+          });
         if (error) throw error;
       }
 
@@ -1364,13 +1369,15 @@ export default function ProsDirectoryView({
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleMessageClick(pro)}
-                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl transition"
-                    >
-                      Üzenet
-                    </button>
+                    {Boolean(pro.owner_id) && (
+                      <button
+                        type="button"
+                        onClick={() => handleMessageClick(pro)}
+                        className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl transition"
+                      >
+                        Üzenet
+                      </button>
+                    )}
                     <a
                       href={`tel:${pro.phone}`}
                       onClick={() => handleRecordInteraction(pro, 'call')}
@@ -1494,21 +1501,33 @@ export default function ProsDirectoryView({
               )}
 
               {!isOwner ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleMessageClick(selectedPro)}
-                    className="bg-white hover:bg-gray-50 text-[#18261F] border border-[#DFD9CE] font-bold text-sm py-3 rounded-xl transition"
-                  >
-                    Üzenet írása
-                  </button>
-                  <a
-                    href={`tel:${selectedPro.phone}`}
-                    onClick={() => handleRecordInteraction(selectedPro, 'call')}
-                    className="bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
-                  >
-                    Hívás indítása
-                  </a>
+                <div>
+                  {Boolean(selectedPro.owner_id) ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMessageClick(selectedPro)}
+                        className="bg-white hover:bg-gray-50 text-[#18261F] border border-[#DFD9CE] font-bold text-sm py-3 rounded-xl transition"
+                      >
+                        Üzenet írása
+                      </button>
+                      <a
+                        href={`tel:${selectedPro.phone}`}
+                        onClick={() => handleRecordInteraction(selectedPro, 'call')}
+                        className="bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
+                      >
+                        Hívás indítása
+                      </a>
+                    </div>
+                  ) : (
+                    <a
+                      href={`tel:${selectedPro.phone}`}
+                      onClick={() => handleRecordInteraction(selectedPro, 'call')}
+                      className="block w-full bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
+                    >
+                      Hívás indítása ({selectedPro.phone})
+                    </a>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1854,6 +1873,20 @@ export default function ProsDirectoryView({
                 </select>
               </div>
             </div>
+
+            {!editingProId && (
+              <label className="flex items-start gap-2.5 bg-white border border-[#DFD9CE] rounded-xl p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bizIsSelfProvider}
+                  onChange={(e) => setBizIsSelfProvider(e.target.checked)}
+                  className="mt-0.5 rounded border-[#DFD9CE] text-pilis focus:ring-pilis"
+                />
+                <span className="text-xs font-semibold text-[#18261F] leading-snug">
+                  Én vagyok a szolgáltató (szeretnék üzeneteket is fogadni itt)
+                </span>
+              </label>
+            )}
 
             <button
               type="submit"
