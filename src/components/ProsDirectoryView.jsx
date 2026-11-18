@@ -8,9 +8,10 @@ import {
   resolveCoordsFromText
 } from '../constants/szentendreData.js';
 import ProFormModal from './ProFormModal.jsx';
+import ProCard from './ProCard.jsx';
+import ProDetailModal from './ProDetailModal.jsx';
 import {
   VECTOR_STYLE_URL,
-  ENDORSEMENT_STRENGTH_TAGS,
   registerMapCategoryIcons,
   getSavedProIds,
   isLivePresenceActive,
@@ -1263,519 +1264,62 @@ export default function ProsDirectoryView({
           )}
         </div>
       ) : (
-        filteredPros.map((pro) => {
-          const isOwner = Boolean(currentUserId && pro.owner_id === currentUserId);
-          const isFav = favoriteProIds.includes(String(pro.id));
-          const liveNow = isLivePresenceActive(pro);
-          const proEndorsements = endorsementsByPro[pro.id] || [];
-          const firstRecommender = proEndorsements[0];
-
-          return (
-            <article
-              key={pro.id}
-              onClick={() => {
-                setSelectedTags([]);
-                setEndorseNote('');
-                setSelectedPro(pro);
-              }}
-              className="bg-white rounded-2xl p-3.5 sm:p-4 border border-[#DFD9CE] hover:border-pilis shadow-sm space-y-2.5 cursor-pointer transition box-border"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    {pro.profession_name && (
-                      <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
-                        {pro.profession_name}
-                      </span>
-                    )}
-                    {pro.experience_years > 0 && (
-                      <span className="text-[11px] font-semibold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full">
-                        {pro.experience_years} év tapasztalat
-                      </span>
-                    )}
-                    {liveNow ? (
-                      <a
-                        href={buildNavigationUrl(pro)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[11px] font-bold bg-emerald-700 hover:bg-emerald-800 text-white px-2.5 py-0.5 rounded-full inline-flex items-center gap-1"
-                      >
-                        <span>● Most a közelben ({formatRemainingLiveTime(pro.live_until)})</span>
-                        <span>↗</span>
-                      </a>
-                    ) : pro.address_text ? (
-                      <a
-                        href={buildNavigationUrl(pro)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[11px] font-semibold bg-limestone hover:bg-[#E5DFD3] text-[#18261F] px-2.5 py-0.5 rounded-full border border-[#DFD9CE] inline-flex items-center gap-1"
-                      >
-                        <span>{pro.address_text}</span>
-                        <span className="text-pilis font-bold">↗</span>
-                      </a>
-                    ) : pro.active_zone_today ? (
-                      <span className="text-[11px] font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full">
-                        Ma itt: {pro.active_zone_today}
-                      </span>
-                    ) : pro.base_zone ? (
-                      <span className="text-[11px] font-medium bg-limestone text-[#5C6B62] px-2.5 py-0.5 rounded-full">
-                        {pro.base_zone}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <h3 className="font-display font-bold text-base text-[#18261F] break-words">
-                    {pro.business_name}
-                  </h3>
-                  <p className="text-xs text-[#5C6B62] mt-0.5 line-clamp-1">
-                    {pro.specialty}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => toggleFavoritePro(e, pro.id)}
-                    aria-label={isFav ? 'Eltávolítás a kedvencekből' : 'Mentés kedvencnek'}
-                    title={isFav ? 'Mentve a kedvencek közé' : 'Mentés kedvencnek'}
-                    className={`w-7 h-7 rounded-full border grid place-items-center text-sm font-bold transition ${
-                      isFav
-                        ? 'bg-amber-50 text-amber-500 border-amber-300'
-                        : 'bg-limestone text-[#9AA59E] hover:text-amber-500 border-[#DFD9CE]'
-                    }`}
-                  >
-                    {isFav ? '★' : '☆'}
-                  </button>
-                  <span className="text-xs font-bold text-[#5C6B62]">
-                    Részletek ›
-                  </span>
-                </div>
-              </div>
-
-              {isOwner && (
-                <div onClick={(e) => e.stopPropagation()} className="pt-1">
-                  <button
-                    type="button"
-                    disabled={togglingLiveId === pro.id}
-                    onClick={() => handleToggleLivePresence(pro)}
-                    className={`w-full text-xs font-bold py-2 px-3 rounded-xl border transition ${
-                      liveNow
-                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                        : 'bg-pilis-soft/70 hover:bg-pilis text-pilis hover:text-white border-pilis/20'
-                    }`}
-                  >
-                    {togglingLiveId === pro.id
-                      ? 'GPS helyzet lekérése...'
-                      : liveNow
-                      ? `Élő jelenlét aktív (${formatRemainingLiveTime(pro.live_until)}) – Leállítás`
-                      : 'Most itt dolgozom (4 órára a térképre)'}
-                  </button>
-                </div>
-              )}
-
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2"
-              >
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-[#18261F]">
-                    {pro.endorsement_count || 0} helyi ajánlás
-                  </div>
-                  {firstRecommender && (
-                    <div className="text-[11px] text-[#5C6B62] truncate">
-                      Ajánlotta: {firstRecommender.authorName}
-                      {firstRecommender.authorZone ? ` (${firstRecommender.authorZone})` : ''}
-                    </div>
-                  )}
-                </div>
-
-                {isOwner ? (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(pro)}
-                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-xl"
-                    >
-                      Szerkesztés
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePro(pro.id)}
-                      className={`${
-                        confirmDeleteProId === pro.id
-                          ? 'bg-red-700 text-white border-red-700'
-                          : 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
-                      } border font-bold text-xs px-2.5 py-2 rounded-xl transition`}
-                    >
-                      {confirmDeleteProId === pro.id ? 'Biztos? ✕' : 'Törlés'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {Boolean(pro.owner_id) && (
-                      <button
-                        type="button"
-                        onClick={() => handleMessageClick(pro)}
-                        className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl transition"
-                      >
-                        Üzenet
-                      </button>
-                    )}
-                    <a
-                      href={`tel:${pro.phone}`}
-                      onClick={() => handleRecordInteraction(pro, 'call')}
-                      className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-3.5 py-2 rounded-xl transition"
-                    >
-                      Hívás
-                    </a>
-                  </div>
-                )}
-              </div>
-            </article>
-          );
-        })
+        filteredPros.map((pro) => (
+          <ProCard
+            key={pro.id}
+            pro={pro}
+            isOwner={Boolean(currentUserId && pro.owner_id === currentUserId)}
+            isFav={favoriteProIds.includes(String(pro.id))}
+            firstRecommender={(endorsementsByPro[pro.id] || [])[0]}
+            togglingLiveId={togglingLiveId}
+            confirmDeleteProId={confirmDeleteProId}
+            onSelectPro={(item) => {
+              setSelectedTags([]);
+              setEndorseNote('');
+              setSelectedPro(item);
+            }}
+            onToggleFavorite={toggleFavoritePro}
+            onToggleLivePresence={handleToggleLivePresence}
+            onOpenEditForm={openEditForm}
+            onDeletePro={handleDeletePro}
+            onMessageClick={handleMessageClick}
+            onRecordInteraction={handleRecordInteraction}
+          />
+        ))
       )}
 
-      {selectedPro && (() => {
-        const isOwner = Boolean(currentUserId && selectedPro.owner_id === currentUserId);
-        const isFav = favoriteProIds.includes(String(selectedPro.id));
-        const liveNow = isLivePresenceActive(selectedPro);
-        const eligibility = getEndorsementEligibility(selectedPro);
-        const proEndorsements = endorsementsByPro[selectedPro.id] || [];
-
-        return (
-          <div
-            onClick={() => setSelectedPro(null)}
-            className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3.5 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    {selectedPro.profession_name && (
-                      <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
-                        {selectedPro.profession_name}
-                      </span>
-                    )}
-                    {selectedPro.experience_years > 0 && (
-                      <span className="text-[11px] font-bold bg-[#ECE7DC] text-[#18261F] px-2.5 py-0.5 rounded-full">
-                        {selectedPro.experience_years} éve a szakmában
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-display font-extrabold text-xl text-[#18261F] break-words">
-                    {selectedPro.business_name}
-                  </h3>
-                  <div className="text-xs font-medium text-[#5C6B62] mt-0.5">
-                    {liveNow
-                      ? `Most a közelben van (${formatRemainingLiveTime(selectedPro.live_until)})`
-                      : selectedPro.address_text || selectedPro.base_zone || 'Szentendre'}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={(e) => toggleFavoritePro(e, selectedPro.id)}
-                    className={`text-xs font-bold px-2.5 py-1.5 rounded-xl border transition ${
-                      isFav
-                        ? 'bg-amber-50 text-amber-700 border-amber-300'
-                        : 'bg-white text-[#5C6B62] border-[#DFD9CE]'
-                    }`}
-                  >
-                    {isFav ? '★ Kedvenc' : '☆ Mentés'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPro(null)}
-                    className="text-sm font-bold text-[#5C6B62] hover:text-black px-2 py-1 shrink-0"
-                  >
-                    Bezárás ✕
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
-                <div>
-                  <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
-                    Miben segít
-                  </div>
-                  <div className="text-sm font-semibold text-[#18261F] mt-0.5">
-                    {selectedPro.specialty}
-                  </div>
-                </div>
-
-                {selectedPro.bio && (
-                  <div className="pt-2 border-t border-[#ECE7DC]">
-                    <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
-                      Bemutatkozás
-                    </div>
-                    <p className="text-xs text-[#18261F] mt-1 leading-relaxed whitespace-pre-line">
-                      {selectedPro.bio}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {buildNavigationUrl(selectedPro) && (
-                <a
-                  href={buildNavigationUrl(selectedPro)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-between gap-2 bg-white hover:bg-pilis-soft/40 border border-[#DFD9CE] rounded-2xl px-3.5 py-2.5 transition"
-                >
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold text-[#5C6B62] uppercase tracking-wide">
-                      {liveNow ? 'Élő helyszín (4 órás jelenlét)' : 'Telephely / cím'}
-                    </div>
-                    <div className="text-xs font-bold text-[#18261F] truncate">
-                      {liveNow
-                        ? `Szentendre • Most a közelben (${formatRemainingLiveTime(selectedPro.live_until)})`
-                        : selectedPro.address_text || selectedPro.base_zone}
-                    </div>
-                  </div>
-                  <span className="shrink-0 bg-pilis-soft text-pilis font-bold text-xs px-3 py-1.5 rounded-xl">
-                    Navigáció ↗
-                  </span>
-                </a>
-              )}
-
-              {!isOwner ? (
-                <div>
-                  {Boolean(selectedPro.owner_id) ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleMessageClick(selectedPro)}
-                        className="bg-white hover:bg-gray-50 text-[#18261F] border border-[#DFD9CE] font-bold text-sm py-3 rounded-xl transition"
-                      >
-                        Üzenet írása
-                      </button>
-                      <a
-                        href={`tel:${selectedPro.phone}`}
-                        onClick={() => handleRecordInteraction(selectedPro, 'call')}
-                        className="bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
-                      >
-                        Hívás indítása
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <a
-                        href={`tel:${selectedPro.phone}`}
-                        onClick={() => handleRecordInteraction(selectedPro, 'call')}
-                        className="block w-full bg-pilis hover:bg-pilis-light text-white font-bold text-sm py-3 rounded-xl text-center transition"
-                      >
-                        Hívás indítása ({selectedPro.phone})
-                      </a>
-
-                      {claimRequests.some((c) => c.pro_id === selectedPro.id && c.status === 'pending') ? (
-                        <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold p-2.5 rounded-xl text-center">
-                          Profilátvételi kérelmed elbírálás alatt áll.
-                        </div>
-                      ) : showClaimFormForId === selectedPro.id ? (
-                        <form onSubmit={(e) => handleSubmitClaim(e, selectedPro)} className="bg-limestone border border-[#DFD9CE] rounded-xl p-3 space-y-2">
-                          <div className="text-xs font-bold text-[#18261F]">
-                            Vállalkozás igazolása
-                          </div>
-                          <input
-                            type="tel"
-                            required
-                            value={claimPhone}
-                            onChange={(e) => setClaimPhone(e.target.value)}
-                            placeholder="Vállalkozás telefonszáma (+36...)"
-                            className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-sm box-border"
-                          />
-                          <input
-                            type="text"
-                            value={claimNote}
-                            onChange={(e) => setClaimNote(e.target.value)}
-                            placeholder="Céges e-mail, weboldal vagy rövid igazolás"
-                            className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-sm box-border"
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              type="submit"
-                              disabled={claimSaving}
-                              className="flex-1 bg-pilis text-white font-bold text-xs py-2 rounded-xl"
-                            >
-                              {claimSaving ? 'Küldés...' : 'Igénylés beküldése'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowClaimFormForId(null)}
-                              className="bg-white text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs px-3 py-2 rounded-xl"
-                            >
-                              Mégse
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!currentUserId) {
-                              onOpenAuthModal();
-                              return;
-                            }
-                            setShowClaimFormForId(selectedPro.id);
-                            setClaimPhone(selectedPro.phone || '');
-                          }}
-                          className="w-full bg-white hover:bg-limestone text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl transition"
-                        >
-                          Ez az én vállalkozásom – profil átvétele
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    disabled={togglingLiveId === selectedPro.id}
-                    onClick={() => handleToggleLivePresence(selectedPro)}
-                    className={`w-full text-xs font-bold py-2.5 px-3 rounded-xl border transition ${
-                      liveNow
-                        ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                        : 'bg-pilis text-white border-pilis'
-                    }`}
-                  >
-                    {liveNow
-                      ? `Élő jelenlét aktív (${formatRemainingLiveTime(selectedPro.live_until)}) – Leállítás`
-                      : 'Most itt dolgozom (4 órára a térképre)'}
-                  </button>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openEditForm(selectedPro)}
-                      className="bg-white text-[#18261F] border border-[#DFD9CE] font-bold text-xs py-2.5 rounded-xl"
-                    >
-                      Adatlap szerkesztése
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePro(selectedPro.id)}
-                      className={`${
-                        confirmDeleteProId === selectedPro.id
-                          ? 'bg-red-700 text-white border-red-700'
-                          : 'bg-red-50 text-red-800 border-red-200'
-                      } border font-bold text-xs py-2.5 rounded-xl transition`}
-                    >
-                      {confirmDeleteProId === selectedPro.id ? 'Biztosan törlöd? ✕' : 'Adatlap törlése'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#18261F]">
-                    Helyi ajánlások ({selectedPro.endorsement_count || 0})
-                  </span>
-                  {eligibility.alreadyEndorsed && (
-                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-                      Ajánlva ✓
-                    </span>
-                  )}
-                </div>
-
-                {!isOwner && !eligibility.alreadyEndorsed && (
-                  eligibility.canEndorse ? (
-                    <div className="bg-limestone p-3 rounded-xl border border-pilis/25 space-y-2">
-                      <div className="text-xs font-bold text-[#18261F]">
-                        Milyen tapasztalatod volt vele?
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ENDORSEMENT_STRENGTH_TAGS.map((tag) => {
-                          const active = selectedTags.includes(tag);
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => toggleStrengthTag(tag)}
-                              className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition ${
-                                active
-                                  ? 'bg-pilis text-white border-pilis'
-                                  : 'bg-white text-[#18261F] border-[#DFD9CE]'
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <input
-                        type="text"
-                        value={endorseNote}
-                        onChange={(e) => setEndorseNote(e.target.value)}
-                        placeholder="Írj egy rövid mondatot a szomszédoknak..."
-                        className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border"
-                      />
-                      <button
-                        type="button"
-                        disabled={endorseSaving}
-                        onClick={() => handleSubmitEndorsement(selectedPro)}
-                        className="w-full bg-pilis hover:bg-pilis-light text-white font-bold text-xs py-2.5 rounded-xl transition"
-                      >
-                        {endorseSaving ? 'Mentés...' : 'Ajánlás közzététele'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-[#5C6B62] bg-limestone p-2.5 rounded-xl leading-relaxed">
-                      {eligibility.reason}
-                    </div>
-                  )
-                )}
-
-                {proEndorsements.length === 0 ? (
-                  <div className="text-xs text-[#7A867E]">
-                    Még nem érkezett szöveges ajánlás.
-                  </div>
-                ) : (
-                  <div className="space-y-2 pt-1">
-                    {proEndorsements.map((item) => (
-                      <div
-                        key={item.id}
-                        className="bg-limestone rounded-xl p-2.5 border border-[#ECE7DC] space-y-1"
-                      >
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-bold text-[#18261F]">
-                            {item.authorName}
-                            {item.authorZone ? ` • ${item.authorZone}` : ''}
-                          </span>
-                        </div>
-                        {item.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {item.tags.map((t) => (
-                              <span
-                                key={t}
-                                className="text-[10px] font-bold bg-pilis-soft text-pilis px-2 py-0.5 rounded-full"
-                              >
-                                {t}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {item.comment && (
-                          <p className="text-xs text-[#18261F] leading-relaxed">
-                            „{item.comment}”
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <ProDetailModal
+        pro={selectedPro}
+        currentUserId={currentUserId}
+        isFav={selectedPro ? favoriteProIds.includes(String(selectedPro.id)) : false}
+        eligibility={selectedPro ? getEndorsementEligibility(selectedPro) : { canEndorse: false, alreadyEndorsed: false }}
+        proEndorsements={selectedPro ? endorsementsByPro[selectedPro.id] || [] : []}
+        claimRequests={claimRequests}
+        showClaimFormForId={showClaimFormForId}
+        setShowClaimFormForId={setShowClaimFormForId}
+        claimPhone={claimPhone}
+        setClaimPhone={setClaimPhone}
+        claimNote={claimNote}
+        setClaimNote={setClaimNote}
+        claimSaving={claimSaving}
+        togglingLiveId={togglingLiveId}
+        confirmDeleteProId={confirmDeleteProId}
+        selectedTags={selectedTags}
+        endorseNote={endorseNote}
+        setEndorseNote={setEndorseNote}
+        endorseSaving={endorseSaving}
+        onClose={() => setSelectedPro(null)}
+        onOpenAuthModal={onOpenAuthModal}
+        onToggleFavorite={toggleFavoritePro}
+        onMessageClick={handleMessageClick}
+        onRecordInteraction={handleRecordInteraction}
+        onSubmitClaim={handleSubmitClaim}
+        onToggleLivePresence={handleToggleLivePresence}
+        onOpenEditForm={openEditForm}
+        onDeletePro={handleDeletePro}
+        onToggleStrengthTag={toggleStrengthTag}
+        onSubmitEndorsement={handleSubmitEndorsement}
+      />
 
       <ProFormModal
         isOpen={showFormModal}
