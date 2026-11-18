@@ -2474,15 +2474,13 @@ export default function App() {
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {isDone && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleHideCompletedAgreement(e, agr.id)}
-                          className="text-[11px] font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1.5 rounded-xl border border-[#DFD9CE]"
-                        >
-                          Elrejtés
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => handleHideCompletedAgreement(e, agr.id)}
+                        className="text-[11px] font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1.5 rounded-xl border border-[#DFD9CE]"
+                      >
+                        Elrejtés
+                      </button>
                       <span
                         className={`text-xs font-bold px-3 py-1.5 rounded-full ${
                           agr.has_unread
