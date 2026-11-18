@@ -34,6 +34,9 @@ export default function AgreementChatModal({
   const [showReportBox, setShowReportBox] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [kudosTag, setKudosTag] = useState('Pontos és segítőkész');
+  const [editingCar, setEditingCar] = useState(false);
+  const [carDraft, setCarDraft] = useState('');
+  const [savingCar, setSavingCar] = useState(false);
 
   const bottomRef = useRef(null);
   const liveMapContainerRef = useRef(null);
@@ -63,6 +66,8 @@ export default function AgreementChatModal({
 
   useEffect(() => {
     setLiveAgr(agreement || null);
+    setEditingCar(false);
+    setCarDraft(agreement?.car_info || '');
     setErrorBanner(null);
     setGpsErrorMsg(null);
     if (!agreement?.id || !supabase || !isUuid(agreement.id)) {
@@ -167,6 +172,39 @@ export default function AgreementChatModal({
       setGpsActive(false);
     };
   }, [isLiveDbAgreement, isRideAgreement, status, isHelper, liveAgr?.id]);
+
+  const handleSaveRideCar = async (e) => {
+    e.preventDefault();
+    if (!currentUser?.id) return;
+    const cleanCar = carDraft.trim() || null;
+    setSavingCar(true);
+    try {
+      if (isLiveDbAgreement && liveAgr?.ride_id) {
+        await supabase
+          .from('rides')
+          .update({ car_info: cleanCar })
+          .eq('id', liveAgr.ride_id);
+      }
+      if (cleanCar && isLiveDbAgreement) {
+        await supabase
+          .from('profiles')
+          .update({ car_info: cleanCar })
+          .eq('id', currentUser.id);
+      }
+      setLiveAgr((prev) => (prev ? { ...prev, car_info: cleanCar } : prev));
+      setEditingCar(false);
+      if (cleanCar && isLiveDbAgreement && liveAgr?.id) {
+        await supabase.from('messages').insert({
+          agreement_id: liveAgr.id,
+          sender_id: currentUser.id,
+          body: `Ezzel az autóval érkezem: ${cleanCar}`
+        });
+      }
+      if (onAgreementUpdated) onAgreementUpdated();
+    } finally {
+      setSavingCar(false);
+    }
+  };
 
   useEffect(() => {
     if (!liveMapContainerRef.current || status !== 'started') return;
@@ -649,8 +687,21 @@ export default function AgreementChatModal({
                   <span className="truncate">{liveAgr.partner_name}</span>
                   {liveAgr.car_info && (
                     <span className="text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-0.5 rounded-full shrink-0">
-                      🚗 {liveAgr.car_info}
+                      {liveAgr.car_info}
                     </span>
+                  )}
+                  {isRideAgreement && isHelper && !editingCar && (
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setCarDraft(liveAgr.car_info || '');
+                        setEditingCar(true);
+                      }}
+                      className="text-[10px] font-bold text-pilis bg-pilis-soft px-2 py-0.5 rounded-full shrink-0 hover:bg-pilis hover:text-white transition"
+                    >
+                      {liveAgr.car_info ? 'Autó módosítása' : '+ Autó megadása'}
+                    </button>
                   )}
                 </div>
                 <div className="text-[11px] text-[#5C6B62] truncate">
@@ -689,6 +740,32 @@ export default function AgreementChatModal({
             </button>
           </div>
         </div>
+
+        {editingCar && (
+          <form onSubmit={handleSaveRideCar} className="px-3.5 py-2 bg-limestone border-t border-[#DFD9CE] flex items-center gap-2">
+            <input
+              type="text"
+              value={carDraft}
+              onChange={(e) => setCarDraft(e.target.value)}
+              placeholder="Milyen autóval mész? (pl. Kék kombi)"
+              className="flex-1 min-w-0 bg-white border border-[#DFD9CE] rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-pilis"
+            />
+            <button
+              type="submit"
+              disabled={savingCar}
+              className="bg-pilis text-white font-bold text-xs px-3 py-1.5 rounded-xl shrink-0"
+            >
+              {savingCar ? '...' : 'Mentés'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingCar(false)}
+              className="bg-white text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs px-2.5 py-1.5 rounded-xl shrink-0"
+            >
+              ✕
+            </button>
+          </form>
+        )}
 
         {errorBanner && (
           <div className="bg-red-100 text-red-900 text-xs font-semibold px-4 py-2 border-b border-red-200">
