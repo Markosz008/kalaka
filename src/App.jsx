@@ -19,6 +19,7 @@ import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 
 const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
+const FavorsMap = React.lazy(() => import('./components/FavorsMap.jsx'));
 
 const BASE_QUICK_DESTINATIONS = [
   'Szentendre HÉV-végállomás',
@@ -2355,6 +2356,10 @@ export default function App() {
 
         {activeTab === 'favors' && (
           <>
+            <React.Suspense fallback={<div className="h-44 sm:h-52 rounded-2xl bg-[#EAE5DC] border border-[#DFD9CE]" />}>
+              <FavorsMap favors={favors} onSelectFavor={handleStartFavorAgreement} />
+            </React.Suspense>
+
             <KalakaQuickComposer
               userZone={profile?.zone || 'Pismány'}
               onSubmitFavor={async ({ title, description, validMins, minHearts }) => {
