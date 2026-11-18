@@ -2,28 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { SZENTENDRE_ZONES } from '../constants/szentendreData.js';
 import AvatarBadge from './AvatarBadge.jsx';
-
-function resizeAvatarToBlob(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const size = 256;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const minSide = Math.min(img.width, img.height);
-      const sx = (img.width - minSide) / 2;
-      const sy = (img.height - minSide) / 2;
-      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Kép hiba'))), 'image/jpeg', 0.82);
-    };
-    img.onerror = () => reject(new Error('Nem sikerült beolvasni a képet'));
-    img.src = url;
-  });
-}
+import AvatarCropModal from './AvatarCropModal.jsx';
 
 export default function UserProfileModal({
   userId,
@@ -49,6 +28,7 @@ export default function UserProfileModal({
   const [editCar, setEditCar] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const avatarInputRef = useRef(null);
@@ -174,13 +154,19 @@ export default function UserProfileModal({
     if (onProfileUpdated) onProfileUpdated(data);
   };
 
-  const handleAvatarUpload = async (e) => {
+  const handleAvatarFileSelected = (e) => {
     const file = e.target.files?.[0];
     if (!file || !isOwnProfile || !supabase) return;
+    setPendingAvatarFile(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmCroppedAvatar = async (blob) => {
+    if (!blob || !isOwnProfile || !supabase) return;
+    setPendingAvatarFile(null);
     setUploadingAvatar(true);
     setGpsFeedback(null);
     try {
-      const blob = await resizeAvatarToBlob(file);
       const filePath = `${userId}/avatar_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
         .from('avatars')
@@ -305,7 +291,7 @@ export default function UserProfileModal({
                     ref={avatarInputRef}
                     type="file"
                     accept="image/*"
-                    onChange={handleAvatarUpload}
+                    onChange={handleAvatarFileSelected}
                     className="hidden"
                   />
                   <button
@@ -609,6 +595,14 @@ export default function UserProfileModal({
           )}
         </div>
       </div>
+
+      {pendingAvatarFile && (
+        <AvatarCropModal
+          file={pendingAvatarFile}
+          onCancel={() => setPendingAvatarFile(null)}
+          onConfirm={handleConfirmCroppedAvatar}
+        />
+      )}
     </div>
   );
 }
