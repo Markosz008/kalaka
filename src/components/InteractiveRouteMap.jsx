@@ -384,7 +384,7 @@ export default function InteractiveRouteMap({
     <div
       className={
         isExpanded
-          ? 'fixed inset-0 z-50 w-screen h-[100dvh] bg-[#ECE7DC]'
+          ? 'fixed inset-0 z-[1200] w-screen h-[100dvh] pb-[env(safe-area-inset-bottom)] bg-[#ECE7DC]'
           : 'relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]'
       }
     >
@@ -452,7 +452,7 @@ export default function InteractiveRouteMap({
       </div>
 
       {isExpanded && (
-        <div className="absolute bottom-5 left-3 right-14 z-10 pointer-events-none">
+        <div className="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-3 right-14 z-10 pointer-events-none">
           <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-1.5 rounded-xl shadow border border-[#DFD9CE]">
             Bökj bárhová a térképen, vagy húzd az A / B jelölőt a pontos pontra.
           </div>
