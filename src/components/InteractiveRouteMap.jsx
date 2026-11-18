@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as maplibregl from 'maplibre-gl';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
@@ -154,18 +155,23 @@ export default function InteractiveRouteMap({
 
   useEffect(() => {
     if ((isVisible || isExpanded) && mapRef.current) {
-      const t = setTimeout(() => mapRef.current?.resize(), 30);
+      const t = setTimeout(() => mapRef.current?.resize(), 40);
       return () => clearTimeout(t);
     }
   }, [isVisible, isExpanded]);
 
   useEffect(() => {
     if (!isExpanded) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (e) => {
       if (e.key === 'Escape') setIsExpanded(false);
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
   }, [isExpanded]);
 
   useEffect(() => {
@@ -380,11 +386,11 @@ export default function InteractiveRouteMap({
     );
   }
 
-  return (
+  const mapShell = (
     <div
       className={
         isExpanded
-          ? 'fixed inset-0 z-[1200] w-screen h-[100dvh] pb-[env(safe-area-inset-bottom)] bg-[#ECE7DC]'
+          ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[#ECE7DC]'
           : 'relative w-full h-60 md:h-72 rounded-2xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]'
       }
     >
@@ -452,12 +458,23 @@ export default function InteractiveRouteMap({
       </div>
 
       {isExpanded && (
-        <div className="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-3 right-14 z-10 pointer-events-none">
-          <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-1.5 rounded-xl shadow border border-[#DFD9CE]">
+        <div className="absolute bottom-6 left-3 right-14 z-10 pointer-events-none">
+          <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-2 rounded-xl shadow-lg border border-[#DFD9CE]">
             Bökj bárhová a térképen, vagy húzd az A / B jelölőt a pontos pontra.
           </div>
         </div>
       )}
     </div>
   );
+
+  if (isExpanded && typeof document !== 'undefined') {
+    return (
+      <>
+        <div className="w-full h-60 md:h-72 rounded-2xl bg-[#ECE7DC] border border-[#DFD9CE]" />
+        {createPortal(mapShell, document.body)}
+      </>
+    );
+  }
+
+  return mapShell;
 }
