@@ -164,18 +164,25 @@ export default function InteractiveRouteMap({
   }, [isVisible, isExpanded]);
 
   useEffect(() => {
-    if (!isExpanded) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (typeof document === 'undefined') return;
+    if (isExpanded) {
+      document.body.classList.add('kalaka-map-expanded');
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.classList.remove('kalaka-map-expanded');
+      document.body.style.overflow = '';
+    }
+
     const onKey = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && isExpanded) {
         setIsExpanded(false);
         if (onExpandChange) onExpandChange(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = prevOverflow;
+      document.body.classList.remove('kalaka-map-expanded');
+      document.body.style.overflow = '';
       window.removeEventListener('keydown', onKey);
     };
   }, [isExpanded, onExpandChange]);

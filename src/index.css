@@ -32,3 +32,7 @@ html, body, #root {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+body.kalaka-map-expanded nav {
+  display: none !important;
+}
