@@ -2130,21 +2130,94 @@ export default function App() {
               nowTick={nowTick}
               userZone={profile?.zone || 'Pismány'}
               rides={rides}
-              onSelectHevRoute={(zoneName, direction = 'to_hev') => {
-                if (direction === 'from_hev') {
-                  setFilterFrom('Szentendre HÉV-végállomás');
-                  setFilterTo(`Szentendre, ${zoneName}`);
-                  setFromCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
-                  setToCoords(resolveCoordsFromText(zoneName));
-                } else {
-                  setFilterFrom(`Szentendre, ${zoneName}`);
-                  setFilterTo('Szentendre HÉV-végállomás');
-                  setFromCoords(resolveCoordsFromText(zoneName));
-                  setToCoords(resolveCoordsFromText('Szentendre HÉV-végállomás'));
-                }
+              onSelectHevRoute={async (zoneName, direction = 'to_hev') => {
+                const hevLabel = 'Szentendre HÉV-végállomás';
+                const hevCoords = resolveCoordsFromText(hevLabel);
+                const isHevText = (t) => {
+                  const low = (t || '').toLowerCase();
+                  return low.includes('hév') || low.includes('hev') || low.includes('állomás');
+                };
+
+                const typedHomeText =
+                  direction === 'from_hev'
+                    ? filterTo && !isHevText(filterTo)
+                      ? filterTo.trim()
+                      : ''
+                    : filterFrom && !isHevText(filterFrom)
+                    ? filterFrom.trim()
+                    : '';
+                const typedHomeCoords = direction === 'from_hev' ? toCoords : fromCoords;
+
+                const savedHome = savedPlaces.find((p) => !isHevText(p.label));
+                const routineHome = personalRoutines
+                  .map((r) =>
+                    !isHevText(r.origin)
+                      ? { label: r.origin, coords: r.originCoords }
+                      : !isHevText(r.dest)
+                      ? { label: r.dest, coords: r.destCoords }
+                      : null
+                  )
+                  .find(Boolean);
+
+                let homeLabel =
+                  typedHomeText || savedHome?.label || routineHome?.label || '';
+                let homeCoords =
+                  typedHomeCoords ||
+                  (savedHome?.lat && savedHome?.lng
+                    ? { lat: Number(savedHome.lat), lng: Number(savedHome.lng) }
+                    : null) ||
+                  routineHome?.coords ||
+                  (homeLabel ? resolveCoordsFromText(homeLabel) : null);
+
+                const applyHevFields = (finalLabel, finalCoords) => {
+                  if (direction === 'from_hev') {
+                    setFilterFrom(hevLabel);
+                    setFromCoords(hevCoords);
+                    setFilterTo(finalLabel);
+                    setToCoords(finalCoords);
+                  } else {
+                    setFilterFrom(finalLabel);
+                    setFromCoords(finalCoords);
+                    setFilterTo(hevLabel);
+                    setToCoords(hevCoords);
+                  }
+                };
+
                 setInlineSeats(1);
                 setInlineComposerMode('ask');
                 setShowMap(true);
+
+                if (homeLabel) {
+                  applyHevFields(homeLabel, homeCoords || resolveCoordsFromText(homeLabel));
+                  return;
+                }
+
+                const fallbackLabel = `Szentendre, ${zoneName}`;
+                const fallbackCoords = resolveCoordsFromText(zoneName);
+                applyHevFields(fallbackLabel, fallbackCoords);
+
+                if (typeof navigator !== 'undefined' && navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                      const { latitude: lat, longitude: lng } = pos.coords;
+                      let gpsLabel = `${fallbackLabel} (aktuális helyzet)`;
+                      try {
+                        const res = await fetch(
+                          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
+                        );
+                        const data = await res.json();
+                        const addr = data?.address || {};
+                        const city = addr.city || addr.town || addr.village || 'Szentendre';
+                        const road = addr.road || addr.pedestrian || addr.suburb || '';
+                        const house = addr.house_number ? ` ${addr.house_number}.` : '';
+                        if (road) gpsLabel = `${city}, ${road}${house}`;
+                      } catch {}
+                      applyHevFields(gpsLabel, { lat, lng });
+                    },
+                    () => {},
+                    { enableHighAccuracy: true, timeout: 6000 }
+                  );
+                }
               }}
               onSelectRide={(rideObj) => {
                 setSelectedRideForMap(rideObj);
