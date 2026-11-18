@@ -2,12 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase, isSupabaseConfigured } from './lib/supabase.js';
 import { computeStopsAlongRoute } from './lib/routing.js';
 import {
-  VALIDITY_OPTIONS,
   resolveCoordsFromText,
   maskAddressForPublic
 } from './constants/szentendreData.js';
 import HeaderRoadBar from './components/HeaderRoadBar.jsx';
-import AddressAutocompleteInput, { stripAccents } from './components/AddressAutocompleteInput.jsx';
+import AddressAutocompleteInput from './components/AddressAutocompleteInput.jsx';
 import InteractiveRouteMap from './components/InteractiveRouteMap.jsx';
 import RideCard from './components/RideCard.jsx';
 import FavorCard, { parseFavorTag } from './components/FavorCard.jsx';
@@ -17,279 +16,30 @@ import UserProfileModal from './components/UserProfileModal.jsx';
 import SzentendrePulseBar from './components/SzentendrePulseBar.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
+import MessagesTabView from './components/MessagesTabView.jsx';
+import RoadAlertsModal from './components/RoadAlertsModal.jsx';
+import NewPostModal from './components/NewPostModal.jsx';
+import {
+  BASE_QUICK_DESTINATIONS,
+  formatAgreementRideTitle,
+  normalizeRouteToken,
+  geocodeAddressFallback,
+  getReadTimestamps,
+  markAgreementReadStorage,
+  getHiddenAgreements,
+  getPersonalRoutines,
+  recordPersonalRoutine,
+  getSavedPlaces,
+  playSoftNotificationTone,
+  triggerSystemNotification,
+  getNextQuarterHourHHMM,
+  getUpcomingRoundTimeSlots,
+  resolveAutoDayForTime,
+  formatDayLabelFromIso
+} from './lib/appStorage.js';
 
 const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
 const FavorsMap = React.lazy(() => import('./components/FavorsMap.jsx'));
-
-const BASE_QUICK_DESTINATIONS = [
-  'Szentendre HÉV-végállomás',
-  'Bükkös-part',
-  'Papírgyár',
-  'Pismány',
-  'Szarvashegy',
-  'Izbég',
-  'Újpest-Városkapu',
-  'Pannóniatelep'
-];
-
-const ROAD_LOCATION_PREFIXES = [
-  '11-es út',
-  'HÉV / P+R',
-  'Pismány / Sztaravoda',
-  'Izbég / Szarvashegy'
-];
-
-const ROAD_QUICK_PRESETS = {
-  '11-es út': [
-    { level: 'warn', label: 'Lépésben halad', text: '11-es út: Lépésben halad a sor a Papírgyár / belváros felé' },
-    { level: 'danger', label: 'Baleset / Torlódás', text: '11-es út: Nagy torlódás, érdemes kerülni' },
-    { level: 'ok', label: 'Tiszta, halad', text: '11-es út: Folyamatos, zavartalan haladás' }
-  ],
-  'HÉV / P+R': [
-    { level: 'warn', label: 'P+R megtelt', text: 'HÉV / P+R: A parkoló megtelt, nehezen van hely' },
-    { level: 'danger', label: 'HÉV késés / pótlás', text: 'HÉV / P+R: H5 HÉV fennakadás vagy késés' },
-    { level: 'ok', label: 'Van szabad hely', text: 'HÉV / P+R: Van még szabad parkolóhely' }
-  ],
-  'Pismány / Sztaravoda': [
-    { level: 'warn', label: 'Lassú haladás', text: 'Pismány / Sztaravoda: Lassabb haladás a hegyi szakaszon' },
-    { level: 'danger', label: 'Útakadály / Csúszós', text: 'Pismány / Sztaravoda: Útakadály vagy csúszós úttest' },
-    { level: 'ok', label: 'Járható, tiszta', text: 'Pismány / Sztaravoda: Tiszta, jól járható utak' }
-  ],
-  'Izbég / Szarvashegy': [
-    { level: 'warn', label: 'Torlódás az iskolánál', text: 'Izbég / Szarvashegy: Torlódás a Szentlászlói úton' },
-    { level: 'danger', label: 'Útzár / Akadály', text: 'Izbég / Szarvashegy: Útakadály a szarvashegyi szakaszon' },
-    { level: 'ok', label: 'Tiszta út', text: 'Izbég / Szarvashegy: Folyamatos haladás' }
-  ]
-};
-
-function formatAgreementRideTitle(originText, destText, agrStatus) {
-  const isApproved = ['agreed', 'started', 'arrived', 'completed'].includes(agrStatus);
-  if (isApproved) {
-    return `${originText} → ${destText}`;
-  }
-  return `${maskAddressForPublic(originText)} → ${maskAddressForPublic(destText)}`;
-}
-
-function normalizeRouteToken(rawStr) {
-  const s = stripAccents(rawStr);
-  if (!s) return '';
-  if (s.includes('hev') || s.includes('allomas ter')) return 'hev';
-  if (s.includes('ujpest')) return 'ujpest';
-  if (s.includes('papirgyar')) return 'papirgyar';
-  if (s.includes('bukkos')) return 'bukkos';
-  return s
-    .replace(/^szentendre[,\s]+/, '')
-    .replace(/^budapest[,\s]+/, '')
-    .replace(/\bu\.\s*/g, 'utca ')
-    .replace(/\b(utca|ut|ter|korut|setany|dulo|koz)\b/g, '')
-    .replace(/[,\s]+\d+[a-z0-9/.-]*$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-async function geocodeAddressFallback(rawAddress) {
-  const clean = (rawAddress || '')
-    .replace(/\bu\.\s*/gi, 'utca ')
-    .replace(/\bu\s+(?=\d)/gi, 'utca ')
-    .trim();
-  if (!clean) return null;
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(clean)}`
-    );
-    const arr = await res.json();
-    if (Array.isArray(arr) && arr[0]) {
-      const lat = Number(arr[0].lat);
-      const lng = Number(arr[0].lon);
-      if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
-    }
-  } catch {}
-  return resolveCoordsFromText(rawAddress);
-}
-
-function getReadTimestamps(userId) {
-  if (!userId) return {};
-  try {
-    return JSON.parse(localStorage.getItem(`kalaka_read_${userId}`) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function markAgreementReadStorage(userId, agreementId) {
-  if (!userId || !agreementId) return;
-  try {
-    const map = getReadTimestamps(userId);
-    map[agreementId] = new Date().toISOString();
-    localStorage.setItem(`kalaka_read_${userId}`, JSON.stringify(map));
-  } catch {}
-}
-
-function getHiddenAgreements(userId) {
-  if (!userId) return [];
-  try {
-    return JSON.parse(localStorage.getItem(`kalaka_hidden_${userId}`) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function getPersonalRoutines(userId) {
-  const key = `kalaka_routines_${userId || 'guest'}`;
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function recordPersonalRoutine(userId, origin, dest, originCoords = null, destCoords = null) {
-  if (!origin?.trim() || !dest?.trim()) return;
-  const keyStorage = `kalaka_routines_${userId || 'guest'}`;
-  try {
-    const cleanO = origin.trim();
-    const cleanD = dest.trim();
-    if (cleanO.toLowerCase() === cleanD.toLowerCase()) return;
-    const list = getPersonalRoutines(userId);
-    const key = `${cleanO.toLowerCase()}->${cleanD.toLowerCase()}`;
-    const existing = list.find((x) => x.key === key);
-    if (existing) {
-      existing.count = (existing.count || 1) + 1;
-      existing.origin = cleanO;
-      existing.dest = cleanD;
-      if (originCoords?.lat && originCoords?.lng) {
-        existing.originCoords = { lat: Number(originCoords.lat), lng: Number(originCoords.lng) };
-      }
-      if (destCoords?.lat && destCoords?.lng) {
-        existing.destCoords = { lat: Number(destCoords.lat), lng: Number(destCoords.lng) };
-      }
-      existing.updatedAt = Date.now();
-    } else {
-      list.push({
-        key,
-        origin: cleanO,
-        dest: cleanD,
-        originCoords:
-          originCoords?.lat && originCoords?.lng
-            ? { lat: Number(originCoords.lat), lng: Number(originCoords.lng) }
-            : null,
-        destCoords:
-          destCoords?.lat && destCoords?.lng
-            ? { lat: Number(destCoords.lat), lng: Number(destCoords.lng) }
-            : null,
-        count: 1,
-        updatedAt: Date.now()
-      });
-    }
-    list.sort((a, b) => (b.count - a.count) || (b.updatedAt - a.updatedAt));
-    localStorage.setItem(keyStorage, JSON.stringify(list.slice(0, 5)));
-  } catch {}
-}
-
-function getSavedPlaces(userId) {
-  const key = `kalaka_places_${userId || 'guest'}`;
-  try {
-    return JSON.parse(localStorage.getItem(key) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function playSoftNotificationTone() {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate([120, 60, 120]);
-    }
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(660, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.14);
-    gain.gain.setValueAtTime(0.06, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.22);
-  } catch {}
-}
-
-function triggerSystemNotification(title, body) {
-  try {
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    if (Notification.permission === 'granted' && document.visibilityState !== 'visible') {
-      if (navigator.serviceWorker?.ready) {
-        navigator.serviceWorker.ready
-          .then((reg) => {
-            reg.showNotification(title, {
-              body,
-              icon: '/icon.svg',
-              badge: '/icon.svg',
-              tag: 'kalaka-live-msg'
-            });
-          })
-          .catch(() => {});
-      } else {
-        new Notification(title, { body, icon: '/icon.svg' });
-      }
-    }
-  } catch {}
-}
-
-function getNextQuarterHourHHMM() {
-  const d = new Date(Date.now() + 15 * 60000);
-  const mins = Math.ceil(d.getMinutes() / 15) * 15;
-  d.setMinutes(mins, 0, 0);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-function getUpcomingRoundTimeSlots() {
-  const fmt = (dt) =>
-    `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
-
-  const s1 = new Date(Date.now() + 5 * 60000);
-  const rem = s1.getMinutes() % 15;
-  s1.setMinutes(rem === 0 ? s1.getMinutes() : s1.getMinutes() + (15 - rem), 0, 0);
-
-  const s2 = new Date(s1.getTime() + 15 * 60000);
-
-  const s3 = new Date(s2.getTime());
-  if (s2.getMinutes() === 0) {
-    s3.setMinutes(30, 0, 0);
-  } else {
-    s3.setHours(s2.getHours() + 1, 0, 0, 0);
-  }
-
-  return [fmt(s1), fmt(s2), fmt(s3)];
-}
-
-function resolveAutoDayForTime(hhmm, isRecurring = false) {
-  if (isRecurring) return 'Munkanapokon (H–P)';
-  if (!hhmm || !hhmm.includes(':')) return 'Ma';
-  const [hh, mm] = hhmm.split(':').map(Number);
-  if (isNaN(hh) || isNaN(mm)) return 'Ma';
-  const now = new Date();
-  const target = new Date();
-  target.setHours(hh, mm, 0, 0);
-  return target.getTime() < now.getTime() - 60000 ? 'Holnap' : 'Ma';
-}
-
-function formatDayLabelFromIso(isoStr, isRec = false, schedLabel = null) {
-  if (isRec) return schedLabel || 'Munkanapokon (H–P)';
-  if (!isoStr) return 'Ma';
-  const dt = new Date(isoStr);
-  if (isNaN(dt.getTime())) return 'Ma';
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const targetStart = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()).getTime();
-  const diffDays = Math.round((targetStart - todayStart) / 86400000);
-  if (diffDays <= 0) return 'Ma';
-  if (diffDays === 1) return 'Holnap';
-  return dt.toLocaleDateString('hu-HU', { month: 'short', day: 'numeric' });
-}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
@@ -2454,91 +2204,11 @@ export default function App() {
         )}
 
         {activeTab === 'messages' && (
-          <div className="space-y-2.5">
-            <h2 className="font-display font-extrabold text-lg">
-              Beszélgetéseim ({visibleAgreements.length})
-            </h2>
-            {visibleAgreements.length === 0 ? (
-              <div className="bg-white rounded-2xl p-6 text-center text-xs text-[#5C6B62] border border-[#DFD9CE] space-y-2">
-                <div className="font-bold text-sm text-[#18261F]">
-                  Még nincs aktív beszélgetésed.
-                </div>
-                <p>Csatlakozz egy fuvarhoz vagy Kaláka-kéréshez az egyeztetéshez.</p>
-              </div>
-            ) : (
-              visibleAgreements.map((agr) => {
-                const isDone = agr.status === 'completed' || agr.status === 'cancelled';
-                return (
-                  <div
-                    key={agr.id}
-                    onClick={() => handleOpenAgreement(agr)}
-                    className={`bg-white rounded-2xl p-3.5 sm:p-4 border shadow-sm flex items-center justify-between gap-3 cursor-pointer transition ${
-                      agr.has_unread
-                        ? 'border-terracotta ring-1 ring-terracotta/30'
-                        : 'border-[#DFD9CE] hover:border-pilis'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2.5 min-w-0">
-                      {agr.has_unread && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-terracotta mt-1.5 shrink-0" />
-                      )}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-sm text-[#18261F] truncate">
-                            {agr.partner_name}
-                          </span>
-                          {isDone && (
-                            <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                                agr.status === 'cancelled'
-                                  ? 'bg-gray-200 text-gray-700'
-                                  : 'bg-emerald-100 text-emerald-900'
-                              }`}
-                            >
-                              {agr.status === 'cancelled' ? 'Lemondva' : 'Lezárva'}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-[#5C6B62] truncate">
-                          {agr.title}
-                        </div>
-                        {agr.last_message_body && (
-                          <div
-                            className={`text-xs mt-1 truncate ${
-                              agr.has_unread
-                                ? 'font-bold text-[#18261F]'
-                                : 'text-[#5C6B62]'
-                            }`}
-                          >
-                            {agr.last_message_body}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={(e) => handleHideCompletedAgreement(e, agr.id)}
-                        className="text-[11px] font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1.5 rounded-xl border border-[#DFD9CE]"
-                      >
-                        Elrejtés
-                      </button>
-                      <span
-                        className={`text-xs font-bold px-3 py-1.5 rounded-full ${
-                          agr.has_unread
-                            ? 'bg-terracotta text-white'
-                            : 'bg-pilis-soft text-pilis'
-                        }`}
-                      >
-                        {agr.has_unread ? 'Új üzenet' : 'Megnyitás ›'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <MessagesTabView
+            visibleAgreements={visibleAgreements}
+            onOpenAgreement={handleOpenAgreement}
+            onHideCompletedAgreement={handleHideCompletedAgreement}
+          />
         )}
 
         {activeTab === 'pros' && (
@@ -2682,450 +2352,56 @@ export default function App() {
         </div>
       </nav>
 
-      {showRoadModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Közlekedési és helyi helyzetkép"
-          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-        >
-          <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-display font-extrabold text-lg text-[#18261F]">
-                  Közlekedési és helyi helyzetkép
-                </h3>
-                <p className="text-[11px] text-[#5C6B62]">
-                  A beküldött jelzések minden szentendrei felhasználónál megjelennek.
-                </p>
-              </div>
-              <button
-                type="button"
-                aria-label="Ablak bezárása"
-                onClick={() => setShowRoadModal(false)}
-                className="text-sm font-bold text-[#5C6B62] px-2 py-1 shrink-0"
-              >
-                Bezárás ✕
-              </button>
-            </div>
+      <RoadAlertsModal
+        isOpen={showRoadModal}
+        onClose={() => setShowRoadModal(false)}
+        roadAlerts={roadAlerts}
+        currentUserId={session?.user?.id}
+        customRoadLevel={customRoadLevel}
+        setCustomRoadLevel={setCustomRoadLevel}
+        customRoadText={customRoadText}
+        setCustomRoadText={setCustomRoadText}
+        selectedRoadHub={selectedRoadHub}
+        roadInputRef={roadInputRef}
+        onSelectRoadPrefix={handleSelectRoadPrefix}
+        onAddRoadAlert={handleAddRoadAlert}
+        onClearRoadAlert={handleClearRoadAlert}
+        onDeleteRoadAlert={handleDeleteRoadAlert}
+      />
 
-            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {roadAlerts.map((al) => {
-                const badgeTone =
-                  al.status_level === 'danger'
-                    ? 'bg-red-100 text-red-900 border-red-200'
-                    : al.status_level === 'warn'
-                    ? 'bg-amber-100 text-amber-900 border-amber-200'
-                    : 'bg-emerald-100 text-emerald-900 border-emerald-200';
-                const badgeLabel =
-                  al.status_level === 'danger'
-                    ? 'Akadály / Lezárás'
-                    : al.status_level === 'warn'
-                    ? 'Torlódás'
-                    : 'Normál';
-
-                return (
-                  <div
-                    key={al.id}
-                    className="bg-white rounded-xl p-3 border border-[#DFD9CE] text-xs space-y-1.5 flex items-start justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[11px] text-[#5C6B62]">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.2 rounded-full border ${badgeTone}`}
-                        >
-                          {badgeLabel}
-                        </span>
-                        <span className="font-bold text-[#18261F]">
-                          {al.author_name || 'Helyi lakos'}
-                        </span>
-                        <span>
-                          {new Date(al.created_at).toLocaleTimeString('hu-HU', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                      <div className="font-semibold text-[#18261F] break-words">
-                        {al.message}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {al.id !== 'default-ok' && (
-                        <button
-                          type="button"
-                          onClick={() => handleClearRoadAlert(al.id)}
-                          className="text-[10px] font-bold bg-limestone hover:bg-emerald-50 text-[#18261F] hover:text-emerald-900 border border-[#DFD9CE] px-2.5 py-1 rounded-lg transition"
-                        >
-                          Megszűnt ✓
-                        </button>
-                      )}
-                      {session?.user && al.reporter_id === session.user.id && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteRoadAlert(al.id)}
-                          className="text-[11px] font-bold text-red-700 hover:underline px-1"
-                        >
-                          Törlés
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleAddRoadAlert(customRoadLevel, customRoadText);
-              }}
-              className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5"
-            >
-              <div className="text-xs font-bold text-[#18261F]">
-                Új jelzés beküldése
-              </div>
-
-              <div className="grid grid-cols-3 gap-1 bg-limestone p-1 rounded-lg text-[11px] font-bold">
-                {[
-                  ['warn', 'Torlódás'],
-                  ['danger', 'Akadály / Lezárás'],
-                  ['ok', 'Tiszta út']
-                ].map(([lvl, lbl]) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    onClick={() => setCustomRoadLevel(lvl)}
-                    className={`py-1.5 rounded transition ${
-                      customRoadLevel === lvl
-                        ? 'bg-pilis text-white shadow-sm'
-                        : 'text-[#5C6B62]'
-                    }`}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                {ROAD_LOCATION_PREFIXES.map((locPrefix) => {
-                  const isActivePrefix = selectedRoadHub === locPrefix;
-                  return (
-                    <button
-                      key={locPrefix}
-                      type="button"
-                      onClick={() => handleSelectRoadPrefix(locPrefix)}
-                      className={`shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition ${
-                        isActivePrefix
-                          ? 'bg-pilis-soft text-pilis border-pilis/40'
-                          : 'bg-limestone text-[#5C6B62] border-[#DFD9CE] hover:border-pilis'
-                      }`}
-                    >
-                      {locPrefix}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {ROAD_QUICK_PRESETS[selectedRoadHub] && (
-                <div className="grid grid-cols-3 gap-1.5">
-                  {ROAD_QUICK_PRESETS[selectedRoadHub].map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => handleAddRoadAlert(preset.level, preset.text)}
-                      className={`text-[11px] font-bold py-2 px-2 rounded-xl border text-center leading-tight transition active:scale-95 ${
-                        preset.level === 'danger'
-                          ? 'bg-red-50 hover:bg-red-100 text-red-900 border-red-200'
-                          : preset.level === 'warn'
-                          ? 'bg-amber-50 hover:bg-amber-100 text-amber-950 border-amber-200'
-                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <input
-                ref={roadInputRef}
-                type="text"
-                required
-                value={customRoadText}
-                onChange={(e) => setCustomRoadText(e.target.value)}
-                placeholder="Pl. 11-es út: Papírgyártól lépésben halad, vagy HÉV P+R megtelt..."
-                className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border focus:outline-none focus:border-pilis"
-              />
-              <button
-                type="submit"
-                className="w-full bg-pilis hover:bg-pilis-light text-white font-bold py-2.5 rounded-xl text-xs transition"
-              >
-                Közzététel
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showNewModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={editingItemId ? 'Kiírás szerkesztése' : 'Új kiírás'}
-          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-        >
-          <form
-            onSubmit={handleSaveModalPost}
-            className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] max-h-[90vh] overflow-y-auto box-border"
-          >
-            <div className="flex justify-between items-center">
-              <h3 className="font-display font-extrabold text-lg">
-                {editingItemId ? 'Kiírás szerkesztése' : 'Új kiírás'}
-              </h3>
-              <button
-                type="button"
-                aria-label="Űrlap bezárása"
-                onClick={() => {
-                  setShowNewModal(false);
-                  setEditingItemId(null);
-                }}
-                className="text-sm font-bold text-[#5C6B62] px-2 py-1"
-              >
-                Bezárás ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1 bg-[#ECE7DC] p-1 rounded-xl text-[11px] sm:text-xs font-bold">
-              {[
-                ['offer', 'Van helyem'],
-                ['recurring', 'Rendszeres'],
-                ['ask', 'Utat keresek'],
-                ['favor', 'Kaláka']
-              ].map(([k, lbl]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => {
-                    setNewKind(k);
-                    if (k === 'favor') {
-                      setNewFrom('');
-                      setShowModalAdvanced(false);
-                    }
-                  }}
-                  className={`py-2 rounded-lg truncate px-1 ${
-                    newKind === k ? 'bg-white text-pilis shadow-sm' : 'text-[#5C6B62]'
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-
-            {newKind === 'favor' ? (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-2 gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setNewFavorMode('ask')}
-                    className={`py-2 rounded-lg transition ${
-                      newFavorMode === 'ask'
-                        ? 'bg-terracotta text-white shadow-sm'
-                        : 'text-[#5C6B62]'
-                    }`}
-                  >
-                    Segítséget kérek
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewFavorMode('offer')}
-                    className={`py-2 rounded-lg transition ${
-                      newFavorMode === 'offer'
-                        ? 'bg-pilis text-white shadow-sm'
-                        : 'text-[#5C6B62]'
-                    }`}
-                  >
-                    Felajánlok
-                  </button>
-                </div>
-
-                <input
-                  type="text"
-                  required
-                  value={newFrom}
-                  onChange={(e) => setNewFrom(e.target.value)}
-                  placeholder={
-                    newFavorMode === 'offer'
-                      ? 'Mit ajánlasz fel a szomszédoknak?'
-                      : 'Miben kérsz segítséget?'
-                  }
-                  className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
-                />
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl p-2 border border-[#DFD9CE] space-y-1.5">
-                <AddressAutocompleteInput
-                  value={newFrom}
-                  onChange={(val) => {
-                    setNewFromCoords(null);
-                    setNewFrom(val);
-                  }}
-                  onSelectPlace={(pl) =>
-                    setNewFromCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
-                  }
-                  placeholder="Honnan indulsz?"
-                  dotColor="border-pilis"
-                />
-                <div className="border-t border-[#ECE7DC] pt-1.5">
-                  <AddressAutocompleteInput
-                    value={newTo}
-                    onChange={(val) => {
-                      setNewToCoords(null);
-                      setNewTo(val);
-                    }}
-                    onSelectPlace={(pl) =>
-                      setNewToCoords(pl ? { lat: pl.lat, lng: pl.lng } : null)
-                    }
-                    placeholder="Hová mész?"
-                    isSolidDot
-                  />
-                </div>
-              </div>
-            )}
-
-            {newKind !== 'favor' ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 flex items-center justify-between gap-1">
-                    <input
-                      type="time"
-                      value={newTime}
-                      onChange={(e) => setNewTime(e.target.value)}
-                      className="text-base font-bold bg-transparent focus:outline-none"
-                    />
-                    {newKind !== 'recurring' && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pilis-soft text-pilis">
-                        {resolveAutoDayForTime(newTime, false)}
-                      </span>
-                    )}
-                  </div>
-                  <select
-                    value={newSeats}
-                    onChange={(e) => setNewSeats(e.target.value)}
-                    aria-label="Szabad helyek száma"
-                    className="bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
-                  >
-                    {[1, 2, 3, 4].map((n) => (
-                      <option key={n} value={n}>
-                        {newKind === 'ask' ? `${n} utas` : `${n} szabad hely`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {newKind !== 'recurring' ? (
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    {getUpcomingRoundTimeSlots().map((slotTime) => (
-                      <button
-                        key={slotTime}
-                        type="button"
-                        onClick={() => setNewTime(slotTime)}
-                        className={`shrink-0 text-[11px] font-bold border px-2.5 py-1 rounded-lg transition ${
-                          newTime === slotTime
-                            ? 'bg-pilis text-white border-pilis'
-                            : 'bg-white hover:bg-pilis-soft text-pilis border-[#DFD9CE]'
-                        }`}
-                      >
-                        {slotTime}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <select
-                    value={newScheduleText}
-                    onChange={(e) => setNewScheduleText(e.target.value)}
-                    aria-label="Rendszeres napok"
-                    className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2.5 text-xs font-bold box-border"
-                  >
-                    <option value="Munkanapokon (H–P)">Munkanapokon (H–P)</option>
-                    <option value="Minden nap">Minden nap</option>
-                    <option value="Hétvégén (Szo–V)">Hétvégén (Szo–V)</option>
-                    <option value="Hétfő, Szerda, Péntek">Hétfő, Szerda, Péntek</option>
-                    <option value="Kedd, Csütörtök">Kedd, Csütörtök</option>
-                  </select>
-                )}
-              </div>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowModalAdvanced((v) => !v)}
-                  className="text-xs font-bold text-[#5C6B62] hover:text-pilis text-left"
-                >
-                  {showModalAdvanced
-                    ? 'Időtartam és feltétel elrejtése ▴'
-                    : 'Időtartam vagy bizalmi feltétel beállítása ▾'}
-                </button>
-
-                {showModalAdvanced && (
-                  <>
-                    <div className="bg-white border border-[#DFD9CE] rounded-xl p-3 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-[#18261F]">Ki jelentkezhet?</span>
-                        <span className="font-bold text-pilis">
-                          {Number(newMinHearts) === 0
-                            ? 'Bárki'
-                            : `Min. ${newMinHearts} visszaigazolt segítség`}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="10"
-                        value={newMinHearts}
-                        onChange={(e) => setNewMinHearts(e.target.value)}
-                        className="w-full accent-pilis"
-                      />
-                    </div>
-
-                    <div className="bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-[#18261F]">
-                        Érvényesség
-                      </span>
-                      <select
-                        value={newValidMins}
-                        onChange={(e) => setNewValidMins(Number(e.target.value))}
-                        className="text-xs font-bold text-pilis bg-limestone px-2.5 py-1.5 rounded-lg border border-[#DFD9CE]"
-                      >
-                        {VALIDITY_OPTIONS.map((opt) => (
-                          <option key={opt.minutes} value={opt.minutes}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
-            <input
-              type="text"
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="Megjegyzés (nem kötelező)"
-              className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
-            />
-
-            <button
-              type="submit"
-              className="w-full bg-pilis text-white font-bold py-3 rounded-xl text-sm"
-            >
-              {editingItemId ? 'Módosítások mentése' : 'Közzététel'}
-            </button>
-          </form>
-        </div>
-      )}
+      <NewPostModal
+        isOpen={showNewModal}
+        editingItemId={editingItemId}
+        newKind={newKind}
+        setNewKind={setNewKind}
+        newFavorMode={newFavorMode}
+        setNewFavorMode={setNewFavorMode}
+        newFrom={newFrom}
+        setNewFrom={setNewFrom}
+        setNewFromCoords={setNewFromCoords}
+        newTo={newTo}
+        setNewTo={setNewTo}
+        setNewToCoords={setNewToCoords}
+        newTime={newTime}
+        setNewTime={setNewTime}
+        newSeats={newSeats}
+        setNewSeats={setNewSeats}
+        newScheduleText={newScheduleText}
+        setNewScheduleText={setNewScheduleText}
+        newNote={newNote}
+        setNewNote={setNewNote}
+        newValidMins={newValidMins}
+        setNewValidMins={setNewValidMins}
+        newMinHearts={newMinHearts}
+        setNewMinHearts={setNewMinHearts}
+        showModalAdvanced={showModalAdvanced}
+        setShowModalAdvanced={setShowModalAdvanced}
+        onClose={() => {
+          setShowNewModal(false);
+          setEditingItemId(null);
+        }}
+        onSubmit={handleSaveModalPost}
+      />
 
       {inspectedUser && (
         <UserProfileModal
