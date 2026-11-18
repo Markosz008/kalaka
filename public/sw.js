@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kalaka-szentendre-v2026-11-18-a';
+const CACHE_NAME = 'kalaka-szentendre-v2026-11-18-b';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -24,6 +24,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (
+    url.pathname.startsWith('/api/') ||
     url.pathname.startsWith('/rest/') ||
     url.pathname.startsWith('/auth/') ||
     url.pathname.startsWith('/realtime/')

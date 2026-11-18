@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ZONE_TRANSIT_INFO } from '../constants/szentendreData.js';
 
 export default function SzentendrePulseBar({
@@ -10,15 +10,55 @@ export default function SzentendrePulseBar({
   const [direction, setDirection] = useState(() =>
     new Date().getHours() >= 13 ? 'from_hev' : 'to_hev'
   );
+  const [liveHev, setLiveHev] = useState({
+    loading: true,
+    ok: false,
+    departures: [],
+    arrivals: []
+  });
 
   const zoneInfo = ZONE_TRANSIT_INFO[userZone] || {
     lines: '870–889',
     driveMins: 8
   };
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadLiveHev = async () => {
+      try {
+        const res = await fetch('/api/hev');
+        if (!res.ok) throw new Error('hev_fetch_failed');
+        const data = await res.json();
+        if (!mounted) return;
+        setLiveHev({
+          loading: false,
+          ok: Boolean(data?.ok),
+          departures: Array.isArray(data?.departures) ? data.departures : [],
+          arrivals: Array.isArray(data?.arrivals) ? data.arrivals : []
+        });
+      } catch {
+        if (!mounted) return;
+        setLiveHev((prev) => ({ ...prev, loading: false, ok: false }));
+      }
+    };
+
+    loadLiveHev();
+    const timer = setInterval(loadLiveHev, 45000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   const nextRegularRide = useMemo(() => {
     return (rides || []).find((r) => r.is_recurring && r.kind === 'offer') || null;
   }, [rides]);
+
+  const nextDep = liveHev.departures[0] || null;
+  const secondDep = liveHev.departures[1] || null;
+  const nextArr = liveHev.arrivals[0] || null;
+  const secondArr = liveHev.arrivals[1] || null;
 
   return (
     <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] shadow-sm space-y-2.5">
@@ -27,46 +67,58 @@ export default function SzentendrePulseBar({
           <button
             type="button"
             onClick={() => setDirection('to_hev')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3.5 py-1.5 rounded-lg transition ${
               direction === 'to_hev'
                 ? 'bg-pilis text-white shadow-sm'
                 : 'text-[#4A5850]'
             }`}
           >
-            HÉV-hez (Pestre)
+            Budapest felé
           </button>
           <button
             type="button"
             onClick={() => setDirection('from_hev')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`px-3.5 py-1.5 rounded-lg transition ${
               direction === 'from_hev'
                 ? 'bg-terracotta text-white shadow-sm'
                 : 'text-[#4A5850]'
             }`}
           >
-            HÉV-ről haza
+            Hazafelé
           </button>
         </div>
 
-        <a
-          href="https://futar.bkk.hu/?routeIds=BKK_H5"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs font-bold text-pilis hover:underline px-2 py-1"
-        >
-          Élő H5 menetrend (BKK) ↗
-        </a>
+        <span className="text-xs font-semibold text-[#4A5850] flex items-center gap-1.5">
+          {liveHev.ok && (
+            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+          )}
+          <span>H5 HÉV • {zoneInfo.lines} busz</span>
+        </span>
       </div>
 
       {direction === 'to_hev' ? (
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-0.5">
             <div className="text-xs sm:text-sm font-bold text-[#18261F] truncate">
-              {userZone} → Szentendre HÉV-állomás
+              {userZone} → HÉV-végállomás
             </div>
-            <div className="text-xs text-[#4A5850]">
-              Autóval kb. {zoneInfo.driveMins} perc • Helyi buszok: {zoneInfo.lines}
-            </div>
+            {liveHev.loading ? (
+              <div className="text-xs text-[#4A5850]">
+                Élő indulások lekérése...
+              </div>
+            ) : nextDep ? (
+              <div className="text-xs text-[#18261F]">
+                Következő HÉV: <strong>{nextDep.timeStr}</strong>{' '}
+                <span className="text-[#4A5850]">
+                  ({nextDep.inMins === 0 ? 'most indul' : `${nextDep.inMins} perc múlva`})
+                  {secondDep ? ` • utána ${secondDep.timeStr}` : ''}
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-[#4A5850]">
+                Autóval kb. {zoneInfo.driveMins} perc a végállomás
+              </div>
+            )}
           </div>
 
           <button
@@ -74,18 +126,32 @@ export default function SzentendrePulseBar({
             onClick={() => onSelectHevRoute && onSelectHevRoute(userZone, 'to_hev')}
             className="shrink-0 bg-pilis-soft hover:bg-pilis text-pilis hover:text-white font-bold text-xs px-3.5 py-2.5 rounded-xl border border-pilis/20 transition active:scale-95"
           >
-            Fuvart kérek le ›
+            Fuvart kérek ›
           </button>
         </div>
       ) : (
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-0.5">
             <div className="text-xs sm:text-sm font-bold text-[#18261F] truncate">
-              Szentendre HÉV-állomás → {userZone}
+              HÉV-végállomás → {userZone}
             </div>
-            <div className="text-xs text-[#4A5850]">
-              Helyi csatlakozás ({zoneInfo.lines}) helyett közvetlen fuvar felfelé
-            </div>
+            {liveHev.loading ? (
+              <div className="text-xs text-[#4A5850]">
+                Élő érkezések lekérése...
+              </div>
+            ) : nextArr ? (
+              <div className="text-xs text-[#18261F]">
+                Beérkező HÉV: <strong>{nextArr.timeStr}</strong>{' '}
+                <span className="text-[#4A5850]">
+                  ({nextArr.inMins === 0 ? 'most érkezik' : `${nextArr.inMins} perc múlva`})
+                  {secondArr ? ` • utána ${secondArr.timeStr}` : ''}
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-[#4A5850]">
+                Közvetlen fuvar a végállomástól ({zoneInfo.lines} busz helyett)
+              </div>
+            )}
           </div>
 
           <button
@@ -93,7 +159,7 @@ export default function SzentendrePulseBar({
             onClick={() => onSelectHevRoute && onSelectHevRoute(userZone, 'from_hev')}
             className="shrink-0 bg-terracotta-soft hover:bg-terracotta text-terracotta hover:text-white font-bold text-xs px-3.5 py-2.5 rounded-xl border border-terracotta/25 transition active:scale-95"
           >
-            Fuvart kérek fel ›
+            Fuvart kérek ›
           </button>
         </div>
       )}
