@@ -15,7 +15,7 @@ export default function HeaderRoadBar({
           {
             id: 'default-ok',
             status_level: 'ok',
-            message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták'
+            message: 'Folyamatos haladás a 11-es úton • Hegyi utak járhatók'
           }
         ];
 
@@ -50,7 +50,7 @@ export default function HeaderRoadBar({
   };
 
   return (
-    <header className="bg-gradient-to-br from-pilis to-pilis-light text-[#F7F4EC] pt-4 px-4 pb-5 rounded-b-3xl shadow-md">
+    <header className="bg-gradient-to-br from-pilis to-pilis-light text-[#F7F4EC] pt-[calc(1rem+env(safe-area-inset-top))] px-4 pb-5 rounded-b-3xl shadow-md">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-baseline gap-2">
           <span className="font-display font-extrabold text-xl tracking-tight">

@@ -1098,8 +1098,8 @@ export default function App() {
         ? new Date(dep.getTime() + 30 * 60000)
         : new Date(dep.getTime() + 45 * 60000);
 
-      const startPt = fromCoords || resolveCoordsFromText(filterFrom);
-      const endPt = toCoords || resolveCoordsFromText(filterTo);
+      const startPt = fromCoords || resolveCoordsFromText(filterFrom) || (await geocodeAddressFallback(filterFrom));
+      const endPt = toCoords || resolveCoordsFromText(filterTo) || (await geocodeAddressFallback(filterTo));
 
       const payload = {
         user_id: session.user.id,
@@ -1409,9 +1409,12 @@ export default function App() {
     await supabase.from('messages').insert({
       agreement_id: createdAgr.id,
       sender_id: session.user.id,
-      body: stopLabel
-        ? `Szia! Felszállnék itt: ${stopLabel}.`
-        : 'Szia! Csatlakoznék az úthoz.'
+      body:
+        ride.kind === 'ask'
+          ? 'Szia! Szívesen elviszlek erre az útra.'
+          : stopLabel
+          ? `Szia! Felszállnék itt: ${stopLabel}.`
+          : 'Szia! Csatlakoznék az úthoz.'
     });
 
     handleOpenAgreement({
