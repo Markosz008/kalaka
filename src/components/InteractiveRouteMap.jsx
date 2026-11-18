@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import * as maplibregl from 'maplibre-gl';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 
@@ -47,7 +46,8 @@ export default function InteractiveRouteMap({
   isVisible = true,
   onSelectRideOnMap,
   onPickLocation,
-  onUpdatePinCoords
+  onUpdatePinCoords,
+  onExpandChange
 }) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -94,7 +94,10 @@ export default function InteractiveRouteMap({
 
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 
+      const fallbackTimer = setTimeout(() => setMapReady(true), 2000);
+
       map.on('load', () => {
+        clearTimeout(fallbackTimer);
         if (!map.getSource('esri-sat')) {
           map.addSource('esri-sat', {
             type: 'raster',
@@ -155,7 +158,7 @@ export default function InteractiveRouteMap({
 
   useEffect(() => {
     if ((isVisible || isExpanded) && mapRef.current) {
-      const t = setTimeout(() => mapRef.current?.resize(), 40);
+      const t = setTimeout(() => mapRef.current?.resize(), 30);
       return () => clearTimeout(t);
     }
   }, [isVisible, isExpanded]);
@@ -165,14 +168,17 @@ export default function InteractiveRouteMap({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
-      if (e.key === 'Escape') setIsExpanded(false);
+      if (e.key === 'Escape') {
+        setIsExpanded(false);
+        if (onExpandChange) onExpandChange(false);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKey);
     };
-  }, [isExpanded]);
+  }, [isExpanded, onExpandChange]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -386,7 +392,15 @@ export default function InteractiveRouteMap({
     );
   }
 
-  const mapShell = (
+  const toggleExpand = () => {
+    setIsExpanded((prev) => {
+      const next = !prev;
+      if (onExpandChange) onExpandChange(next);
+      return next;
+    });
+  };
+
+  return (
     <div
       className={
         isExpanded
@@ -447,7 +461,7 @@ export default function InteractiveRouteMap({
 
           <button
             type="button"
-            onClick={() => setIsExpanded((v) => !v)}
+            onClick={toggleExpand}
             aria-label={isExpanded ? 'Térkép kicsinyítése' : 'Térkép nagyítása'}
             title={isExpanded ? 'Bezárás' : 'Nagyítás'}
             className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
@@ -458,7 +472,7 @@ export default function InteractiveRouteMap({
       </div>
 
       {isExpanded && (
-        <div className="absolute bottom-6 left-3 right-14 z-10 pointer-events-none">
+        <div className="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-3 right-14 z-10 pointer-events-none">
           <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-2 rounded-xl shadow-lg border border-[#DFD9CE]">
             Bökj bárhová a térképen, vagy húzd az A / B jelölőt a pontos pontra.
           </div>
@@ -466,15 +480,4 @@ export default function InteractiveRouteMap({
       )}
     </div>
   );
-
-  if (isExpanded && typeof document !== 'undefined') {
-    return (
-      <>
-        <div className="w-full h-60 md:h-72 rounded-2xl bg-[#ECE7DC] border border-[#DFD9CE]" />
-        {createPortal(mapShell, document.body)}
-      </>
-    );
-  }
-
-  return mapShell;
 }
