@@ -341,6 +341,7 @@ export default function App() {
   const [inlineSchedule, setInlineSchedule] = useState('Munkanapokon (H–P)');
   const [inlineSeats, setInlineSeats] = useState(3);
   const [inlineNote, setInlineNote] = useState('');
+  const [inlineCarInfo, setInlineCarInfo] = useState('');
   const [inlineSaving, setInlineSaving] = useState(false);
 
   const [activeAgreement, setActiveAgreement] = useState(null);
@@ -643,7 +644,7 @@ export default function App() {
         .select(`
           *,
           requester:profiles!agreements_requester_id_fkey(display_name),
-          helper:profiles!agreements_helper_id_fkey(display_name),
+          helper:profiles!agreements_helper_id_fkey(display_name, car_info),
           ride:rides(origin_text, dest_text, kind, user_id, car_info),
           favor:favors(title),
           pro:local_pros(business_name, profession_name)
@@ -688,7 +689,7 @@ export default function App() {
               ? a.helper?.display_name || 'Szomszéd'
               : a.requester?.display_name || 'Szomszéd',
             post_owner_id: a.ride?.user_id || a.helper_id,
-            car_info: a.ride?.car_info || null,
+            car_info: a.ride?.car_info || a.helper?.car_info || null,
             title: a.ride
               ? formatAgreementRideTitle(a.ride.origin_text, a.ride.dest_text, a.status)
               : a.pro
@@ -1100,6 +1101,8 @@ export default function App() {
 
       const startPt = fromCoords || resolveCoordsFromText(filterFrom) || (await geocodeAddressFallback(filterFrom));
       const endPt = toCoords || resolveCoordsFromText(filterTo) || (await geocodeAddressFallback(filterTo));
+      const chosenCar =
+        dbKind === 'offer' ? inlineCarInfo.trim() || profile?.car_info || null : null;
 
       const payload = {
         user_id: session.user.id,
@@ -1109,7 +1112,7 @@ export default function App() {
         departure_at: dep.toISOString(),
         expires_at: exp.toISOString(),
         seats: dbKind === 'ask' ? Number(inlineSeats) || 1 : Number(inlineSeats) || 3,
-        car_info: profile?.car_info || null,
+        car_info: chosenCar,
         is_confirmed_today: true,
         note: isRec
           ? `[Rendszeres: ${inlineSchedule}] ${inlineNote.trim()}`.trim()
@@ -1130,6 +1133,13 @@ export default function App() {
         const { origin_lat, origin_lng, dest_lat, dest_lng, ...basicPayload } = payload;
         const { error: retryErr } = await supabase.from('rides').insert(basicPayload);
         if (retryErr) throw retryErr;
+      }
+
+      if (chosenCar && !profile?.car_info) {
+        await supabase
+          .from('profiles')
+          .update({ car_info: chosenCar })
+          .eq('id', session.user.id);
       }
 
       recordPersonalRoutine(session.user.id, filterFrom.trim(), filterTo.trim(), startPt, endPt);
@@ -1379,10 +1389,11 @@ export default function App() {
       .maybeSingle();
 
     if (existingAgr) {
+      const resolvedCar = ride.car_info || (ride.kind === 'ask' ? profile?.car_info || null : null);
       handleOpenAgreement({
         ...existingAgr,
         post_owner_id: ride.user_id,
-        car_info: ride.car_info || null,
+        car_info: resolvedCar,
         partner_name: ride.author_name,
         title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, existingAgr.status)
       });
@@ -1417,10 +1428,11 @@ export default function App() {
           : 'Szia! Csatlakoznék az úthoz.'
     });
 
+    const resolvedCar = ride.car_info || (ride.kind === 'ask' ? profile?.car_info || null : null);
     handleOpenAgreement({
       ...createdAgr,
       post_owner_id: ride.user_id,
-      car_info: ride.car_info || null,
+      car_info: resolvedCar,
       partner_name: ride.author_name,
       title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, 'chatting')
     });
@@ -1973,6 +1985,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setInlineSeats(3);
+                        setInlineCarInfo(profile?.car_info || '');
                         setInlineComposerMode('offer');
                       }}
                       className="bg-pilis hover:bg-pilis-light text-white font-bold text-xs px-2.5 py-2 rounded-lg transition active:scale-95"
@@ -1983,6 +1996,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setInlineSeats(3);
+                        setInlineCarInfo(profile?.car_info || '');
                         setInlineComposerMode('recurring');
                       }}
                       className="bg-white hover:border-pilis text-pilis border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-lg transition active:scale-95"
@@ -2104,6 +2118,16 @@ export default function App() {
                       </select>
                     )}
                   </div>
+
+                  {inlineComposerMode !== 'ask' && (
+                    <input
+                      type="text"
+                      value={inlineCarInfo}
+                      onChange={(e) => setInlineCarInfo(e.target.value)}
+                      placeholder="Autód erre az útra (opcionális, pl. Fehér Suzuki)"
+                      className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-pilis"
+                    />
+                  )}
 
                   <div className="flex gap-2">
                     <input
