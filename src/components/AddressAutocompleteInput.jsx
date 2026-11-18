@@ -1,26 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-
-const GOOGLE_PLACES_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY || '';
+import { LOCAL_PLACES, SZENTENDRE_ZONES } from '../constants/szentendreData.js';
 
 export function stripAccents(str) {
   return (str || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .trim();
-}
-
-function createSessionToken() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-function cleanHungarianAddress(rawText) {
-  return (rawText || '')
-    .replace(/,\s*Magyarország$/i, '')
-    .replace(/,\s*Hungary$/i, '')
     .trim();
 }
 
@@ -51,10 +36,63 @@ function extractHouseNumber(rawQuery) {
   return { streetPart: m[1].trim(), houseNum: `${m[2]}.` };
 }
 
-function formatPhotonFallback(feat, fallbackHouseNum = '') {
+function findLocalMatches(queryText, houseNum = '') {
+  const normQ = stripAccents(queryText);
+  if (normQ.length < 2) return [];
+
+  const results = [];
+  const seen = new Set();
+
+  for (const z of SZENTENDRE_ZONES) {
+    if (stripAccents(z.name).includes(normQ)) {
+      const lbl = `Szentendre, ${z.name}`;
+      if (!seen.has(lbl)) {
+        seen.add(lbl);
+        results.push({
+          source: 'local',
+          label: lbl,
+          subtitle: 'Szentendre városrész',
+          lat: z.lat,
+          lng: z.lng
+        });
+      }
+    }
+  }
+
+  for (const p of LOCAL_PLACES) {
+    const normName = stripAccents(p.name);
+    const normSub = stripAccents(p.subtitle || '');
+    if (normName.includes(normQ) || normSub.includes(normQ)) {
+      const baseLabel = deduplicateCityInLabel(p.name);
+      const finalLabel =
+        houseNum && !/\d/.test(baseLabel) && !baseLabel.toLowerCase().includes('hév')
+          ? `${baseLabel} ${houseNum}`
+          : baseLabel;
+
+      if (!seen.has(finalLabel)) {
+        seen.add(finalLabel);
+        results.push({
+          source: 'local',
+          label: finalLabel,
+          subtitle: p.subtitle || 'Szentendre',
+          lat: p.lat,
+          lng: p.lng
+        });
+      }
+    }
+    if (results.length >= 4) break;
+  }
+
+  return results;
+}
+
+function formatPhotonFeature(feat, fallbackHouseNum = '') {
   const p = feat?.properties || {};
   const [lng, lat] = feat?.geometry?.coordinates || [];
   if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+
+  const countryCode = (p.countrycode || '').toUpperCase();
+  if (countryCode && countryCode !== 'HU') return null;
 
   const city = p.city || p.town || p.village || p.municipality || '';
   const streetBase = p.street || p.name || '';
@@ -97,7 +135,6 @@ export default function AddressAutocompleteInput({
   const [loading, setLoading] = useState(false);
   const containerRef = useRef(null);
   const isUserTypingRef = useRef(false);
-  const sessionTokenRef = useRef(createSessionToken());
 
   useEffect(() => {
     const handleOutside = (e) => {
@@ -114,9 +151,7 @@ export default function AddressAutocompleteInput({
   }, []);
 
   useEffect(() => {
-    if (!isUserTypingRef.current) {
-      return;
-    }
+    if (!isUserTypingRef.current) return;
 
     const q = (value || '').trim();
     if (q.length < 2) {
@@ -126,108 +161,63 @@ export default function AddressAutocompleteInput({
       return;
     }
 
+    const { streetPart, houseNum } = extractHouseNumber(q);
+    const localHits = findLocalMatches(streetPart, houseNum);
+    if (localHits.length > 0) {
+      setSuggestions(localHits);
+      setOpen(true);
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       isUserTypingRef.current = false;
       setLoading(true);
       try {
-        const normQ = stripAccents(q);
-        const normCity = stripAccents(cityContext);
-        const biasedInput =
-          normCity && !normQ.includes(normCity) && q.length >= 2
-            ? `${cityContext}, ${q}`
-            : q;
-
-        if (GOOGLE_PLACES_KEY) {
-          const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
-            method: 'POST',
-            signal: controller.signal,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Goog-Api-Key': GOOGLE_PLACES_KEY
-            },
-            body: JSON.stringify({
-              input: biasedInput,
-              languageCode: 'hu',
-              includedRegionCodes: ['hu'],
-              sessionToken: sessionTokenRef.current,
-              locationBias: {
-                circle: {
-                  center: {
-                    latitude: biasCoords.lat,
-                    longitude: biasCoords.lng
-                  },
-                  radius: 18000.0
-                }
-              }
-            })
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            const parsedGoogle = (data?.suggestions || [])
-              .map((s) => s.placePrediction)
-              .filter(Boolean)
-              .map((pred) => {
-                const fullClean = cleanHungarianAddress(pred.text?.text);
-                const mainText = pred.structuredFormat?.mainText?.text || fullClean;
-                const secondaryText = cleanHungarianAddress(
-                  pred.structuredFormat?.secondaryText?.text || ''
-                );
-
-                const cityPrefix =
-                  secondaryText &&
-                  !stripAccents(mainText).includes(stripAccents(secondaryText.split(',')[0]))
-                    ? `${secondaryText.split(',')[0].trim()}, ${mainText}`
-                    : fullClean || mainText;
-
-                return {
-                  source: 'google',
-                  placeId: pred.placeId,
-                  label: deduplicateCityInLabel(cityPrefix),
-                  subtitle: secondaryText || fullClean
-                };
-              })
-              .slice(0, 5);
-
-            if (parsedGoogle.length > 0) {
-              setSuggestions(parsedGoogle);
-              setOpen(true);
-              setLoading(false);
-              return;
-            }
-          }
-        }
-
-        const { streetPart, houseNum } = extractHouseNumber(q);
         const expandedStreet = expandStreetAbbreviations(streetPart);
+        const normQ = stripAccents(expandedStreet);
+        const normCity = stripAccents(cityContext);
         const photonQ =
-          normCity && !stripAccents(expandedStreet).includes(normCity)
+          normCity &&
+          !normQ.includes(normCity) &&
+          !normQ.includes('budapest') &&
+          !normQ.includes('pomaz') &&
+          !normQ.includes('leanyfalu')
             ? `${cityContext}, ${expandedStreet}`
             : expandedStreet;
 
-        const fallbackRes = await fetch(
+        const res = await fetch(
           `https://photon.komoot.io/api/?q=${encodeURIComponent(photonQ)}&lat=${
             biasCoords.lat
-          }&lon=${biasCoords.lng}&limit=5`,
+          }&lon=${biasCoords.lng}&limit=6`,
           { signal: controller.signal }
         );
-        const fallbackData = await fallbackRes.json();
-        const parsedFallback = (fallbackData?.features || [])
-          .map((f) => formatPhotonFallback(f, houseNum))
-          .filter(Boolean)
-          .slice(0, 5);
+        const data = await res.json();
+        const remoteHits = (data?.features || [])
+          .map((f) => formatPhotonFeature(f, houseNum))
+          .filter(Boolean);
 
-        setSuggestions(parsedFallback);
-        setOpen(parsedFallback.length > 0);
+        const merged = [...localHits];
+        const seenLabels = new Set(merged.map((m) => stripAccents(m.label)));
+        for (const rItem of remoteHits) {
+          const k = stripAccents(rItem.label);
+          if (!seenLabels.has(k)) {
+            seenLabels.add(k);
+            merged.push(rItem);
+          }
+          if (merged.length >= 6) break;
+        }
+
+        setSuggestions(merged);
+        setOpen(merged.length > 0);
       } catch (err) {
         if (err.name !== 'AbortError') {
-          setSuggestions([]);
+          setSuggestions(localHits);
+          setOpen(localHits.length > 0);
         }
       } finally {
         setLoading(false);
       }
-    }, 220);
+    }, 180);
 
     return () => {
       clearTimeout(timer);
@@ -235,90 +225,23 @@ export default function AddressAutocompleteInput({
     };
   }, [value, cityContext, biasCoords.lat, biasCoords.lng]);
 
-  const resolveItemCoordinates = async (item) => {
-    if (typeof item.lat === 'number' && typeof item.lng === 'number') {
-      return { lat: item.lat, lng: item.lng };
-    }
-
-    if (item.source === 'google' && item.placeId && GOOGLE_PLACES_KEY) {
-      sessionTokenRef.current = createSessionToken();
-      try {
-        const detailRes = await fetch(
-          `https://places.googleapis.com/v1/places/${encodeURIComponent(item.placeId)}`,
-          {
-            headers: {
-              'X-Goog-Api-Key': GOOGLE_PLACES_KEY,
-              'X-Goog-FieldMask': 'location'
-            }
-          }
-        );
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          const lat = detail?.location?.latitude;
-          const lng = detail?.location?.longitude;
-          if (typeof lat === 'number' && typeof lng === 'number') {
-            return { lat, lng };
-          }
-        }
-      } catch {}
-    }
-
-    const expandedFull = expandStreetAbbreviations(item.label);
-    const { streetPart } = extractHouseNumber(expandedFull);
-    const candidates = [expandedFull, streetPart];
-
-    for (const queryCandidate of candidates) {
-      if (!queryCandidate) continue;
-      try {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=hu&limit=1&q=${encodeURIComponent(
-            queryCandidate
-          )}`
-        );
-        const nomArr = await nomRes.json();
-        if (Array.isArray(nomArr) && nomArr[0]) {
-          const lat = Number(nomArr[0].lat);
-          const lng = Number(nomArr[0].lon);
-          if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
-        }
-      } catch {}
-
-      try {
-        const phRes = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(queryCandidate)}&lat=${
-            biasCoords.lat
-          }&lon=${biasCoords.lng}&limit=1`
-        );
-        const phData = await phRes.json();
-        const coords = phData?.features?.[0]?.geometry?.coordinates;
-        if (Array.isArray(coords) && coords.length >= 2) {
-          return { lat: Number(coords[1]), lng: Number(coords[0]) };
-        }
-      } catch {}
-    }
-
-    return null;
-  };
-
-  const handleSelect = async (item) => {
+  const handleSelect = (item) => {
     isUserTypingRef.current = false;
     setSuggestions([]);
     setOpen(false);
-    setLoading(true);
-
-    const coords = await resolveItemCoordinates(item);
-    setLoading(false);
-
-    isUserTypingRef.current = false;
     onChange(item.label);
     if (onSelectPlace) {
-      onSelectPlace(coords ? { ...item, lat: coords.lat, lng: coords.lng } : null);
+      onSelectPlace(
+        typeof item.lat === 'number' && typeof item.lng === 'number'
+          ? { ...item, lat: item.lat, lng: item.lng }
+          : null
+      );
     }
   };
 
   return (
     <div ref={containerRef} className="relative w-full min-w-0">
-      <div className="flex items-center gap-2 px-2 py-1.5">
+      <div className="flex items-center gap-2 px-2 py-2">
         {isSolidDot ? (
           <span className="w-2.5 h-2.5 rounded-full bg-terracotta shrink-0" />
         ) : (
@@ -336,10 +259,10 @@ export default function AddressAutocompleteInput({
           }}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-full min-w-0 bg-transparent text-sm sm:text-base font-medium text-[#18261F] placeholder:text-[#7A867E] focus:outline-none"
+          className="w-full min-w-0 bg-transparent text-sm sm:text-base font-medium text-[#18261F] placeholder:text-[#4A5850] focus:outline-none"
         />
         {loading && (
-          <span className="text-[10px] font-bold text-[#7A867E] shrink-0">…</span>
+          <span className="text-xs font-bold text-[#4A5850] shrink-0">…</span>
         )}
         {value && value.trim().length >= 3 && onToggleSavePlace && (
           <button
@@ -347,8 +270,8 @@ export default function AddressAutocompleteInput({
             onClick={onToggleSavePlace}
             title={isSavedPlace ? 'Eltávolítás a saját helyek közül' : 'Mentés a saját helyek közé'}
             aria-label={isSavedPlace ? 'Eltávolítás a saját helyek közül' : 'Mentés a saját helyek közé'}
-            className={`text-sm font-bold px-1 shrink-0 transition ${
-              isSavedPlace ? 'text-amber-500' : 'text-[#9AA59E] hover:text-amber-500'
+            className={`w-8 h-8 rounded-lg grid place-items-center text-base font-bold shrink-0 transition ${
+              isSavedPlace ? 'text-amber-500' : 'text-[#5C6B62] hover:text-amber-500'
             }`}
           >
             {isSavedPlace ? '★' : '☆'}
@@ -365,7 +288,7 @@ export default function AddressAutocompleteInput({
               setOpen(false);
               if (onSelectPlace) onSelectPlace(null);
             }}
-            className="text-xs font-bold text-[#7A867E] hover:text-[#18261F] px-1 shrink-0"
+            className="w-8 h-8 rounded-lg grid place-items-center text-xs font-bold text-[#4A5850] hover:text-[#18261F] shrink-0"
           >
             ✕
           </button>
@@ -378,21 +301,21 @@ export default function AddressAutocompleteInput({
           className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-2xl border border-[#DFD9CE] z-[1000] overflow-hidden divide-y divide-[#ECE7DC]"
         >
           {suggestions.map((item, idx) => (
-            <li key={`${item.placeId || item.label}-${idx}`}>
+            <li key={`${item.label}-${idx}`}>
               <button
                 type="button"
                 onClick={() => handleSelect(item)}
-                className="w-full text-left px-3.5 py-2.5 hover:bg-limestone transition flex items-center justify-between gap-2"
+                className="w-full text-left px-3.5 py-3 hover:bg-limestone transition flex items-center justify-between gap-2"
               >
                 <div className="min-w-0">
                   <div className="text-xs sm:text-sm font-bold text-[#18261F] truncate">
                     {item.label}
                   </div>
-                  <div className="text-[11px] text-[#5C6B62] truncate">
+                  <div className="text-xs text-[#4A5850] truncate">
                     {item.subtitle}
                   </div>
                 </div>
-                <span className="text-[11px] font-bold text-pilis shrink-0">
+                <span className="text-xs font-bold text-pilis shrink-0">
                   Kiválaszt ›
                 </span>
               </button>

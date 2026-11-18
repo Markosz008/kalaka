@@ -1,193 +1,230 @@
 import React, { useState } from 'react';
-import { maskAddressForPublic } from '../constants/szentendreData.js';
+import { formatRemainingTime, maskAddressForPublic } from '../constants/szentendreData.js';
 
 export default function RideCard({
-  hasExistingAgreement = false,
-  kudosCount = 0,
-  onInspectUser,
   ride,
   currentUserId,
+  hasExistingAgreement = false,
+  kudosCount = 0,
   onStartAgreement,
   onShowOnMap,
   onEditRide,
-  onDeleteRide
+  onDeleteRide,
+  onInspectUser
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [sharedCopied, setSharedCopied] = useState(false);
-  const isOwner = Boolean(currentUserId && ride.user_id === currentUserId);
+  const [selectedStop, setSelectedStop] = useState(ride.stops?.[0] || null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const scheduleSubtitle = ride.is_recurring
-    ? ride.schedule_text || 'Munkanapokon (H–P)'
-    : ride.date_label || 'Ma';
+  const isAsk = ride.kind === 'ask';
+  const isRecurring = Boolean(ride.is_recurring);
+  const isOwnRide = Boolean(currentUserId && ride.user_id === currentUserId);
+  const remainingLabel = isRecurring ? null : formatRemainingTime(ride.expires_at);
+  const totalHelps = Math.max(
+    kudosCount,
+    (ride.author_ride_hearts || 0) + (ride.author_favor_hearts || 0)
+  );
 
-  const now = Date.now();
-  const depTime = ride.departure_at ? new Date(ride.departure_at).getTime() : 0;
-  const expTime = ride.expires_at ? new Date(ride.expires_at).getTime() : 0;
-  const showRecentlyStarted = !ride.is_recurring && depTime > 0 && depTime < now && expTime > now;
-
-  const isFull = ride.kind === 'offer' && Number(ride.seats) <= 0;
-  const carLabel = ride.car_info || ride.author_car || null;
+  const displayOrigin = isOwnRide
+    ? ride.origin_text
+    : ride.public_origin_text || maskAddressForPublic(ride.origin_text);
+  const displayDest = isOwnRide
+    ? ride.dest_text
+    : ride.public_dest_text || maskAddressForPublic(ride.dest_text);
 
   return (
-    <article className="bg-white rounded-2xl p-3.5 sm:p-4 border border-[#DFD9CE] shadow-sm hover:border-pilis transition w-full">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-display font-extrabold text-xl sm:text-2xl text-[#18261F] shrink-0">
-            {ride.time_label}
-          </span>
-          <span className="text-[11px] font-semibold text-pilis bg-pilis-soft px-2 py-0.5 rounded-full truncate">
-            {scheduleSubtitle}
-          </span>
-          {showRecentlyStarted && (
-            <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
-              Mostanában indul
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => onShowOnMap(ride)}
-            className="text-[11px] font-semibold text-[#5C6B62] hover:text-pilis bg-limestone px-2.5 py-1 rounded-full border border-[#DFD9CE] transition"
-          >
-            Útvonal
-          </button>
-          {carLabel && (
-            <span className="hidden sm:inline-flex text-[10px] font-bold bg-[#ECE7DC] text-[#18261F] px-2 py-1 rounded-full">
-              🚗 {carLabel}
-            </span>
-          )}
+    <article
+      className={`rounded-2xl p-4 shadow-sm border transition ${
+        isAsk
+          ? 'bg-[#FFFDFB] border-[#E8D5CE] border-l-4 border-l-terracotta'
+          : 'bg-white border-[#DFD9CE] hover:border-pilis/40'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span
-            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
-              isFull
-                ? 'bg-gray-200 text-gray-600'
-                : ride.kind === 'offer'
-                ? 'bg-[#E6F2EC] text-pilis'
-                : 'bg-terracotta-soft text-terracotta'
+            className={`font-display font-extrabold text-base px-3 py-1 rounded-xl ${
+              isAsk
+                ? 'bg-terracotta-soft text-terracotta'
+                : 'bg-pilis text-white'
             }`}
           >
-            {isFull ? 'Betelt' : ride.kind === 'offer' ? `${ride.seats} hely` : 'Utat keres'}
+            {ride.depart_time || ride.time_label}
+          </span>
+
+          <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-limestone text-[#18261F] border border-[#DFD9CE]">
+            {ride.date_label || 'Ma'}
+          </span>
+
+          <span
+            className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+              isAsk
+                ? 'bg-terracotta text-white'
+                : 'bg-pilis-soft text-pilis'
+            }`}
+          >
+            {isAsk
+              ? `Utat keres • ${ride.seats || 1} utas`
+              : `${ride.seats} szabad hely`}
           </span>
         </div>
+
+        <button
+          type="button"
+          onClick={() => onShowOnMap && onShowOnMap(ride)}
+          className="shrink-0 text-xs font-bold text-pilis hover:underline px-2 py-1"
+        >
+          Térképen ›
+        </button>
       </div>
 
-      <div className="my-2.5 space-y-1.5 font-semibold text-sm text-[#18261F]">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="w-2.5 h-2.5 rounded-full border-[2.5px] border-pilis shrink-0" />
-          <span className="truncate">{maskAddressForPublic(ride.origin_text)}</span>
+      <div className="mt-3 space-y-1.5 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full border-2 border-pilis shrink-0" />
+          <span className="font-bold text-[#18261F]">{displayOrigin}</span>
         </div>
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-terracotta shrink-0" />
-          <span className="truncate">{maskAddressForPublic(ride.dest_text)}</span>
+          <span className="font-bold text-[#18261F]">{displayDest}</span>
         </div>
       </div>
 
       {ride.note && (
-        <p className="text-xs text-[#5C6B62] mb-2.5 leading-relaxed">{ride.note}</p>
+        <p className="mt-2 text-xs text-[#4A5850] bg-limestone px-3 py-2 rounded-xl">
+          „{ride.note}”
+        </p>
       )}
 
-      <div className="flex items-center justify-between pt-2.5 border-t border-[#ECE7DC] gap-2">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onInspectUser && ride.user_id) {
+      {!isAsk && Array.isArray(ride.stops) && ride.stops.length > 0 && (
+        <div className="mt-3 pt-2.5 border-t border-[#ECE7DC]">
+          <div className="text-xs font-bold text-[#4A5850] mb-1.5">
+            Útba eső megállók (válassz felszállópontot):
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            {ride.stops.map((st, idx) => {
+              const active = selectedStop?.name === st.name;
+              return (
+                <button
+                  key={`${st.name}-${idx}`}
+                  type="button"
+                  onClick={() => setSelectedStop(st)}
+                  className={`shrink-0 text-xs px-3 py-1.5 rounded-lg border transition ${
+                    active
+                      ? 'bg-pilis text-white border-pilis font-bold'
+                      : 'bg-limestone text-[#18261F] border-[#DFD9CE] hover:border-pilis'
+                  }`}
+                >
+                  {st.time} {st.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3.5 pt-2.5 border-t border-[#ECE7DC] flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() =>
+              onInspectUser &&
               onInspectUser({
                 userId: ride.user_id,
                 name: ride.author_name,
                 zone: ride.author_zone
-              });
+              })
             }
-          }}
-          className="flex items-center gap-2 min-w-0 text-left group cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-full bg-pilis group-hover:bg-pilis-light text-white font-bold text-xs grid place-items-center shrink-0 transition">
-            {ride.author_name?.[0] || 'S'}
-          </div>
-          <div className="min-w-0">
-            <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
-              <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">
-                {ride.author_name}{ride.author_zone ? ` • ${ride.author_zone}` : ''}
-              </span>
-              <span className="text-[10px] font-extrabold bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
-                ✓ {kudosCount} ajánlás
-              </span>
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && onInspectUser) {
+                onInspectUser({
+                  userId: ride.user_id,
+                  name: ride.author_name,
+                  zone: ride.author_zone
+                });
+              }
+            }}
+            className="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-80 transition"
+            title="Adatlap és ajánlások megtekintése"
+          >
+            <div className="w-8 h-8 rounded-full bg-pilis-soft text-pilis font-bold text-xs grid place-items-center shrink-0">
+              {ride.author_name?.[0] || 'S'}
             </div>
-            <div className="text-[11px] text-[#5C6B62]">
-              Adatlap és visszajelzések ›
+            <div className="text-xs truncate">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-bold text-[#18261F] underline decoration-[#DFD9CE] underline-offset-2">
+                  {ride.author_name}
+                </span>
+                {ride.author_zone && (
+                  <span className="text-[#4A5850]">• {ride.author_zone}</span>
+                )}
+                {totalHelps > 0 && (
+                  <span className="text-[11px] font-bold text-pilis bg-pilis-soft px-2 py-0.5 rounded-full">
+                    ♥ {totalHelps}
+                  </span>
+                )}
+              </div>
+              {remainingLabel && (
+                <div className="text-[11px] text-[#4A5850]">
+                  {remainingLabel}
+                </div>
+              )}
             </div>
           </div>
-        </button>
+        </div>
 
-        {isOwner ? (
+        {isOwnRide ? (
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={async () => {
-                const shareText = `${ride.time_label} (${scheduleSubtitle}): ${maskAddressForPublic(ride.origin_text)} → ${maskAddressForPublic(ride.dest_text)} a szentendrei Kalákán!`;
-                const shareUrl = window.location.origin;
-                if (navigator.share) {
-                  try {
-                    await navigator.share({ title: 'Kaláka Szentendre', text: shareText, url: shareUrl });
-                    return;
-                  } catch {}
-                }
-                navigator.clipboard?.writeText(`${shareText} ${shareUrl}`);
-                setSharedCopied(true);
-                setTimeout(() => setSharedCopied(false), 2500);
-              }}
-              title="Útvonal megosztása szomszédokkal"
-              className="bg-pilis-soft hover:bg-pilis text-pilis hover:text-white font-bold text-xs px-2.5 py-2 rounded-xl transition"
-            >
-              {sharedCopied ? 'Link másolva ✓' : 'Megosztás ↗'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onEditRide(ride)}
-              className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-2.5 py-2 rounded-xl transition"
+              onClick={() => onEditRide && onEditRide(ride)}
+              className="text-xs font-bold px-3 py-2 rounded-xl bg-limestone hover:bg-pilis-soft text-[#18261F] border border-[#DFD9CE] transition"
             >
               Szerkesztés
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirmDelete) {
-                  setConfirmDelete(true);
-                  setTimeout(() => setConfirmDelete(false), 3500);
-                  return;
-                }
-                onDeleteRide(ride.id);
-              }}
-              className={`${
-                confirmDelete
-                  ? 'bg-red-700 text-white border-red-700'
-                  : 'bg-red-50 hover:bg-red-100 text-red-800 border-red-200'
-              } border font-bold text-xs px-2.5 py-2 rounded-xl transition`}
-            >
-              {confirmDelete ? 'Biztos? ✕' : 'Törlés'}
-            </button>
+            {!confirmingDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 transition"
+              >
+                Törlés
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 bg-red-50 px-2 py-1 rounded-xl border border-red-200">
+                <button
+                  type="button"
+                  onClick={() => onDeleteRide && onDeleteRide(ride.id)}
+                  className="text-xs font-extrabold text-white bg-red-700 px-2.5 py-1 rounded-lg"
+                >
+                  Igen, törlöm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-xs font-bold text-[#4A5850] px-1.5 py-1"
+                >
+                  Mégse
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <button
             type="button"
-            disabled={isFull && !hasExistingAgreement}
-            onClick={() => onStartAgreement(ride, null)}
-            className={`${
+            onClick={() => onStartAgreement(ride, selectedStop)}
+            className={`shrink-0 text-xs font-bold px-4 py-2.5 rounded-xl text-white shadow-sm transition active:scale-95 ${
               hasExistingAgreement
-                ? 'bg-pilis-soft text-pilis border border-pilis/30'
-                : isFull
-                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                : 'bg-pilis hover:bg-pilis-light text-white'
-            } font-bold text-xs px-3.5 py-2 rounded-xl shrink-0 transition`}
+                ? 'bg-emerald-700 hover:bg-emerald-800'
+                : isAsk
+                ? 'bg-terracotta hover:bg-[#b55538]'
+                : 'bg-pilis hover:bg-pilis-light'
+            }`}
           >
             {hasExistingAgreement
-              ? 'Egyeztetés ›'
-              : isFull
-              ? 'Betelt'
-              : ride.kind === 'offer'
-              ? 'Csatlakozom'
-              : 'Elviszem'}
+              ? 'Egyeztetés megnyitása ›'
+              : isAsk
+              ? 'Elviszem'
+              : 'Csatlakozom'}
           </button>
         )}
       </div>
