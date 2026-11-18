@@ -481,7 +481,7 @@ export default function InteractiveRouteMap({
       {isExpanded && (
         <div className="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-3 right-14 z-10 pointer-events-none">
           <div className="inline-block bg-white/95 backdrop-blur text-[#18261F] text-xs font-semibold px-3 py-2 rounded-xl shadow-lg border border-[#DFD9CE]">
-            Bökj bárhová a térképen, vagy húzd az A / B jelölőt a pontos pontra.
+            Bökj bárhová a térképen
           </div>
         </div>
       )}
