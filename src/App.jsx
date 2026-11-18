@@ -1901,6 +1901,7 @@ export default function App() {
                 toCoords={toCoords || resolveCoordsFromText(filterTo)}
                 selectedRide={selectedRideForMap}
                 onSelectRideOnMap={(rideObj) => setSelectedRideForMap(rideObj)}
+                onClearSelectedRide={() => setSelectedRideForMap(null)}
                 onPickLocation={(label, coordsObj, forcedField) =>
                   handleSelectQuickLocation(label, coordsObj, forcedField)
                 }
@@ -2334,9 +2335,15 @@ export default function App() {
                   onInspectUser={setInspectedUser}
                   currentUserId={session?.user?.id || profile.id}
                   onStartAgreement={handleStartRideAgreement}
+                  isSelectedOnMap={Boolean(showMap && selectedRideForMap?.id === ride.id)}
                   onShowOnMap={(r) => {
-                    setSelectedRideForMap(r);
-                    setShowMap(true);
+                    if (showMap && selectedRideForMap?.id === r.id) {
+                      setSelectedRideForMap(null);
+                      setShowMap(false);
+                    } else {
+                      setSelectedRideForMap(r);
+                      setShowMap(true);
+                    }
                   }}
                   onEditRide={handleOpenEditRide}
                   onDeleteRide={handleDeleteRide}

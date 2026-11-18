@@ -6,6 +6,7 @@ export default function RideCard({
   currentUserId,
   hasExistingAgreement = false,
   kudosCount = 0,
+  isSelectedOnMap = false,
   onStartAgreement,
   onShowOnMap,
   onEditRide,
@@ -71,9 +72,13 @@ export default function RideCard({
         <button
           type="button"
           onClick={() => onShowOnMap && onShowOnMap(ride)}
-          className="shrink-0 text-xs font-bold text-pilis hover:underline px-2 py-1"
+          className={`shrink-0 text-xs font-bold px-2.5 py-1.5 rounded-xl transition ${
+            isSelectedOnMap
+              ? 'bg-pilis text-white shadow-sm'
+              : 'text-pilis hover:bg-pilis-soft'
+          }`}
         >
-          Térképen ›
+          {isSelectedOnMap ? 'Térképen ✕' : 'Térképen ›'}
         </button>
       </div>
 

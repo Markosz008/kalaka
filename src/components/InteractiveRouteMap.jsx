@@ -46,6 +46,7 @@ export default function InteractiveRouteMap({
   isVisible = true,
   onSelectRideOnMap,
   onPickLocation,
+  onClearSelectedRide,
   onUpdatePinCoords,
   onExpandChange
 }) {
@@ -452,8 +453,18 @@ export default function InteractiveRouteMap({
         </div>
 
         {routeStats && (
-          <div className="bg-[#18261F]/90 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">
-            {routeStats.km} km • ~{routeStats.mins} p
+          <div className="bg-[#18261F]/90 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-1.5 pointer-events-auto">
+            <span>{routeStats.km} km • ~{routeStats.mins} p</span>
+            {selectedRide && onClearSelectedRide && (
+              <button
+                type="button"
+                onClick={onClearSelectedRide}
+                aria-label="Kijelölt útvonal bezárása"
+                className="ml-0.5 w-5 h-5 rounded-full bg-white/20 hover:bg-white/35 grid place-items-center text-[11px] leading-none"
+              >
+                ✕
+              </button>
+            )}
           </div>
         )}
 
