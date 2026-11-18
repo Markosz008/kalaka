@@ -103,6 +103,7 @@ export default function ProsDirectoryView({
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [favoriteProIds, setFavoriteProIds] = useState(() => getSavedProIds(currentUserId));
   const [showMap, setShowMap] = useState(true);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
   const [previewPro, setPreviewPro] = useState(null);
@@ -337,6 +338,34 @@ export default function ProsDirectoryView({
 
     return { type: 'FeatureCollection', features };
   }, [filteredPros, previewPro?.id]);
+
+  useEffect(() => {
+    if (!showMap || !mapRef.current || mapInstance.current) return;
+    setIsMapExpanded(false);
+  }, [showMap]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isMapExpanded && showMap) {
+      document.body.classList.add('kalaka-map-expanded');
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.classList.remove('kalaka-map-expanded');
+      document.body.style.overflow = '';
+    }
+
+    const t = setTimeout(() => mapInstance.current?.resize(), 30);
+    const onKey = (e) => {
+      if (e.key === 'Escape' && isMapExpanded) setIsMapExpanded(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      document.body.classList.remove('kalaka-map-expanded');
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isMapExpanded, showMap]);
 
   useEffect(() => {
     if (!showMap || !mapRef.current || mapInstance.current) return;
@@ -1050,16 +1079,39 @@ export default function ProsDirectoryView({
         )}
 
         {showMap && (
-          <div className="relative rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]">
-            <div ref={mapRef} className="w-full h-52 sm:h-64" />
+          <div
+            className={
+              isMapExpanded
+                ? 'fixed inset-0 z-[9999] w-screen h-[100dvh] bg-[#ECE7DC]'
+                : 'relative rounded-xl overflow-hidden border border-[#DFD9CE] bg-[#ECE7DC]'
+            }
+          >
+            <div
+              ref={mapRef}
+              className={isMapExpanded ? 'w-full h-full' : 'w-full h-52 sm:h-64'}
+            />
 
-            <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+            <div
+              className={`absolute right-2.5 z-10 flex items-center gap-1.5 pointer-events-auto ${
+                isMapExpanded ? 'top-[calc(0.75rem+env(safe-area-inset-top))]' : 'top-2.5'
+              }`}
+            >
               <button
                 type="button"
                 onClick={handleCenterUserGps}
-                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-sm border border-[#DFD9CE] pointer-events-auto"
+                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
               >
                 Saját helyzet
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMapExpanded((v) => !v)}
+                aria-label={isMapExpanded ? 'Térkép kicsinyítése' : 'Térkép nagyítása'}
+                title={isMapExpanded ? 'Bezárás' : 'Nagyítás'}
+                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+              >
+                {isMapExpanded ? 'Bezárás ✕' : '⛶'}
               </button>
             </div>
 
