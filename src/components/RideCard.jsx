@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatRemainingTime, maskAddressForPublic } from '../constants/szentendreData.js';
+import AvatarBadge from './AvatarBadge.jsx';
 
 export default function RideCard({
   ride,
@@ -151,9 +152,11 @@ export default function RideCard({
             className="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-80 transition"
             title="Adatlap és ajánlások megtekintése"
           >
-            <div className="w-8 h-8 rounded-full bg-pilis-soft text-pilis font-bold text-xs grid place-items-center shrink-0">
-              {ride.author_name?.[0] || 'S'}
-            </div>
+            <AvatarBadge
+              src={ride.author_avatar}
+              name={ride.author_name}
+              bgClass="bg-pilis-soft text-pilis"
+            />
             <div className="text-xs truncate">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="font-bold text-[#18261F] underline decoration-[#DFD9CE] underline-offset-2">

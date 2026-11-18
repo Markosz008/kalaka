@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { formatRemainingTime } from '../constants/szentendreData.js';
+import AvatarBadge from './AvatarBadge.jsx';
 
 export function parseFavorTag(rawTitle) {
   const m = (rawTitle || '').match(/^\[(Felajánlás|Kérés)\]\s*(.*)$/i);
@@ -118,9 +119,11 @@ export default function FavorCard({
           }}
           className="flex items-center gap-2 min-w-0 text-left group cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-full bg-pilis group-hover:bg-pilis-light text-white font-bold text-xs grid place-items-center shrink-0 transition">
-            {favor.author_name?.[0] || 'K'}
-          </div>
+          <AvatarBadge
+            src={favor.author_avatar}
+            name={favor.author_name}
+            bgClass="bg-pilis group-hover:bg-pilis-light text-white transition"
+          />
           <div className="min-w-0">
             <div className="font-bold text-xs text-[#18261F] group-hover:text-pilis flex flex-wrap items-center gap-1.5">
               <span className="underline decoration-[#DFD9CE] underline-offset-2 truncate">

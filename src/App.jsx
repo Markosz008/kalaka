@@ -437,7 +437,7 @@ export default function App() {
     if (!supabase || !authUser) return;
     let { data } = await supabase
       .from('profiles')
-      .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+      .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -457,7 +457,7 @@ export default function App() {
             fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
           zone: cleanZone
         })
-        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
         .single();
       data = inserted;
     } else if (data.display_name === 'Belépés') {
@@ -466,7 +466,7 @@ export default function App() {
         .from('profiles')
         .update({ display_name: fixedName })
         .eq('id', authUser.id)
-        .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
         .single();
       if (fixed) data = fixed;
     }
@@ -487,13 +487,13 @@ export default function App() {
       await Promise.all([
         supabase
           .from('rides')
-          .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info)')
+          .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info, avatar_url)')
           .eq('status', 'open')
           .gt('expires_at', nowIso)
           .order('departure_at', { ascending: true }),
         supabase
           .from('favors')
-          .select('*, author:profiles!favors_user_id_fkey(display_name, favor_hearts, zone)')
+          .select('*, author:profiles!favors_user_id_fkey(display_name, favor_hearts, zone, avatar_url)')
           .eq('status', 'open')
           .gt('expires_at', nowIso)
           .order('created_at', { ascending: false }),
@@ -564,6 +564,7 @@ export default function App() {
           note: cleanNote,
           author_name: r.author?.display_name || 'Szomszéd',
           author_zone: r.author?.zone || '',
+          author_avatar: r.author?.avatar_url || null,
           author_car: r.car_info || r.author?.car_info || null,
           car_info: r.car_info || r.author?.car_info || null,
           author_ride_hearts: r.author?.ride_hearts || 0,
@@ -599,6 +600,7 @@ export default function App() {
           ...f,
           author_name: f.author?.display_name || 'Szomszéd',
           author_zone: f.author?.zone || '',
+          author_avatar: f.author?.avatar_url || null,
           author_favor_hearts: f.author?.favor_hearts || 0
         }))
       );
@@ -643,8 +645,8 @@ export default function App() {
         .from('agreements')
         .select(`
           *,
-          requester:profiles!agreements_requester_id_fkey(display_name),
-          helper:profiles!agreements_helper_id_fkey(display_name, car_info),
+          requester:profiles!agreements_requester_id_fkey(display_name, avatar_url),
+          helper:profiles!agreements_helper_id_fkey(display_name, car_info, avatar_url),
           ride:rides(origin_text, dest_text, kind, user_id, car_info),
           favor:favors(title),
           pro:local_pros(business_name, profession_name)
@@ -688,6 +690,11 @@ export default function App() {
               : isReq
               ? a.helper?.display_name || 'Szomszéd'
               : a.requester?.display_name || 'Szomszéd',
+            partner_avatar: a.pro
+              ? null
+              : isReq
+              ? a.helper?.avatar_url || null
+              : a.requester?.avatar_url || null,
             post_owner_id: a.ride?.user_id || a.helper_id,
             car_info: a.ride?.car_info || a.helper?.car_info || null,
             title: a.ride
@@ -1395,6 +1402,7 @@ export default function App() {
         post_owner_id: ride.user_id,
         car_info: resolvedCar,
         partner_name: ride.author_name,
+        partner_avatar: ride.author_avatar || null,
         title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, existingAgr.status)
       });
       return;
@@ -1434,6 +1442,7 @@ export default function App() {
       post_owner_id: ride.user_id,
       car_info: resolvedCar,
       partner_name: ride.author_name,
+      partner_avatar: ride.author_avatar || null,
       title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, 'chatting')
     });
     fetchAllLiveData(session.user.id);
@@ -1466,6 +1475,7 @@ export default function App() {
       handleOpenAgreement({
         ...existingAgr,
         partner_name: favor.author_name,
+        partner_avatar: favor.author_avatar || null,
         title: favor.title
       });
       return;
@@ -1496,6 +1506,7 @@ export default function App() {
     handleOpenAgreement({
       ...createdAgr,
       partner_name: favor.author_name,
+      partner_avatar: favor.author_avatar || null,
       title: favor.title
     });
     fetchAllLiveData(session.user.id);

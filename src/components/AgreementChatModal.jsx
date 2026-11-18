@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
+import AvatarBadge from './AvatarBadge.jsx';
 
 const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -679,9 +680,11 @@ export default function AgreementChatModal({
               className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition"
               title="Adatlap megtekintése"
             >
-              <div className="w-9 h-9 rounded-full bg-pilis text-white font-bold text-sm grid place-items-center shrink-0">
-                {liveAgr.partner_name?.[0] || 'S'}
-              </div>
+              <AvatarBadge
+                src={liveAgr.partner_avatar}
+                name={liveAgr.partner_name}
+                sizeClass="w-9 h-9 text-sm"
+              />
               <div className="truncate">
                 <div className="font-bold text-sm truncate flex items-center gap-1.5">
                   <span className="truncate">{liveAgr.partner_name}</span>

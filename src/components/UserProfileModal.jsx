@@ -1,6 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { SZENTENDRE_ZONES } from '../constants/szentendreData.js';
+import AvatarBadge from './AvatarBadge.jsx';
+
+function resizeAvatarToBlob(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width - minSide) / 2;
+      const sy = (img.height - minSide) / 2;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Kép hiba'))), 'image/jpeg', 0.82);
+    };
+    img.onerror = () => reject(new Error('Nem sikerült beolvasni a képet'));
+    img.src = url;
+  });
+}
 
 export default function UserProfileModal({
   userId,
@@ -25,8 +48,10 @@ export default function UserProfileModal({
   const [editBio, setEditBio] = useState('');
   const [editCar, setEditCar] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const avatarInputRef = useRef(null);
 
   useEffect(() => {
     if (!userId || !supabase) return;
@@ -37,7 +62,7 @@ export default function UserProfileModal({
       const [{ data: prof }, { data: rawKudos }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, display_name, zone, bio, car_info, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
+          .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
           .eq('id', userId)
           .maybeSingle(),
         supabase
@@ -149,6 +174,38 @@ export default function UserProfileModal({
     if (onProfileUpdated) onProfileUpdated(data);
   };
 
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !isOwnProfile || !supabase) return;
+    setUploadingAvatar(true);
+    setGpsFeedback(null);
+    try {
+      const blob = await resizeAvatarToBlob(file);
+      const filePath = `${userId}/avatar_${Date.now()}.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, blob, { contentType: 'image/jpeg', upsert: true });
+      if (upErr) throw upErr;
+
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      const avatarUrl = pub?.publicUrl;
+      const { data: updatedProf, error: dbErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', userId)
+        .select('*')
+        .single();
+      if (dbErr) throw dbErr;
+      setProfileData(updatedProf);
+      if (onProfileUpdated) onProfileUpdated(updatedProf);
+      setGpsFeedback('Profilkép frissítve ✓');
+    } catch (err) {
+      setGpsFeedback(`Képfeltöltési hiba: ${err.message}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleVerifyLocalGps = () => {
     if (!navigator.geolocation || !isOwnProfile || !supabase) return;
     setVerifyingGps(true);
@@ -236,8 +293,31 @@ export default function UserProfileModal({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-full bg-pilis text-white font-display font-extrabold text-lg grid place-items-center shrink-0 shadow">
-              {displayName[0]?.toUpperCase() || 'S'}
+            <div className="relative shrink-0">
+              <AvatarBadge
+                src={profileData?.avatar_url}
+                name={displayName}
+                sizeClass="w-14 h-14 text-lg shadow"
+              />
+              {isOwnProfile && (
+                <>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="mt-1 block w-full text-center text-[10px] font-bold text-pilis hover:underline"
+                  >
+                    {uploadingAvatar ? 'Feltöltés...' : 'Fotó csere'}
+                  </button>
+                </>
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
