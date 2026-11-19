@@ -199,18 +199,24 @@ export default function UserProfileModal({
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
-        const inDunakanyar =
-          latitude >= 47.55 && latitude <= 47.82 && longitude >= 18.92 && longitude <= 19.22;
-        if (!inDunakanyar) {
+        const { data: verified, error: rpcErr } = await supabase.rpc('verify_local_gps', {
+          p_lat: latitude,
+          p_lng: longitude
+        });
+        if (rpcErr) {
+          setVerifyingGps(false);
+          setGpsFeedback(`Hiba az igazoláskor: ${rpcErr.message}`);
+          return;
+        }
+        if (!verified) {
           setVerifyingGps(false);
           setGpsFeedback('A jelenlegi helyzeted kívül esik Szentendre térségén.');
           return;
         }
         const { data } = await supabase
           .from('profiles')
-          .update({ is_gps_local_verified: true })
-          .eq('id', userId)
           .select('*')
+          .eq('id', userId)
           .single();
         setVerifyingGps(false);
         if (data) {
@@ -242,18 +248,8 @@ export default function UserProfileModal({
         localStorage.removeItem(`kalaka_routines_${userId}`);
       } catch {}
 
-      await Promise.allSettled([
-        supabase.from('messages').delete().eq('sender_id', userId),
-        supabase.from('road_alerts').delete().eq('reporter_id', userId),
-        supabase.from('pro_endorsements').delete().eq('user_id', userId),
-        supabase.from('pro_interactions').delete().eq('user_id', userId),
-        supabase.from('kudos').delete().or(`giver_id.eq.${userId},receiver_id.eq.${userId}`),
-        supabase.from('agreements').delete().or(`requester_id.eq.${userId},helper_id.eq.${userId}`),
-        supabase.from('rides').delete().eq('user_id', userId),
-        supabase.from('favors').delete().eq('user_id', userId),
-        supabase.from('local_pros').delete().eq('owner_id', userId)
-      ]);
-      await supabase.from('profiles').delete().eq('id', userId);
+      const { error } = await supabase.rpc('delete_my_account');
+      if (error) throw error;
       await supabase.auth.signOut();
       onClose();
     } catch (err) {
