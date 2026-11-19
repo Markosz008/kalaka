@@ -14,6 +14,7 @@ import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
+import { triggerRadarPushIfNeeded } from './lib/webPush.js';
 import NewPostModal from './components/NewPostModal.jsx';
 import RidesRoutePanel from './components/RidesRoutePanel.jsx';
 import FavorsTabView from './components/FavorsTabView.jsx';
@@ -1379,6 +1380,9 @@ export default function App() {
         showNotice(`Hiba: ${error.message}`, 'err');
         return false;
       }
+      if (data?.should_push && data?.alert_id) {
+        triggerRadarPushIfNeeded(supabase, data.alert_id);
+      }
       await fetchAllLiveData(session.user.id);
       showNotice(
         data?.action === 'merged'
@@ -1406,6 +1410,9 @@ export default function App() {
     if (error) {
       showNotice(`Hiba: ${error.message}`, 'err');
       return false;
+    }
+    if (data?.should_push && data?.alert_id) {
+      triggerRadarPushIfNeeded(supabase, data.alert_id);
     }
     await fetchAllLiveData(session.user.id);
     if (vote === 'clear') {
@@ -1739,6 +1746,12 @@ export default function App() {
         roadAlerts={roadAlerts}
         myAlertVotes={myAlertVotes}
         currentUserId={session?.user?.id}
+        supabase={supabase}
+        showNotice={showNotice}
+        onNeedAuth={() => {
+          setShowRoadModal(false);
+          setShowAuthModal(true);
+        }}
         onSubmitCityAlert={handleSubmitCityAlert}
         onVoteCityAlert={handleVoteCityAlert}
         onDeleteRoadAlert={handleDeleteRoadAlert}

@@ -5,6 +5,8 @@ import {
   formatMinutesLeft,
   formatShortTime
 } from '../constants/cityRadar.js';
+import { getCurrentPushSubscription, getDeviceInstallInfo } from '../lib/webPush.js';
+import InstallPushGuideModal from './InstallPushGuideModal.jsx';
 
 const SEVERITY_RANK = { danger: 3, warn: 2, ok: 1 };
 
@@ -14,6 +16,9 @@ export default function RoadAlertsModal({
   roadAlerts,
   myAlertVotes,
   currentUserId,
+  supabase,
+  showNotice,
+  onNeedAuth,
   onSubmitCityAlert,
   onVoteCityAlert,
   onDeleteRoadAlert
@@ -27,6 +32,20 @@ export default function RoadAlertsModal({
   const [noteOpenId, setNoteOpenId] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [vpStyle, setVpStyle] = useState(null);
+  const [showPushGuide, setShowPushGuide] = useState(false);
+  const [pushActive, setPushActive] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let alive = true;
+    getCurrentPushSubscription().then((sub) => {
+      if (!alive) return;
+      setPushActive(Boolean(sub) && getDeviceInstallInfo().permission === 'granted');
+    });
+    return () => {
+      alive = false;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined' || !window.visualViewport) {
@@ -143,6 +162,28 @@ export default function RoadAlertsModal({
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+
+        <button
+          type="button"
+          onClick={() => setShowPushGuide(true)}
+          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-left text-xs transition ${
+            pushActive
+              ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+              : 'bg-white border-[#DFD9CE] text-[#18261F] hover:border-pilis'
+          }`}
+        >
+          <div className="min-w-0">
+            <div className="font-bold text-[11px] truncate">
+              {pushActive ? 'Telefonos riasztások bekapcsolva ✓' : 'Kapj értesítést dugóról és áramszünetről'}
+            </div>
+            <div className="text-[10px] text-[#5C6B62] truncate">
+              {pushActive ? 'Témák módosítása vagy teszt küldése' : 'Főképernyőhöz adás & értesítések (3+ jelzésnél)'}
+            </div>
+          </div>
+          <span className="shrink-0 text-[11px] font-bold bg-limestone px-2.5 py-1 rounded-full text-pilis">
+            Beállítás ›
+          </span>
+        </button>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
@@ -443,6 +484,16 @@ export default function RoadAlertsModal({
         </form>
         </div>
       </div>
+
+      <InstallPushGuideModal
+        isOpen={showPushGuide}
+        onClose={() => setShowPushGuide(false)}
+        supabase={supabase}
+        currentUserId={currentUserId}
+        onNeedAuth={onNeedAuth}
+        showNotice={showNotice}
+        onStatusChange={setPushActive}
+      />
     </div>
   );
 }
