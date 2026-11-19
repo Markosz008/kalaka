@@ -1,38 +1,6 @@
 begin;
 
 create or replace function public.protect_profile_columns()
-returns trigger language plpgsql as $$ begin if current_user = 'authenticated' then if tg_op = 'INSERT' then new.ride_hearts := 0; new.favor_hearts := 0; new.strike_count := 0; new.is_suspended := false; else new.ride_hearts := old.ride_hearts; new.favor_hearts := old.favor_hearts; new.strike_count := old.strike_count; new.is_suspended := old.is_suspended; end if; end if; return new; end $$;
-
-drop trigger if exists trg_protect_profile_columns on public.profiles;
-create trigger trg_protect_profile_columns
-  before insert or update on public.profiles
-  for each row execute function public.protect_profile_columns();
-
-create or replace function public.sync_profile_hearts_on_kudos()
-returns trigger language plpgsql security definer set search
-
-
-cd ~/Desktop/kalaka_szentendre_vite_mvp
-
-# 1. .gitignore megerősítése (hogy a .env és a backup mappák sose kerüljenek fel)
-cat << 'EOF' > .gitignore
-node_modules/
-dist/
-.env
-.env.*
-.wrangler/
-src_backup/
-.DS_Store
-*.log
-*.zip
-EOF
-
-# 2. Biztonsági SQL migráció mentése a repóba (hogy verziózva legyen a séma-védelem)
-mkdir -p supabase/migrations
-cat << 'EOF_SQL' > supabase/migrations/20261113_harden_rls.sql
-begin;
-
-create or replace function public.protect_profile_columns()
 returns trigger language plpgsql as $$
 begin
   if current_user = 'authenticated' then
