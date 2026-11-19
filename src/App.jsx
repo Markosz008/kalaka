@@ -54,12 +54,18 @@ export default function App() {
   const [roadAlerts, setRoadAlerts] = useState([
     {
       id: 'default-ok',
+      category: 'traffic',
+      zone: 'Szentendre',
       status_level: 'ok',
       message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták',
       author_name: 'Közösségi útinfó',
+      confirm_count: 0,
+      clear_count: 0,
+      updates: [],
       created_at: new Date().toISOString()
     }
   ]);
+  const [myAlertVotes, setMyAlertVotes] = useState({});
 
   const [rides, setRides] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -257,8 +263,8 @@ export default function App() {
           .from('road_alerts')
           .select('*, reporter:profiles!road_alerts_reporter_id_fkey(display_name, zone)')
           .gt('expires_at', nowIso)
-          .order('created_at', { ascending: false })
-          .limit(10)
+          .order('last_confirmed_at', { ascending: false })
+          .limit(20)
       ]);
 
     const kMap = {};
@@ -364,16 +370,44 @@ export default function App() {
           author_name: a.reporter?.display_name || 'Helyi lakos'
         }))
       );
+      supabase.auth.getUser().then(({ data: uData }) => {
+        const activeUid = uData?.user?.id;
+        if (!activeUid) {
+          setMyAlertVotes({});
+          return;
+        }
+        supabase
+          .from('road_alert_votes')
+          .select('alert_id, vote')
+          .eq('user_id', activeUid)
+          .in(
+            'alert_id',
+            alertRows.map((a) => a.id)
+          )
+          .then(({ data: voteRows }) => {
+            const vMap = {};
+            (voteRows || []).forEach((v) => {
+              vMap[v.alert_id] = v.vote;
+            });
+            setMyAlertVotes(vMap);
+          });
+      });
     } else {
       setRoadAlerts([
         {
           id: 'default-ok',
+          category: 'traffic',
+          zone: 'Szentendre',
           status_level: 'ok',
           message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták',
           author_name: 'Közösségi útinfó',
+          confirm_count: 0,
+          clear_count: 0,
+          updates: [],
           created_at: new Date().toISOString()
         }
       ]);
+      setMyAlertVotes({});
     }
 
     supabase
@@ -1324,46 +1358,66 @@ export default function App() {
     setTimeout(() => roadInputRef.current?.focus(), 20);
   };
 
-  const handleAddRoadAlert = async (level, messageText) => {
-    const cleanMsg = (messageText || '').trim();
-    if (cleanMsg.length < 4) return;
+  const handleSubmitCityAlert = async ({ category, zone, level, message }) => {
+    const cleanMsg = (message || '').trim();
+    if (cleanMsg.length < 4) return false;
 
     if (!session?.user) {
       setShowRoadModal(false);
       setShowAuthModal(true);
-      return;
+      return false;
     }
 
     if (supabase) {
-      const { error } = await supabase.from('road_alerts').insert({
-        reporter_id: session.user.id,
-        status_level: level,
-        message: cleanMsg
+      const { data, error } = await supabase.rpc('submit_city_alert', {
+        p_category: category || 'traffic',
+        p_zone: zone || '11-es út',
+        p_status_level: level || 'warn',
+        p_message: cleanMsg
       });
       if (error) {
         showNotice(`Hiba: ${error.message}`, 'err');
-        return;
+        return false;
       }
       await fetchAllLiveData(session.user.id);
-      showNotice('Helyzetkép frissítve ✓');
+      showNotice(
+        data?.action === 'merged'
+          ? 'Csatolva a meglévő jelzéshez (+1) ✓'
+          : 'Jelzés közzétéve ✓'
+      );
+      return true;
     }
-    setCustomRoadText('');
+    return false;
   };
 
-  const handleClearRoadAlert = async (alertId) => {
+  const handleVoteCityAlert = async (alertId, vote, note = '') => {
     if (!session?.user) {
       setShowRoadModal(false);
       setShowAuthModal(true);
-      return;
+      return false;
     }
-    if (supabase && alertId && alertId !== 'default-ok') {
-      await supabase
-        .from('road_alerts')
-        .update({ expires_at: new Date().toISOString() })
-        .eq('id', alertId);
-      await fetchAllLiveData(session.user.id);
-      showNotice('Jelzés lezárva ✓');
+    if (!supabase || !alertId || alertId === 'default-ok') return false;
+
+    const { data, error } = await supabase.rpc('vote_city_alert', {
+      p_alert_id: alertId,
+      p_vote: vote,
+      p_note: note ? note.trim() : null
+    });
+    if (error) {
+      showNotice(`Hiba: ${error.message}`, 'err');
+      return false;
     }
+    await fetchAllLiveData(session.user.id);
+    if (vote === 'clear') {
+      showNotice(
+        data?.resolved
+          ? 'Jelzés lezárva ✓'
+          : 'Rögzítve — még 1 megerősítés és lezárul ✓'
+      );
+    } else {
+      showNotice('Megerősítés rögzítve (+1) ✓');
+    }
+    return true;
   };
 
   const handleDeleteRoadAlert = async (alertId) => {
@@ -1683,16 +1737,10 @@ export default function App() {
         isOpen={showRoadModal}
         onClose={() => setShowRoadModal(false)}
         roadAlerts={roadAlerts}
+        myAlertVotes={myAlertVotes}
         currentUserId={session?.user?.id}
-        customRoadLevel={customRoadLevel}
-        setCustomRoadLevel={setCustomRoadLevel}
-        customRoadText={customRoadText}
-        setCustomRoadText={setCustomRoadText}
-        selectedRoadHub={selectedRoadHub}
-        roadInputRef={roadInputRef}
-        onSelectRoadPrefix={handleSelectRoadPrefix}
-        onAddRoadAlert={handleAddRoadAlert}
-        onClearRoadAlert={handleClearRoadAlert}
+        onSubmitCityAlert={handleSubmitCityAlert}
+        onVoteCityAlert={handleVoteCityAlert}
         onDeleteRoadAlert={handleDeleteRoadAlert}
       />
 
