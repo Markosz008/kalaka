@@ -6,6 +6,7 @@ import {
   maskAddressForPublic
 } from './constants/szentendreData.js';
 import HeaderRoadBar from './components/HeaderRoadBar.jsx';
+import { stripAccents } from './components/AddressAutocompleteInput.jsx';
 import RideCard from './components/RideCard.jsx';
 import { parseFavorTag } from './components/FavorCard.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
