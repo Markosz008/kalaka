@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { RADAR_CATEGORY_MAP } from '../constants/cityRadar.js';
+
+const SEVERITY_RANK = { danger: 3, warn: 2, ok: 1 };
 
 export default function HeaderRoadBar({
   session,
@@ -8,34 +11,57 @@ export default function HeaderRoadBar({
   onOpenAuthModal
 }) {
   const isLoggedIn = Boolean(session?.user);
-  const alerts =
-    roadAlerts && roadAlerts.length > 0
-      ? roadAlerts
-      : [
-          {
-            id: 'default-ok',
-            status_level: 'ok',
-            message: 'Folyamatos haladás a 11-es úton • Hegyi utak járhatók'
-          }
-        ];
+
+  const { displayAlerts, activeProblemCount } = useMemo(() => {
+    const realAlerts = (roadAlerts || []).filter((a) => a && a.id !== 'default-ok');
+    const sorted = [...realAlerts].sort((a, b) => {
+      const sevDiff = (SEVERITY_RANK[b.status_level] || 1) - (SEVERITY_RANK[a.status_level] || 1);
+      if (sevDiff !== 0) return sevDiff;
+      const confDiff = (b.confirm_count || 1) - (a.confirm_count || 1);
+      if (confDiff !== 0) return confDiff;
+      return new Date(b.last_confirmed_at || b.created_at) - new Date(a.last_confirmed_at || a.created_at);
+    });
+
+    const problems = sorted.filter((a) => a.status_level === 'danger' || a.status_level === 'warn');
+    if (problems.length > 0) {
+      return { displayAlerts: problems, activeProblemCount: problems.length };
+    }
+    if (sorted.length > 0) {
+      return { displayAlerts: sorted, activeProblemCount: 0 };
+    }
+    return {
+      displayAlerts: [
+        {
+          id: 'default-ok',
+          status_level: 'ok',
+          zone: '',
+          category: 'traffic',
+          confirm_count: 0,
+          message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták'
+        }
+      ],
+      activeProblemCount: 0
+    };
+  }, [roadAlerts]);
 
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [alerts.length]);
+  }, [displayAlerts.length]);
 
   useEffect(() => {
-    if (alerts.length <= 1) return;
+    if (displayAlerts.length <= 1) return;
     const timer = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % alerts.length);
+      setActiveIndex((prev) => (prev + 1) % displayAlerts.length);
     }, 4500);
     return () => clearInterval(timer);
-  }, [alerts.length]);
+  }, [displayAlerts.length]);
 
-  const currentAlert = alerts[activeIndex] || alerts[0];
-  const activeCount = alerts.length;
+  const currentAlert = displayAlerts[activeIndex] || displayAlerts[0];
   const cleanZone = (profile?.zone || '').replace(/\s*\(.*?\)\s*/g, '').trim();
+  const catShort = RADAR_CATEGORY_MAP[currentAlert.category]?.shortLabel;
+  const isReal = currentAlert.id !== 'default-ok';
 
   const statusStyles = {
     ok: 'bg-emerald-950/35 border-emerald-300/25 text-emerald-50',
@@ -96,16 +122,27 @@ export default function HeaderRoadBar({
               dotColor[currentAlert.status_level] || dotColor.ok
             }`}
           />
-          {activeCount > 1 && (
-            <span className="text-[10px] font-bold bg-white/15 px-1.5 py-0.5 rounded text-white/90 shrink-0">
-              {activeIndex + 1}/{activeCount}
+          {isReal && currentAlert.zone && (
+            <span className="text-[10px] font-extrabold bg-white/15 px-1.5 py-0.5 rounded text-white shrink-0">
+              {currentAlert.zone}
             </span>
           )}
-          <span className="truncate font-medium">{currentAlert.message}</span>
+          <span className="truncate font-medium">
+            {currentAlert.message}
+          </span>
+          {isReal && (currentAlert.confirm_count || 1) > 1 && (
+            <span className="text-[10px] font-bold text-white/80 shrink-0">
+              ({currentAlert.confirm_count} jelzés)
+            </span>
+          )}
         </div>
 
         <span className="shrink-0 bg-white/15 px-2.5 py-0.5 rounded-full font-semibold text-[11px]">
-          {activeCount > 1 ? `${activeCount} jelzés ›` : 'Útinfó ›'}
+          {activeProblemCount > 1
+            ? `${activeProblemCount} aktív ›`
+            : activeProblemCount === 1
+            ? `${catShort || 'Radar'} ›`
+            : 'Radar ›'}
         </span>
       </button>
     </header>
