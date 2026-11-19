@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { SZENTENDRE_ZONES } from '../constants/szentendreData.js';
+import {
+  BETA_INVITE_ONLY,
+  getPendingInviteCode,
+  savePendingInviteCode,
+  clearPendingInviteCode
+} from '../constants/betaConfig.js';
 
 export default function AuthModal({
   isOpen,
   onClose,
   session,
   profile,
+  initialMode = 'login',
   onProfileUpdated,
   onOpenLegalModal
 }) {
@@ -27,8 +34,13 @@ export default function AuthModal({
     } else {
       setDisplayName('');
     }
+    if (isOpen && !session?.user) {
+      setMode(initialMode || 'login');
+      const savedCode = getPendingInviteCode();
+      if (savedCode) setInviteCodeInput(savedCode);
+    }
     setFeedback(null);
-  }, [session?.user, profile?.display_name, profile?.zone, isOpen]);
+  }, [session?.user, profile?.display_name, profile?.zone, isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -59,6 +71,20 @@ export default function AuthModal({
           throw new Error('A regisztrációhoz fogadd el az ÁSZF-et és az Adatkezelési tájékoztatót.');
         }
 
+        const cleanInvite = inviteCodeInput.trim().toUpperCase();
+        if (BETA_INVITE_ONLY) {
+          if (!cleanInvite) {
+            throw new Error('A zárt szentendrei teszthez add meg a meghívókódot.');
+          }
+          const { data: isValidCode, error: valErr } = await supabase.rpc('validate_beta_invite', {
+            p_code: cleanInvite
+          });
+          if (valErr || !isValidCode) {
+            throw new Error('Érvénytelen vagy már betelt meghívókód.');
+          }
+        }
+        if (cleanInvite) savePendingInviteCode(cleanInvite);
+
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -66,19 +92,11 @@ export default function AuthModal({
         });
         if (error) throw error;
 
-        if (data?.user && inviteCodeInput.trim()) {
-          const { data: inviter } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('invite_code', inviteCodeInput.trim().toUpperCase())
-            .maybeSingle();
-
-          if (inviter?.id) {
-            await supabase
-              .from('profiles')
-              .update({ invited_by: inviter.id, display_name: cleanName, zone })
-              .eq('id', data.user.id);
-          }
+        if (data?.session && cleanInvite) {
+          const { data: redeemRes } = await supabase.rpc('redeem_beta_invite', {
+            p_code: cleanInvite
+          });
+          if (redeemRes?.ok) clearPendingInviteCode();
         }
 
         if (data.session) {
@@ -110,6 +128,27 @@ export default function AuthModal({
       });
       return;
     }
+    const cleanInvite = inviteCodeInput.trim().toUpperCase();
+    if (mode === 'register' && BETA_INVITE_ONLY) {
+      if (!cleanInvite) {
+        setFeedback({
+          type: 'err',
+          text: 'A zárt teszthez add meg a meghívókódot a Google-regisztráció előtt.'
+        });
+        return;
+      }
+      const { data: isValidCode, error: valErr } = await supabase.rpc('validate_beta_invite', {
+        p_code: cleanInvite
+      });
+      if (valErr || !isValidCode) {
+        setFeedback({
+          type: 'err',
+          text: 'Érvénytelen vagy már betelt meghívókód.'
+        });
+        return;
+      }
+    }
+    if (cleanInvite) savePendingInviteCode(cleanInvite);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin }
@@ -306,7 +345,7 @@ export default function AuthModal({
                     type="text"
                     value={inviteCodeInput}
                     onChange={(e) => setInviteCodeInput(e.target.value)}
-                    placeholder="Meghívókód (opcionális)"
+                    placeholder={BETA_INVITE_ONLY ? 'Meghívókód (kötelező)' : 'Meghívókód (opcionális)'}
                     className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2 text-base font-mono uppercase box-border"
                   />
                   <label className="flex items-start gap-2 text-xs text-[#5C6B62] pt-1 cursor-pointer leading-snug">

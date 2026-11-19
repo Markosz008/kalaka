@@ -12,6 +12,13 @@ import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
+import BetaGateModal from './components/BetaGateModal.jsx';
+import {
+  BETA_INVITE_ONLY,
+  captureInviteFromUrl,
+  getPendingInviteCode,
+  clearPendingInviteCode
+} from './constants/betaConfig.js';
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
 import { triggerRadarPushIfNeeded } from './lib/webPush.js';
@@ -44,6 +51,7 @@ const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryVie
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
   const [session, setSession] = useState(null);
+  const [authInitialMode, setAuthInitialMode] = useState('login');
   const [profile, setProfile] = useState({
     id: 'guest-user',
     display_name: '',
@@ -189,11 +197,15 @@ export default function App() {
     [savedPlaces, session?.user?.id, showNotice]
   );
 
+  useEffect(() => {
+    captureInviteFromUrl();
+  }, []);
+
   const loadUserProfile = useCallback(async (authUser) => {
     if (!supabase || !authUser) return;
     let { data } = await supabase
       .from('profiles')
-      .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+      .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -213,7 +225,7 @@ export default function App() {
             fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
           zone: cleanZone
         })
-        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
         .single();
       data = inserted;
     } else if (data.display_name === 'Belépés') {
@@ -222,12 +234,26 @@ export default function App() {
         .from('profiles')
         .update({ display_name: fixedName })
         .eq('id', authUser.id)
-        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin')
+        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
         .single();
       if (fixed) data = fixed;
     }
 
     if (data) {
+      if (!data.beta_approved && !data.is_admin) {
+        const pendingCode = getPendingInviteCode();
+        if (pendingCode) {
+          try {
+            const { data: redeemRes } = await supabase.rpc('redeem_beta_invite', {
+              p_code: pendingCode
+            });
+            if (redeemRes?.ok) {
+              clearPendingInviteCode();
+              data = { ...data, beta_approved: true };
+            }
+          } catch {}
+        }
+      }
       setProfile(data);
       setHiddenAgreementIds(getHiddenAgreements(data.id));
       setPersonalRoutines(getPersonalRoutines(data.id));
@@ -1805,11 +1831,31 @@ export default function App() {
         />
       )}
 
+      {BETA_INVITE_ONLY &&
+        isSupabaseConfigured &&
+        (!session?.user ||
+          profile.id !== session.user.id ||
+          (!profile.beta_approved && !profile.is_admin)) && (
+          <BetaGateModal
+            session={session}
+            profileLoading={Boolean(session?.user && profile.id !== session.user.id)}
+            onOpenAuth={(nextMode) => {
+              setAuthInitialMode(nextMode || 'login');
+              setShowAuthModal(true);
+            }}
+            onOpenLegalModal={() => setShowLegalModal(true)}
+            onApproved={() => {
+              if (session?.user) loadUserProfile(session.user);
+            }}
+          />
+        )}
+
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         session={session}
         profile={profile}
+        initialMode={authInitialMode}
         onProfileUpdated={(updated) => setProfile(updated)}
         onOpenLegalModal={() => setShowLegalModal(true)}
       />

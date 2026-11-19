@@ -432,14 +432,15 @@ export default function UserProfileModal({
                   <button
                     type="button"
                     onClick={async () => {
-                      const text = `Csatlakozz a Kaláka Szentendre szomszédsági telekocsi és segítő közösséghez! Meghívókódom: ${profileData.invite_code}`;
+                      const inviteUrl = `${window.location.origin}/?meghivo=${encodeURIComponent(profileData.invite_code)}`;
+                      const text = `Csatlakozz a Kaláka Szentendre szomszédsági közösséghez! Ezzel a meghívóval egyből be tudsz lépni (${profileData.invite_code}):`;
                       if (navigator.share) {
                         try {
-                          await navigator.share({ title: 'Kaláka Szentendre meghívó', text, url: window.location.origin });
+                          await navigator.share({ title: 'Kaláka Szentendre meghívó', text, url: inviteUrl });
                           return;
                         } catch {}
                       }
-                      navigator.clipboard?.writeText(`${text} ${window.location.origin}`);
+                      navigator.clipboard?.writeText(`${text} ${inviteUrl}`);
                       setCopiedCode(true);
                       setTimeout(() => setCopiedCode(false), 2000);
                     }}
