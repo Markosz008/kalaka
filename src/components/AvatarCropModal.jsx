@@ -1,73 +1,164 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const PREVIEW_SIZE = 224;
+const CONTAINER_SIZE = 264;
+const CROP_SIZE = 208;
 const OUTPUT_SIZE = 256;
+const MAX_ZOOM = 4;
+
+function clampOffset(nx, ny, targetZoom, nat) {
+  if (!nat.w || !nat.h) return { x: 0, y: 0 };
+  const base = CROP_SIZE / Math.min(nat.w, nat.h);
+  const w = nat.w * base * targetZoom;
+  const h = nat.h * base * targetZoom;
+  const maxX = Math.max(0, (w - CROP_SIZE) / 2);
+  const maxY = Math.max(0, (h - CROP_SIZE) / 2);
+  return {
+    x: Math.min(maxX, Math.max(-maxX, nx)),
+    y: Math.min(maxY, Math.max(-maxY, ny))
+  };
+}
 
 export default function AvatarCropModal({ file, onCancel, onConfirm }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   const imgRef = useRef(null);
-  const dragStartRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
+  const viewportRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const gestureRef = useRef(null);
+  const zoomRef = useRef(1);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const naturalRef = useRef({ w: 0, h: 0 });
+
+  const applyZoom = (nextZoomRaw) => {
+    const nextZoom = Math.min(MAX_ZOOM, Math.max(1, Number(nextZoomRaw)));
+    const prevZoom = zoomRef.current || 1;
+    const scaleRatio = nextZoom / prevZoom;
+    const nextOff = clampOffset(
+      offsetRef.current.x * scaleRatio,
+      offsetRef.current.y * scaleRatio,
+      nextZoom,
+      naturalRef.current
+    );
+    zoomRef.current = nextZoom;
+    offsetRef.current = nextOff;
+    setZoom(nextZoom);
+    setOffset(nextOff);
+  };
 
   useEffect(() => {
     if (!file) return undefined;
     const url = URL.createObjectURL(file);
     setImgUrl(url);
+    naturalRef.current = { w: 0, h: 0 };
+    zoomRef.current = 1;
+    offsetRef.current = { x: 0, y: 0 };
+    setNaturalSize({ w: 0, h: 0 });
     setZoom(1);
     setOffset({ x: 0, y: 0 });
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.0025;
+      applyZoom(zoomRef.current + delta);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [file]);
+
   const baseScale =
     naturalSize.w > 0 && naturalSize.h > 0
-      ? PREVIEW_SIZE / Math.min(naturalSize.w, naturalSize.h)
+      ? CROP_SIZE / Math.min(naturalSize.w, naturalSize.h)
       : 1;
 
   const dispW = naturalSize.w * baseScale * zoom;
   const dispH = naturalSize.h * baseScale * zoom;
 
-  const clampOffset = (nx, ny, nextZoom = zoom) => {
-    const w = naturalSize.w * baseScale * nextZoom;
-    const h = naturalSize.h * baseScale * nextZoom;
-    const maxX = Math.max(0, (w - PREVIEW_SIZE) / 2);
-    const maxY = Math.max(0, (h - PREVIEW_SIZE) / 2);
-    return {
-      x: Math.min(maxX, Math.max(-maxX, nx)),
-      y: Math.min(maxY, Math.max(-maxY, ny))
-    };
-  };
-
   const handlePointerDown = (e) => {
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDragging(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      ox: offset.x,
-      oy: offset.y
-    };
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 1) {
+      gestureRef.current = {
+        type: 'drag',
+        x: e.clientX,
+        y: e.clientY,
+        ox: offsetRef.current.x,
+        oy: offsetRef.current.y
+      };
+    } else if (pointersRef.current.size === 2) {
+      const [p1, p2] = Array.from(pointersRef.current.values());
+      gestureRef.current = {
+        type: 'pinch',
+        dist: Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1,
+        mx: (p1.x + p2.x) / 2,
+        my: (p1.y + p2.y) / 2,
+        startZoom: zoomRef.current,
+        ox: offsetRef.current.x,
+        oy: offsetRef.current.y
+      };
+    }
   };
 
   const handlePointerMove = (e) => {
-    if (!dragging) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
-    setOffset(clampOffset(dragStartRef.current.ox + dx, dragStartRef.current.oy + dy));
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gestureRef.current;
+    if (!g) return;
+
+    if (g.type === 'drag' && pointersRef.current.size === 1) {
+      const dx = e.clientX - g.x;
+      const dy = e.clientY - g.y;
+      const nextOff = clampOffset(g.ox + dx, g.oy + dy, zoomRef.current, naturalRef.current);
+      offsetRef.current = nextOff;
+      setOffset(nextOff);
+    } else if (g.type === 'pinch' && pointersRef.current.size >= 2) {
+      const [p1, p2] = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      const mx = (p1.x + p2.x) / 2;
+      const my = (p1.y + p2.y) / 2;
+      const nextZoom = Math.min(MAX_ZOOM, Math.max(1, g.startZoom * (dist / g.dist)));
+      const zoomRatio = nextZoom / g.startZoom;
+      const nextOff = clampOffset(
+        g.ox * zoomRatio + (mx - g.mx),
+        g.oy * zoomRatio + (my - g.my),
+        nextZoom,
+        naturalRef.current
+      );
+      zoomRef.current = nextZoom;
+      offsetRef.current = nextOff;
+      setZoom(nextZoom);
+      setOffset(nextOff);
+    }
   };
 
-  const handlePointerUp = () => {
-    setDragging(false);
+  const handlePointerUp = (e) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size === 1) {
+      const [rem] = Array.from(pointersRef.current.values());
+      gestureRef.current = {
+        type: 'drag',
+        x: rem.x,
+        y: rem.y,
+        ox: offsetRef.current.x,
+        oy: offsetRef.current.y
+      };
+    } else {
+      gestureRef.current = null;
+    }
   };
 
-  const handleZoomChange = (nextZoom) => {
-    setZoom(nextZoom);
-    setOffset((prev) => clampOffset(prev.x, prev.y, nextZoom));
+  const handleDoubleClick = () => {
+    applyZoom(zoomRef.current < 1.3 ? 1.8 : 1);
   };
 
   const handleSave = () => {
@@ -77,9 +168,12 @@ export default function AvatarCropModal({ file, onCancel, onConfirm }) {
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
     const ctx = canvas.getContext('2d');
-    const ratio = OUTPUT_SIZE / PREVIEW_SIZE;
-    const rx = PREVIEW_SIZE / 2 - dispW / 2 + offset.x;
-    const ry = PREVIEW_SIZE / 2 - dispH / 2 + offset.y;
+    ctx.fillStyle = '#18261F';
+    ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+
+    const ratio = OUTPUT_SIZE / CROP_SIZE;
+    const rx = CROP_SIZE / 2 - dispW / 2 + offset.x;
+    const ry = CROP_SIZE / 2 - dispH / 2 + offset.y;
 
     ctx.drawImage(
       imgRef.current,
@@ -95,7 +189,7 @@ export default function AvatarCropModal({ file, onCancel, onConfirm }) {
         if (blob) onConfirm(blob);
       },
       'image/jpeg',
-      0.82
+      0.85
     );
   };
 
@@ -115,17 +209,19 @@ export default function AvatarCropModal({ file, onCancel, onConfirm }) {
             Profilkép igazítása
           </div>
           <div className="text-[11px] text-[#5C6B62]">
-            Húzd a képet, hogy az arcod a kör közepére kerüljön
+            Nagyíts bele és húzd középre a képet
           </div>
         </div>
 
         <div className="flex justify-center">
           <div
+            ref={viewportRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            style={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE, touchAction: 'none' }}
+            onDoubleClick={handleDoubleClick}
+            style={{ width: CONTAINER_SIZE, height: CONTAINER_SIZE, touchAction: 'none' }}
             className="relative overflow-hidden rounded-2xl bg-[#18261F] cursor-grab active:cursor-grabbing select-none"
           >
             {imgUrl && (
@@ -135,22 +231,27 @@ export default function AvatarCropModal({ file, onCancel, onConfirm }) {
                 alt="Előnézet"
                 draggable={false}
                 onLoad={(e) => {
-                  setNaturalSize({
+                  const nat = {
                     w: e.currentTarget.naturalWidth,
                     h: e.currentTarget.naturalHeight
-                  });
+                  };
+                  naturalRef.current = nat;
+                  setNaturalSize(nat);
                 }}
                 style={{
-                  width: dispW || PREVIEW_SIZE,
-                  height: dispH || PREVIEW_SIZE,
+                  width: dispW || CROP_SIZE,
+                  height: dispH || CROP_SIZE,
                   maxWidth: 'none',
-                  transform: `translate(${PREVIEW_SIZE / 2 - (dispW || PREVIEW_SIZE) / 2 + offset.x}px, ${PREVIEW_SIZE / 2 - (dispH || PREVIEW_SIZE) / 2 + offset.y}px)`
+                  transform: `translate3d(${CONTAINER_SIZE / 2 - (dispW || CROP_SIZE) / 2 + offset.x}px, ${CONTAINER_SIZE / 2 - (dispH || CROP_SIZE) / 2 + offset.y}px, 0)`
                 }}
-                className="pointer-events-none block"
+                className="pointer-events-none absolute top-0 left-0 block"
               />
             )}
 
-            <div className="pointer-events-none absolute inset-0 rounded-full border-2 border-white shadow-[0_0_0_999px_rgba(0,0,0,0.52)]" />
+            <div
+              style={{ width: CROP_SIZE, height: CROP_SIZE }}
+              className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_999px_rgba(0,0,0,0.55)]"
+            />
           </div>
         </div>
 
@@ -159,10 +260,10 @@ export default function AvatarCropModal({ file, onCancel, onConfirm }) {
           <input
             type="range"
             min="1"
-            max="3"
-            step="0.05"
+            max={MAX_ZOOM}
+            step="0.02"
             value={zoom}
-            onChange={(e) => handleZoomChange(Number(e.target.value))}
+            onChange={(e) => applyZoom(e.target.value)}
             aria-label="Nagyítás"
             className="flex-1 accent-pilis"
           />
