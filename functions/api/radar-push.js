@@ -206,6 +206,20 @@ async function dispatchToSubscriptions(subs, payload, env) {
   return { sent, failed };
 }
 
+export async function onRequestGet(context) {
+  const pubKey = (context.env.VAPID_PUBLIC_KEY || '').trim();
+  if (!pubKey) {
+    return jsonResp({ error: 'Hiányzó VAPID_PUBLIC_KEY a szerveren' }, 500);
+  }
+  return new Response(JSON.stringify({ publicKey: pubKey }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    }
+  });
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
