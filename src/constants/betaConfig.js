@@ -2,29 +2,39 @@ export const BETA_INVITE_ONLY = true;
 
 const PENDING_INVITE_KEY = 'kalaka_pending_invite_code';
 
-export function getPendingInviteCode() {
+function purgeLegacyLocalInvite() {
   try {
-    return (localStorage.getItem(PENDING_INVITE_KEY) || '').trim().toUpperCase();
+    localStorage.removeItem(PENDING_INVITE_KEY);
+  } catch {}
+}
+
+export function getPendingInviteCode() {
+  purgeLegacyLocalInvite();
+  try {
+    return (sessionStorage.getItem(PENDING_INVITE_KEY) || '').trim().toUpperCase();
   } catch {
     return '';
   }
 }
 
 export function savePendingInviteCode(code) {
+  purgeLegacyLocalInvite();
   const clean = String(code || '').trim().toUpperCase();
   if (!clean) return;
   try {
-    localStorage.setItem(PENDING_INVITE_KEY, clean);
+    sessionStorage.setItem(PENDING_INVITE_KEY, clean);
   } catch {}
 }
 
 export function clearPendingInviteCode() {
+  purgeLegacyLocalInvite();
   try {
-    localStorage.removeItem(PENDING_INVITE_KEY);
+    sessionStorage.removeItem(PENDING_INVITE_KEY);
   } catch {}
 }
 
 export function captureInviteFromUrl() {
+  purgeLegacyLocalInvite();
   if (typeof window === 'undefined') return '';
   try {
     const url = new URL(window.location.href);

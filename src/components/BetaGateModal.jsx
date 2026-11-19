@@ -14,7 +14,9 @@ export default function BetaGateModal({
   onOpenLegalModal,
   onApproved
 }) {
-  const [code, setCode] = useState(() => captureInviteFromUrl() || getPendingInviteCode());
+  const [code, setCode] = useState(
+    () => captureInviteFromUrl() || (session?.user ? getPendingInviteCode() : '')
+  );
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
