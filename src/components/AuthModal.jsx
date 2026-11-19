@@ -7,6 +7,7 @@ import {
   savePendingInviteCode,
   clearPendingInviteCode
 } from '../constants/betaConfig.js';
+import KalakaLogo from './KalakaLogo.jsx';
 
 export default function AuthModal({
   isOpen,
@@ -204,6 +205,12 @@ export default function AuthModal({
             Bezárás ✕
           </button>
         </div>
+
+        {!session?.user && (
+          <div className="flex justify-center mb-3">
+            <KalakaLogo className="w-14 h-14 shadow-sm rounded-2xl" />
+          </div>
+        )}
 
         {feedback && (
           <div className={`p-3 rounded-xl text-xs font-semibold mb-3 ${
