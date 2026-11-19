@@ -68,6 +68,17 @@ function urlBase64ToUint8Array(base64String) {
   return out;
 }
 
+async function resolveVapidPublicKey() {
+  try {
+    const res = await fetch('/api/radar-push', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.publicKey) return String(data.publicKey).trim();
+    }
+  } catch {}
+  return (import.meta.env.VITE_VAPID_PUBLIC_KEY || '').trim();
+}
+
 export async function getCurrentPushSubscription() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null;
   try {
@@ -79,10 +90,6 @@ export async function getCurrentPushSubscription() {
 }
 
 export async function subscribeToWebPush(supabase, userId, categories) {
-  const vapidPublicKey = (import.meta.env.VITE_VAPID_PUBLIC_KEY || '').trim();
-  if (!vapidPublicKey) {
-    throw new Error('Az értesítési kulcs még nincs beállítva.');
-  }
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     throw new Error('Ezen a böngészőn nem érhető el a háttér-értesítés.');
   }
@@ -90,6 +97,11 @@ export async function subscribeToWebPush(supabase, userId, categories) {
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') {
     throw new Error('Az értesítések nincsenek engedélyezve a telefonon.');
+  }
+
+  const vapidPublicKey = await resolveVapidPublicKey();
+  if (!vapidPublicKey) {
+    throw new Error('Az értesítési kulcs nem érhető el a szerverről.');
   }
 
   const reg = await navigator.serviceWorker.ready;
