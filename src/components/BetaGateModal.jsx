@@ -117,7 +117,7 @@ export default function BetaGateModal({
               setCode(e.target.value);
               if (errorMsg) setErrorMsg('');
             }}
-            placeholder="Meghívókód (pl. SZENTENDRE-BETA)"
+            placeholder="Meghívókód"
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
