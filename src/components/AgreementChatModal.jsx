@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as maplibregl from 'maplibre-gl';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 import AvatarBadge from './AvatarBadge.jsx';
 
-const VECTOR_STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
+const LiveRideMap = React.lazy(() => import('./LiveRideMap.jsx'));
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -40,7 +39,6 @@ export default function AgreementChatModal({
   const [savingCar, setSavingCar] = useState(false);
 
   const bottomRef = useRef(null);
-  const liveMapContainerRef = useRef(null);
   const watchIdRef = useRef(null);
 
   const isUuid = (val) =>
@@ -146,7 +144,7 @@ export default function AgreementChatModal({
     watchIdRef.current = navigator.geolocation.watchPosition(
       async (pos) => {
         const now = Date.now();
-        if (now - lastSentAt < 6000) return;
+        if (now - lastSentAt < 4000) return;
         lastSentAt = now;
         const { latitude: lat, longitude: lng } = pos.coords;
         setGpsErrorMsg(null);
@@ -206,114 +204,6 @@ export default function AgreementChatModal({
       setSavingCar(false);
     }
   };
-
-  useEffect(() => {
-    if (!liveMapContainerRef.current || status !== 'started') return;
-
-    const pickupFallback = liveAgr?.pickup_stop_name
-      ? resolveCoordsFromText(liveAgr.pickup_stop_name.replace(/^\d{2}:\d{2}\s*/, ''))
-      : null;
-
-    const passengerCoord =
-      liveAgr?.passenger_lat && liveAgr?.passenger_lng
-        ? { lat: Number(liveAgr.passenger_lat), lng: Number(liveAgr.passenger_lng) }
-        : pickupFallback;
-
-    const driverCoord =
-      liveAgr?.driver_lat && liveAgr?.driver_lng
-        ? { lat: Number(liveAgr.driver_lat), lng: Number(liveAgr.driver_lng) }
-        : null;
-
-    const centerCoord = driverCoord || passengerCoord || { lat: 47.6694, lng: 19.0756 };
-
-    let map = null;
-    const markers = [];
-
-    try {
-      map = new maplibregl.Map({
-        container: liveMapContainerRef.current,
-        style: VECTOR_STYLE_URL,
-        center: [centerCoord.lng, centerCoord.lat],
-        zoom: 14.5,
-        attributionControl: false
-      });
-
-      map.on('load', () => {
-        map.resize();
-
-        if (passengerCoord && !isNaN(passengerCoord.lat) && !isNaN(passengerCoord.lng)) {
-          const paxEl = document.createElement('div');
-          paxEl.style.cssText =
-            'background:#C86446;color:#fff;font-weight:800;font-size:11px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);white-space:nowrap';
-          paxEl.textContent = 'Felszállópont';
-          markers.push(
-            new maplibregl.Marker({ element: paxEl })
-              .setLngLat([passengerCoord.lng, passengerCoord.lat])
-              .addTo(map)
-          );
-        }
-
-        if (driverCoord && !isNaN(driverCoord.lat) && !isNaN(driverCoord.lng)) {
-          const carEl = document.createElement('div');
-          carEl.style.cssText =
-            'background:#1E4635;color:#fff;font-weight:800;font-size:11px;padding:4px 9px;border-radius:99px;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.45);white-space:nowrap';
-          carEl.textContent = '🚗 Autó úton';
-          markers.push(
-            new maplibregl.Marker({ element: carEl })
-              .setLngLat([driverCoord.lng, driverCoord.lat])
-              .addTo(map)
-          );
-        }
-
-        if (driverCoord && passengerCoord) {
-          const bounds = new maplibregl.LngLatBounds()
-            .extend([driverCoord.lng, driverCoord.lat])
-            .extend([passengerCoord.lng, passengerCoord.lat]);
-          map.fitBounds(bounds, { padding: 36, maxZoom: 15, duration: 0 });
-
-          map.addSource('live-approach', {
-            type: 'geojson',
-            data: {
-              type: 'Feature',
-              geometry: {
-                type: 'LineString',
-                coordinates: [
-                  [driverCoord.lng, driverCoord.lat],
-                  [passengerCoord.lng, passengerCoord.lat]
-                ]
-              }
-            }
-          });
-          map.addLayer({
-            id: 'live-approach-line',
-            type: 'line',
-            source: 'live-approach',
-            paint: {
-              'line-color': '#1E4635',
-              'line-width': 3,
-              'line-dasharray': [2, 2]
-            }
-          });
-        }
-      });
-    } catch {}
-
-    return () => {
-      markers.forEach((m) => m.remove());
-      if (map) {
-        try {
-          map.remove();
-        } catch {}
-      }
-    };
-  }, [
-    status,
-    liveAgr?.driver_lat,
-    liveAgr?.driver_lng,
-    liveAgr?.passenger_lat,
-    liveAgr?.passenger_lng,
-    liveAgr?.pickup_stop_name
-  ]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -996,11 +886,26 @@ export default function AgreementChatModal({
 
         {isRideAgreement && status === 'started' && (
           <div className="relative bg-[#E8E4DA] border-b border-[#DFD9CE]">
-            <div ref={liveMapContainerRef} className="w-full h-40" />
+            <React.Suspense
+              fallback={
+                <div className="w-full h-48 flex items-center justify-center text-xs font-semibold text-[#5C6B62]">
+                  Élő térkép betöltése...
+                </div>
+              }
+            >
+              <LiveRideMap
+                driverLat={liveAgr.driver_lat}
+                driverLng={liveAgr.driver_lng}
+                passengerLat={liveAgr.passenger_lat}
+                passengerLng={liveAgr.passenger_lng}
+                pickupStopName={liveAgr.pickup_stop_name}
+                isHelper={isHelper}
+              />
+            </React.Suspense>
             {!liveAgr.driver_lat && (
               <div className="absolute bottom-2 left-2 right-2 z-[400] bg-white/95 text-[#18261F] text-[11px] font-semibold px-3 py-1.5 rounded-lg shadow border border-[#DFD9CE] text-center">
                 {isHelper
-                  ? 'A telefonod megosztja a helyzetedet az utassal, amíg meg nem érkezel.'
+                  ? 'A telefonod megosztja a helyzetedet az utassal, amíg nyitva van ez az ablak.'
                   : 'Várakozás a sofőr első GPS-jelére...'}
               </div>
             )}
