@@ -356,31 +356,6 @@ export default function InteractiveRouteMap({
     });
   }, [rides, effectiveFrom, effectiveTo, mapReady, onSelectRideOnMap]);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-
-    alertMarkersRef.current.forEach((m) => m.remove());
-    alertMarkersRef.current = [];
-
-    (roadAlerts || [])
-      .filter((a) => a.status_level === 'warn' || a.status_level === 'danger')
-      .forEach((al) => {
-        const pt = resolveAlertCoords(al.message);
-        const el = document.createElement('div');
-        const isDanger = al.status_level === 'danger';
-        el.style.cssText = `background:${isDanger ? '#991B1B' : '#B45309'};color:#fff;font-weight:800;font-size:10px;padding:3px 8px;border-radius:99px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.35);white-space:nowrap;pointer-events:none`;
-        const shortLabel = (al.message || '').split(':')[0].slice(0, 18);
-        el.textContent = `! ${shortLabel}`;
-        el.title = al.message;
-
-        const mk = new maplibregl.Marker({ element: el })
-          .setLngLat([pt.lng, pt.lat])
-          .addTo(map);
-        alertMarkersRef.current.push(mk);
-      });
-  }, [roadAlerts, mapReady]);
-
   const handleCenterGps = () => {
     if (!navigator.geolocation || !mapRef.current) return;
     navigator.geolocation.getCurrentPosition((pos) => {
