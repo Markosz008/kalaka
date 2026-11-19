@@ -91,7 +91,7 @@ export async function getCurrentPushSubscription() {
 
 export async function subscribeToWebPush(supabase, userId, categories) {
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
-    throw new Error('Ezen a böngészőn nem érhető el a háttér-értesítés.');
+    throw new Error('Ebben a böngészőben nem kérhető telefonos értesítés.');
   }
 
   const perm = await Notification.requestPermission();
@@ -101,7 +101,7 @@ export async function subscribeToWebPush(supabase, userId, categories) {
 
   const vapidPublicKey = await resolveVapidPublicKey();
   if (!vapidPublicKey) {
-    throw new Error('Az értesítési kulcs nem érhető el a szerverről.');
+    throw new Error('Az értesítések átmenetileg nem elérhetők, próbáld újra kicsit később.');
   }
 
   const reg = await navigator.serviceWorker.ready;
@@ -117,7 +117,7 @@ export async function subscribeToWebPush(supabase, userId, categories) {
   const p256dh = subJson?.keys?.p256dh;
   const auth = subJson?.keys?.auth;
   if (!subJson?.endpoint || !p256dh || !auth) {
-    throw new Error('Nem sikerült kiolvasni az eszköz értesítési azonosítóját.');
+    throw new Error('Nem sikerült bekapcsolni az értesítéseket ezen a telefonon.');
   }
 
   const cats = Array.isArray(categories) && categories.length > 0

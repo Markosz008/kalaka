@@ -102,7 +102,7 @@ export default function InstallPushGuideModal({
       setSubEndpoint(sub.endpoint);
       setInfo(getDeviceInstallInfo());
       if (onStatusChange) onStatusChange(true);
-      setFeedback({ type: 'ok', text: 'Értesítések bekapcsolva! Küldj magadnak egy tesztet alul.' });
+      setFeedback({ type: 'ok', text: 'Értesítések bekapcsolva! Alul ki is próbálhatod.' });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
     } finally {
@@ -117,7 +117,7 @@ export default function InstallPushGuideModal({
       await unsubscribeFromWebPush(supabase, currentUserId);
       setSubEndpoint(null);
       if (onStatusChange) onStatusChange(false);
-      setFeedback({ type: 'ok', text: 'Értesítések kikapcsolva ezen az eszközön.' });
+      setFeedback({ type: 'ok', text: 'Értesítések kikapcsolva.' });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
     } finally {
@@ -133,8 +133,8 @@ export default function InstallPushGuideModal({
       setFeedback({
         type: res.ok ? 'ok' : 'err',
         text: res.ok
-          ? 'Teszt értesítés elküldve — pár másodpercen belül megérkezik!'
-          : 'A telefon nem fogadta az értesítést. Kapcsold ki-be az értesítéseket.'
+          ? 'Elküldtük — pár másodpercen belül megérkezik a telefonodra.'
+          : 'Most nem érkezett meg. Kapcsold ki, majd újra be az értesítéseket.'
       });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
@@ -161,10 +161,10 @@ export default function InstallPushGuideModal({
         <div className="flex justify-between items-start gap-2 pb-3 shrink-0">
           <div>
             <h3 className="font-display font-extrabold text-lg text-[#18261F]">
-              Értesítések &amp; Telepítés
+              Telefonos értesítések
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Csak akkor szólunk, ha legalább 3 helyi lakos megerősít egy fennakadást.
+              Csak fontos esetekben szólunk, ha legalább 3-an megerősítik a hírt.
             </p>
           </div>
           <button
@@ -318,7 +318,7 @@ export default function InstallPushGuideModal({
                     onClick={handleTestPush}
                     className="flex-1 bg-pilis hover:bg-pilis-light disabled:opacity-60 text-white font-bold py-2.5 rounded-xl text-xs transition"
                   >
-                    {busy ? 'Küldés...' : 'Teszt értesítés küldése'}
+                    {busy ? 'Küldés...' : 'Próbaértesítés'}
                   </button>
                   <button
                     type="button"
@@ -339,7 +339,7 @@ export default function InstallPushGuideModal({
               onClick={() => setShowOtherGuide((prev) => !prev)}
               className="w-full flex items-center justify-between font-bold text-[#18261F]"
             >
-              <span>Telepítési útmutató (iPhone &amp; Android)</span>
+              <span>Hogyan tedd ki a főképernyőre?</span>
               <span className="text-[#5C6B62]">{showOtherGuide ? '▲' : '▼'}</span>
             </button>
 
@@ -368,14 +368,14 @@ export default function InstallPushGuideModal({
 
                 {guideTab === 'ios' ? (
                   <ol className="space-y-1.5 text-[11px] text-[#2A3A31] list-decimal pl-4">
-                    <li>Nyisd meg a <strong>kalaka-szentendre.pages.dev</strong> oldalt Safariban (ne Facebookon belül).</li>
+                    <li>Nyisd meg a Kalákát Safariban (ne a Facebookon belül).</li>
                     <li>Koppints alul a <strong>Megosztás</strong> ikonra (négyzet felfelé nyíllal).</li>
                     <li>Válaszd a <strong>Főképernyőhöz adás</strong> gombot, majd a <strong>Hozzáadás</strong>-t.</li>
                     <li>Indítsd el az új Kaláka ikonról, és kapcsold be a Radarban az értesítéseket.</li>
                   </ol>
                 ) : (
                   <ol className="space-y-1.5 text-[11px] text-[#2A3A31] list-decimal pl-4">
-                    <li>Nyisd meg a <strong>kalaka-szentendre.pages.dev</strong> oldalt Chrome-ban.</li>
+                    <li>Nyisd meg a Kalákát Chrome-ban.</li>
                     <li>Koppints a jobb felső <strong>⋮</strong> menüre, majd az <strong>Alkalmazás telepítése</strong> pontra.</li>
                     <li>Nyisd meg az ikonról, majd a Radar ablakban nyomj az <strong>Értesítések bekapcsolása</strong> gombra.</li>
                   </ol>

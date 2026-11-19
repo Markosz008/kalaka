@@ -224,7 +224,7 @@ export async function onRequestPost(context) {
   const { request, env } = context;
 
   if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY || !env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    return jsonResp({ error: 'Hiányzó szerveroldali értesítési beállítások' }, 500);
+    return jsonResp({ error: 'Az értesítések átmenetileg nem elérhetők.' }, 500);
   }
 
   const user = await verifyCaller(request, env);
@@ -246,13 +246,13 @@ export async function onRequestPost(context) {
     );
     const subs = subRes.ok ? await subRes.json() : [];
     if (!subs.length) {
-      return jsonResp({ error: 'Nincs mentett értesítési eszköz ennél a fióknál' }, 404);
+      return jsonResp({ error: 'Először kapcsold be az értesítéseket ezen a telefonon.' }, 404);
     }
     const result = await dispatchToSubscriptions(
       subs,
       {
-        title: 'Kaláka Szentendre – Radar aktív',
-        body: 'Szuper! Ha legalább 3 helyi lakos megerősít egy fennakadást, azonnal szólunk.',
+        title: 'Kaláka Szentendre',
+        body: 'Minden rendben! Ha fontos helyi hír vagy dugó van, azonnal szólunk.',
         tag: `kalaka-test-${Date.now()}`,
         url: '/'
       },

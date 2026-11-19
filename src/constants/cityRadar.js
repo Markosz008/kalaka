@@ -3,7 +3,7 @@ export const RADAR_CATEGORIES = [
     id: 'traffic',
     label: 'Forgalom',
     shortLabel: 'Forgalom',
-    ttlLabel: '45 perc',
+    ttlLabel: '45 percig látszik',
     zones: [
       '11-es út',
       'Pismány / Sztaravoda',
@@ -21,7 +21,7 @@ export const RADAR_CATEGORIES = [
     id: 'transit',
     label: 'HÉV & Busz',
     shortLabel: 'HÉV / Busz',
-    ttlLabel: '60 perc',
+    ttlLabel: '1 óráig látszik',
     zones: ['H5 HÉV', 'HÉV P+R parkoló', '878 / 879 busz', 'Volánbusz / 11-es'],
     presets: [
       { label: 'Késik / Pótló', level: 'danger', text: 'Jelentős késés vagy pótlóbusz közlekedik' },
@@ -33,7 +33,7 @@ export const RADAR_CATEGORIES = [
     id: 'utility',
     label: 'Közmű & Veszély',
     shortLabel: 'Közmű',
-    ttlLabel: '3 óra',
+    ttlLabel: '3 óráig látszik',
     zones: [
       'Pismány / Sztaravoda',
       'Izbég / Szarvashegy',
@@ -51,7 +51,7 @@ export const RADAR_CATEGORIES = [
     id: 'local',
     label: 'Helyi sürgős',
     shortLabel: 'Helyi',
-    ttlLabel: '6 óra',
+    ttlLabel: '6 óráig látszik',
     zones: ['Pismány', 'Belváros / Duna-part', 'Izbég / Bükkös', 'Püspökmajor', 'Pannóniatelep'],
     presets: [
       { label: 'Kóbor állat', level: 'warn', text: 'Gazdátlan kutya kóborol a környéken' },
@@ -80,9 +80,9 @@ export function formatShortTime(isoStr) {
 export function formatMinutesLeft(expiresAtIso) {
   if (!expiresAtIso) return '';
   const diffMin = Math.round((new Date(expiresAtIso).getTime() - Date.now()) / 60000);
-  if (diffMin <= 0) return 'lejáróban';
-  if (diffMin < 60) return `még ${diffMin} percig aktív`;
+  if (diffMin <= 0) return 'hamarosan eltűnik';
+  if (diffMin < 60) return `még kb. ${diffMin} percig látható`;
   const hrs = Math.floor(diffMin / 60);
   const mins = diffMin % 60;
-  return mins > 0 ? `még ${hrs} ó ${mins} p` : `még ${hrs} óráig aktív`;
+  return mins > 0 ? `még ${hrs} ó ${mins} percig látható` : `még ${hrs} óráig látható`;
 }

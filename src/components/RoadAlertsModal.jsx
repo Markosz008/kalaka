@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   RADAR_CATEGORIES,
   RADAR_CATEGORY_MAP,
@@ -34,6 +34,26 @@ export default function RoadAlertsModal({
   const [vpStyle, setVpStyle] = useState(null);
   const [showPushGuide, setShowPushGuide] = useState(false);
   const [pushActive, setPushActive] = useState(false);
+  const scrollAreaRef = useRef(null);
+
+  const scrollFocusedInput = useCallback((explicitEl) => {
+    const run = () => {
+      const box = scrollAreaRef.current;
+      const target = explicitEl || document.activeElement;
+      if (!box || !target || !box.contains(target)) return;
+      if (typeof window !== 'undefined') window.scrollTo(0, 0);
+      const boxRect = box.getBoundingClientRect();
+      const elRect = target.getBoundingClientRect();
+      const desiredBottom = boxRect.bottom - 76;
+      if (elRect.bottom > desiredBottom) {
+        box.scrollTop += elRect.bottom - desiredBottom;
+      } else if (elRect.top < boxRect.top + 12) {
+        box.scrollTop -= boxRect.top + 12 - elRect.top;
+      }
+    };
+    setTimeout(run, 60);
+    setTimeout(run, 260);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,6 +68,18 @@ export default function RoadAlertsModal({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen || typeof window === 'undefined' || !window.visualViewport) {
       setVpStyle(null);
       return;
@@ -58,6 +90,7 @@ export default function RoadAlertsModal({
         height: `${Math.round(vv.height)}px`,
         top: `${Math.round(vv.offsetTop)}px`
       });
+      scrollFocusedInput();
     };
     syncViewport();
     vv.addEventListener('resize', syncViewport);
@@ -66,7 +99,7 @@ export default function RoadAlertsModal({
       vv.removeEventListener('resize', syncViewport);
       vv.removeEventListener('scroll', syncViewport);
     };
-  }, [isOpen]);
+  }, [isOpen, scrollFocusedInput]);
 
   const activeCategoryConfig = RADAR_CATEGORY_MAP[formCat] || RADAR_CATEGORIES[0];
 
@@ -148,7 +181,7 @@ export default function RoadAlertsModal({
               Szentendrei Városi Radar
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Élő helyzetkép — az azonos jelzések összevonódnak, és maguktól lejárnak.
+              Forgalom, HÉV és fontos helyi hírek Szentendréről.
             </p>
           </div>
           <button
@@ -161,7 +194,10 @@ export default function RoadAlertsModal({
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <div
+          ref={scrollAreaRef}
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.75rem+env(safe-area-inset-bottom))]"
+        >
 
         <button
           type="button"
@@ -174,10 +210,10 @@ export default function RoadAlertsModal({
         >
           <div className="min-w-0">
             <div className="font-bold text-[11px] truncate">
-              {pushActive ? 'Telefonos riasztások bekapcsolva ✓' : 'Kapj értesítést dugóról és áramszünetről'}
+              {pushActive ? 'Értesítések bekapcsolva ✓' : 'Kérj értesítést dugóról és fontos hírekről'}
             </div>
             <div className="text-[10px] text-[#5C6B62] truncate">
-              {pushActive ? 'Témák módosítása vagy teszt küldése' : 'Főképernyőhöz adás & értesítések (3+ jelzésnél)'}
+              {pushActive ? 'Értesítési beállítások módosítása' : 'Telefonos jelzések és főképernyőre rakás'}
             </div>
           </div>
           <span className="shrink-0 text-[11px] font-bold bg-limestone px-2.5 py-1 rounded-full text-pilis">
@@ -214,10 +250,10 @@ export default function RoadAlertsModal({
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
               <div>
                 <div className="font-bold text-[#18261F]">
-                  Nincs aktív fennakadás
+                  Minden rendben
                 </div>
                 <div className="text-[11px] text-[#5C6B62]">
-                  Minden nyugodt ebben a kategóriában. Ha látsz valamit, jelezd alul!
+                  Jelenleg nyugodt a helyzet. Ha látsz valamit, szólj a többieknek alul!
                 </div>
               </div>
             </div>
@@ -258,7 +294,7 @@ export default function RoadAlertsModal({
                             : 'bg-limestone text-[#5C6B62]'
                         }`}
                       >
-                        {confirms >= 3 ? `${confirms} megerősítés ✓` : `${confirms} jelzés`}
+                        {confirms >= 3 ? `${confirms}-en megerősítették ✓` : `${confirms} jelzés`}
                       </span>
                     </div>
 
@@ -311,7 +347,7 @@ export default function RoadAlertsModal({
                             : 'bg-limestone hover:bg-pilis-soft text-[#18261F] border-[#DFD9CE]'
                         }`}
                       >
-                        Még fennáll (+1)
+                        Még tart (+1)
                       </button>
                       <button
                         type="button"
@@ -323,7 +359,7 @@ export default function RoadAlertsModal({
                             : 'bg-limestone hover:bg-emerald-50 text-[#18261F] hover:text-emerald-900 border-[#DFD9CE]'
                         }`}
                       >
-                        {clears > 0 ? `Megoldódott (${clears})` : 'Megoldódott ✓'}
+                        {clears > 0 ? `Már tiszta (${clears})` : 'Már tiszta ✓'}
                       </button>
                       <button
                         type="button"
@@ -333,7 +369,7 @@ export default function RoadAlertsModal({
                         }}
                         className="text-[11px] font-bold py-1.5 px-2.5 rounded-xl border border-[#DFD9CE] bg-white text-[#5C6B62] hover:text-[#18261F]"
                       >
-                        + Infó
+                        + Frissítés
                       </button>
                     </div>
                   )}
@@ -349,9 +385,10 @@ export default function RoadAlertsModal({
                       <input
                         type="text"
                         value={noteText}
+                        onFocus={(e) => scrollFocusedInput(e.target)}
                         onChange={(e) => setNoteText(e.target.value)}
-                        placeholder="Rövid helyzetfrissítés (pl. OMV-től 30 perc)..."
-                        className="flex-1 min-w-0 bg-limestone border border-[#DFD9CE] rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:border-pilis"
+                        placeholder="Rövid frissítés (pl. OMV-től 30 perc)..."
+                        className="flex-1 min-w-0 bg-limestone border border-[#DFD9CE] rounded-xl px-2.5 py-1.5 text-base focus:outline-none focus:border-pilis"
                       />
                       <button
                         type="submit"
@@ -377,10 +414,10 @@ export default function RoadAlertsModal({
         >
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold text-[#18261F]">
-              Új jelzés beküldése
+              Írj új jelzést
             </span>
             <span className="text-[10px] font-semibold text-[#5C6B62]">
-              Lejárat: {activeCategoryConfig.ttlLabel}
+              {activeCategoryConfig.ttlLabel}
             </span>
           </div>
 
@@ -420,7 +457,7 @@ export default function RoadAlertsModal({
 
           {matchingActiveAlert && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 text-[11px] text-amber-950">
-              Erre a zónára már van aktív jelzés — a beküldésed ahhoz csatlakozik (+1 megerősítés), nem nyit újat.
+              Erről már szóltak mások — a jelzésedet ehhez adjuk hozzá.
             </div>
           )}
 
@@ -469,8 +506,9 @@ export default function RoadAlertsModal({
             type="text"
             required
             value={formText}
+            onFocus={(e) => scrollFocusedInput(e.target)}
             onChange={(e) => setFormText(e.target.value)}
-            placeholder="Rövid leírás (pl. OMV kúttól lépésben, 30 perc)..."
+            placeholder="Mi a helyzet? (pl. OMV kúttól áll a sor)"
             className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-base box-border focus:outline-none focus:border-pilis"
           />
 
@@ -479,7 +517,7 @@ export default function RoadAlertsModal({
             disabled={submitting}
             className="w-full bg-pilis hover:bg-pilis-light disabled:opacity-60 text-white font-bold py-2.5 rounded-xl text-xs transition"
           >
-            {matchingActiveAlert ? 'Csatolás a meglévő jelzéshez' : 'Jelzés beküldése'}
+            {matchingActiveAlert ? 'Hozzáadás a meglévőhöz' : 'Küldés'}
           </button>
         </form>
         </div>
