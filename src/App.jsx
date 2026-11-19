@@ -7,11 +7,9 @@ import {
 } from './constants/szentendreData.js';
 import HeaderRoadBar from './components/HeaderRoadBar.jsx';
 import { stripAccents } from './components/AddressAutocompleteInput.jsx';
-import RideCard from './components/RideCard.jsx';
 import { parseFavorTag } from './components/FavorCard.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
-import SzentendrePulseBar from './components/SzentendrePulseBar.jsx';
 import LegalModal from './components/LegalModal.jsx';
 import AuthModal from './components/AuthModal.jsx';
 import MessagesTabView from './components/MessagesTabView.jsx';
@@ -19,6 +17,8 @@ import RoadAlertsModal from './components/RoadAlertsModal.jsx';
 import NewPostModal from './components/NewPostModal.jsx';
 import RidesRoutePanel from './components/RidesRoutePanel.jsx';
 import FavorsTabView from './components/FavorsTabView.jsx';
+import RidesFeedView from './components/RidesFeedView.jsx';
+import BottomNavBar from './components/BottomNavBar.jsx';
 import {
   BASE_QUICK_DESTINATIONS,
   formatAgreementRideTitle,
@@ -1543,231 +1543,53 @@ export default function App() {
 
       <main className="px-3 sm:px-4 mt-4 space-y-3">
         {activeTab === 'rides' && (
-          <>
-            <SzentendrePulseBar
-              nowTick={nowTick}
-              userZone={profile?.zone || 'Pismány'}
-              rides={rides}
-              onSelectHevRoute={async (zoneName, direction = 'to_hev') => {
-                const hevLabel = 'Szentendre HÉV-végállomás';
-                const hevCoords = resolveCoordsFromText(hevLabel);
-                const isHevText = (t) => {
-                  const low = (t || '').toLowerCase();
-                  return low.includes('hév') || low.includes('hev') || low.includes('állomás');
-                };
-
-                const typedHomeText =
-                  direction === 'from_hev'
-                    ? filterTo && !isHevText(filterTo)
-                      ? filterTo.trim()
-                      : ''
-                    : filterFrom && !isHevText(filterFrom)
-                    ? filterFrom.trim()
-                    : '';
-                const typedHomeCoords = direction === 'from_hev' ? toCoords : fromCoords;
-
-                const savedHome = savedPlaces.find((p) => !isHevText(p.label));
-                const routineHome = personalRoutines
-                  .map((r) =>
-                    !isHevText(r.origin)
-                      ? { label: r.origin, coords: r.originCoords }
-                      : !isHevText(r.dest)
-                      ? { label: r.dest, coords: r.destCoords }
-                      : null
-                  )
-                  .find(Boolean);
-
-                let homeLabel =
-                  typedHomeText || savedHome?.label || routineHome?.label || '';
-                let homeCoords =
-                  typedHomeCoords ||
-                  (savedHome?.lat && savedHome?.lng
-                    ? { lat: Number(savedHome.lat), lng: Number(savedHome.lng) }
-                    : null) ||
-                  routineHome?.coords ||
-                  (homeLabel ? resolveCoordsFromText(homeLabel) : null);
-
-                const applyHevFields = (finalLabel, finalCoords) => {
-                  if (direction === 'from_hev') {
-                    setFilterFrom(hevLabel);
-                    setFromCoords(hevCoords);
-                    setFilterTo(finalLabel);
-                    setToCoords(finalCoords);
-                  } else {
-                    setFilterFrom(finalLabel);
-                    setFromCoords(finalCoords);
-                    setFilterTo(hevLabel);
-                    setToCoords(hevCoords);
-                  }
-                };
-
-                setInlineSeats(1);
-                setInlineComposerMode('ask');
-                setShowMap(true);
-
-                if (homeLabel) {
-                  applyHevFields(homeLabel, homeCoords || resolveCoordsFromText(homeLabel));
-                  return;
-                }
-
-                const fallbackLabel = `Szentendre, ${zoneName}`;
-                const fallbackCoords = resolveCoordsFromText(zoneName);
-                applyHevFields(fallbackLabel, fallbackCoords);
-
-                if (typeof navigator !== 'undefined' && navigator.geolocation) {
-                  navigator.geolocation.getCurrentPosition(
-                    async (pos) => {
-                      const { latitude: lat, longitude: lng } = pos.coords;
-                      let gpsLabel = `${fallbackLabel} (aktuális helyzet)`;
-                      try {
-                        const res = await fetch(
-                          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=hu`
-                        );
-                        const data = await res.json();
-                        const addr = data?.address || {};
-                        const city = addr.city || addr.town || addr.village || 'Szentendre';
-                        const road = addr.road || addr.pedestrian || addr.suburb || '';
-                        const house = addr.house_number ? ` ${addr.house_number}.` : '';
-                        if (road) gpsLabel = `${city}, ${road}${house}`;
-                      } catch {}
-                      applyHevFields(gpsLabel, { lat, lng });
-                    },
-                    () => {},
-                    { enableHighAccuracy: true, timeout: 6000 }
-                  );
-                }
-              }}
-              onSelectRide={(rideObj) => {
-                setSelectedRideForMap(rideObj);
-                setShowMap(true);
-              }}
-            />
-
-            <div className="flex items-center justify-between gap-1.5 bg-white p-1 rounded-xl border border-[#DFD9CE] shadow-sm">
-              {[
-                ['all', `Minden út (${filteredRides.length})`],
-                ['offer', `Van hely (${filteredRides.filter((r) => r.kind === 'offer').length})`],
-                ['ask', `Utat keres (${filteredRides.filter((r) => r.kind === 'ask').length})`]
-              ].map(([k, lbl]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setRideKindFilter(k)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition ${
-                    rideKindFilter === k
-                      ? 'bg-pilis text-white shadow-sm'
-                      : 'text-[#5C6B62] hover:text-[#18261F]'
-                  }`}
-                >
-                  {lbl}
-                </button>
-              ))}
-            </div>
-
-            {showingCityFallbackRides && (
-              <div className="bg-pilis-soft/60 border border-pilis/20 rounded-xl px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-[#18261F]">
-                <span>
-                  Erre a pontos szakaszra most nincs kiírt út — mutatjuk a többi{' '}
-                  <strong>{activeTimeRides.length} aktív szentendrei utat</strong>.
-                </span>
-                <button
-                  type="button"
-                  onClick={handleClearRouteInputs}
-                  className="shrink-0 font-bold text-pilis underline"
-                >
-                  Keresés törlése
-                </button>
-              </div>
-            )}
-
-            {initialLoading ? (
-              <div className="space-y-2.5">
-                {[1, 2].map((n) => (
-                  <div
-                    key={n}
-                    className="bg-white rounded-2xl p-4 border border-[#DFD9CE] animate-pulse space-y-3"
-                  >
-                    <div className="flex justify-between">
-                      <div className="h-6 w-24 bg-[#ECE7DC] rounded-lg" />
-                      <div className="h-6 w-16 bg-[#ECE7DC] rounded-full" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="h-4 w-3/4 bg-[#ECE7DC] rounded" />
-                      <div className="h-4 w-2/3 bg-[#ECE7DC] rounded" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : displayedRides.length === 0 ? (
-              <div className="bg-white rounded-2xl p-5 sm:p-6 text-center border border-[#DFD9CE] space-y-2.5">
-                <div className="text-sm font-bold text-[#18261F]">
-                  {hasRouteFilter || rideKindFilter !== 'all'
-                    ? 'Nincs aktív út erre a szűrésre.'
-                    : 'Még nincs kiírt út a következő órákra.'}
-                </div>
-                <p className="text-xs text-[#5C6B62] leading-relaxed">
-                  {hasRouteFilter || rideKindFilter !== 'all'
-                    ? 'Válts vissza az összes útra, vagy töröld a keresést.'
-                    : 'Indulsz valahová Szentendrén belül vagy a HÉV-hez? Írd ki 10 másodperc alatt!'}
-                </p>
-                <div className="flex items-center justify-center gap-2 pt-1">
-                  {(hasRouteFilter || rideKindFilter !== 'all') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleClearRouteInputs();
-                        setRideKindFilter('all');
-                      }}
-                      className="bg-limestone hover:bg-[#E5DFD3] text-[#18261F] border border-[#DFD9CE] font-bold text-xs px-3.5 py-2 rounded-xl"
-                    >
-                      Szűrés törlése
-                    </button>
-                  )}
-                  {!hasBothRouteEnds && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingItemId(null);
-                        setNewFrom(filterFrom);
-                        setNewTo(filterTo);
-                        setNewFromCoords(fromCoords);
-                        setNewToCoords(toCoords);
-                        setNewKind('offer');
-                        setShowNewModal(true);
-                      }}
-                      className="bg-pilis text-white font-bold text-xs px-4 py-2 rounded-xl"
-                    >
-                      + Útvonal kiírása
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              displayedRides.map((ride) => (
-                <RideCard
-                  key={ride.id}
-                  ride={ride}
-                  hasExistingAgreement={myAgreements.some((a) => a.ride_id === ride.id)}
-                  kudosCount={kudosCountByUser[ride.user_id] || 0}
-                  onInspectUser={setInspectedUser}
-                  currentUserId={session?.user?.id || profile.id}
-                  onStartAgreement={handleStartRideAgreement}
-                  isSelectedOnMap={Boolean(showMap && selectedRideForMap?.id === ride.id)}
-                  onShowOnMap={(r) => {
-                    if (showMap && selectedRideForMap?.id === r.id) {
-                      setSelectedRideForMap(null);
-                      setShowMap(false);
-                    } else {
-                      setSelectedRideForMap(r);
-                      setShowMap(true);
-                    }
-                  }}
-                  onEditRide={handleOpenEditRide}
-                  onDeleteRide={handleDeleteRide}
-                />
-              ))
-            )}
-          </>
+          <RidesFeedView
+            nowTick={nowTick}
+            profile={profile}
+            session={session}
+            rides={rides}
+            filteredRides={filteredRides}
+            activeTimeRides={activeTimeRides}
+            displayedRides={displayedRides}
+            showingCityFallbackRides={showingCityFallbackRides}
+            initialLoading={initialLoading}
+            rideKindFilter={rideKindFilter}
+            setRideKindFilter={setRideKindFilter}
+            filterFrom={filterFrom}
+            setFilterFrom={setFilterFrom}
+            filterTo={filterTo}
+            setFilterTo={setFilterTo}
+            fromCoords={fromCoords}
+            setFromCoords={setFromCoords}
+            toCoords={toCoords}
+            setToCoords={setToCoords}
+            savedPlaces={savedPlaces}
+            personalRoutines={personalRoutines}
+            hasRouteFilter={hasRouteFilter}
+            hasBothRouteEnds={hasBothRouteEnds}
+            onClearRouteInputs={handleClearRouteInputs}
+            setInlineSeats={setInlineSeats}
+            setInlineComposerMode={setInlineComposerMode}
+            showMap={showMap}
+            setShowMap={setShowMap}
+            selectedRideForMap={selectedRideForMap}
+            setSelectedRideForMap={setSelectedRideForMap}
+            myAgreements={myAgreements}
+            kudosCountByUser={kudosCountByUser}
+            onInspectUser={setInspectedUser}
+            onStartRideAgreement={handleStartRideAgreement}
+            onEditRide={handleOpenEditRide}
+            onDeleteRide={handleDeleteRide}
+            onOpenNewRideModal={() => {
+              setEditingItemId(null);
+              setNewFrom(filterFrom);
+              setNewTo(filterTo);
+              setNewFromCoords(fromCoords);
+              setNewToCoords(toCoords);
+              setNewKind('offer');
+              setShowNewModal(true);
+            }}
+          />
         )}
 
         {activeTab === 'favors' && (
@@ -1833,108 +1655,29 @@ export default function App() {
         </div>
       </main>
 
-      <nav
-        aria-label="Fő navigáció"
-        className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-[#DFD9CE] pb-[env(safe-area-inset-bottom)] z-30"
-      >
-        <div className="max-w-xl mx-auto grid grid-cols-5 items-center">
-          <button
-            type="button"
-            onClick={() => setActiveTab('rides')}
-            className={`py-2 text-[11px] font-bold border-t-2 transition flex flex-col items-center gap-0.5 ${
-              activeTab === 'rides'
-                ? 'border-pilis text-pilis'
-                : 'border-transparent text-[#5C6B62]'
-            }`}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2" />
-              <circle cx="6.5" cy="16.5" r="2.5" />
-              <circle cx="16.5" cy="16.5" r="2.5" />
-            </svg>
-            <span>Utak</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('favors')}
-            className={`py-2 text-[11px] font-bold border-t-2 transition flex flex-col items-center gap-0.5 ${
-              activeTab === 'favors'
-                ? 'border-pilis text-pilis'
-                : 'border-transparent text-[#5C6B62]'
-            }`}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-            </svg>
-            <span>Kaláka</span>
-          </button>
-
-          <div className="flex justify-center py-1.5">
-            <button
-              type="button"
-              aria-label="Új kiírás létrehozása"
-              onClick={() => {
-                setEditingItemId(null);
-                if (activeTab === 'favors') {
-                  setNewKind('favor');
-                  setNewFavorMode('ask');
-                  setNewFrom('');
-                  setNewTo('');
-                  setShowModalAdvanced(false);
-                } else {
-                  if (newKind === 'favor') setNewKind('offer');
-                  setNewFrom(filterFrom);
-                  setNewTo(filterTo);
-                  setNewFromCoords(fromCoords);
-                  setNewToCoords(toCoords);
-                }
-                setShowNewModal(true);
-              }}
-              className="bg-terracotta hover:bg-[#b55538] text-white font-display font-extrabold text-xs px-4 py-2 rounded-full shadow-md transition active:scale-95"
-            >
-              + Új
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('messages')}
-            className={`relative py-2 text-[11px] font-bold border-t-2 transition flex flex-col items-center gap-0.5 ${
-              activeTab === 'messages'
-                ? 'border-pilis text-pilis'
-                : 'border-transparent text-[#5C6B62]'
-            }`}
-          >
-            <div className="relative">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              {(unreadCount > 0 || actionRequiredCount > 0) && (
-                <span className="absolute -top-1.5 -right-3 bg-terracotta text-white text-[9px] font-extrabold px-1.5 rounded-full leading-tight">
-                  {unreadCount > 0 ? unreadCount : `${actionRequiredCount}!`}
-                </span>
-              )}
-            </div>
-            <span>Üzenet</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('pros')}
-            className={`py-2 text-[11px] font-bold border-t-2 transition flex flex-col items-center gap-0.5 ${
-              activeTab === 'pros'
-                ? 'border-pilis text-pilis'
-                : 'border-transparent text-[#5C6B62]'
-            }`}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-            </svg>
-            <span>Szakik</span>
-          </button>
-        </div>
-      </nav>
+      <BottomNavBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        unreadCount={unreadCount}
+        actionRequiredCount={actionRequiredCount}
+        onOpenNewModal={() => {
+          setEditingItemId(null);
+          if (activeTab === 'favors') {
+            setNewKind('favor');
+            setNewFavorMode('ask');
+            setNewFrom('');
+            setNewTo('');
+            setShowModalAdvanced(false);
+          } else {
+            if (newKind === 'favor') setNewKind('offer');
+            setNewFrom(filterFrom);
+            setNewTo(filterTo);
+            setNewFromCoords(fromCoords);
+            setNewToCoords(toCoords);
+          }
+          setShowNewModal(true);
+        }}
+      />
 
       <RoadAlertsModal
         isOpen={showRoadModal}
