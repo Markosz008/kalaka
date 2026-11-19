@@ -243,9 +243,41 @@ export default function UserProfileModal({
     setDeletingAccount(true);
     try {
       try {
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            const ep = sub.endpoint;
+            await sub.unsubscribe().catch(() => {});
+            await supabase.from('push_subscriptions').delete().eq('user_id', userId).eq('endpoint', ep);
+          }
+        }
+      } catch {}
+
+      try {
+        const { data: profRow } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', userId)
+          .maybeSingle();
+        if (profRow?.avatar_url) {
+          const parts = profRow.avatar_url.split('/object/public/avatars/');
+          if (parts[1]) {
+            const storagePath = decodeURIComponent(parts[1].split('?')[0]);
+            await supabase.storage.from('avatars').remove([storagePath]);
+          }
+        }
+      } catch {}
+
+      try {
         localStorage.removeItem(`kalaka_read_${userId}`);
         localStorage.removeItem(`kalaka_hidden_${userId}`);
         localStorage.removeItem(`kalaka_routines_${userId}`);
+        Object.keys(localStorage).forEach((k) => {
+          if (k.startsWith('kalaka_') && k.includes(userId)) {
+            localStorage.removeItem(k);
+          }
+        });
       } catch {}
 
       const { error } = await supabase.rpc('delete_my_account');

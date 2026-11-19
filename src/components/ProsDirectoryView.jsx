@@ -1357,6 +1357,18 @@ export default function ProsDirectoryView({
         onClose={() => setShowFormModal(false)}
         onSubmit={handleSaveProForm}
       />
+
+      <div className="bg-white/80 border border-[#DFD9CE] rounded-2xl p-3 text-[11px] text-[#5C6B62] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <span>
+          Ez a te vállalkozásod, vagy hibás adatot látsz? Kérésedre azonnal javítjuk vagy töröljük az adatlapot.
+        </span>
+        <a
+          href="mailto:markakardos@gmail.com?subject=Kal%C3%A1ka%20Szakik%20%E2%80%93%20Adatlap%20jav%C3%ADt%C3%A1sa%20vagy%20t%C3%B6rl%C3%A9se"
+          className="shrink-0 text-center font-bold text-pilis bg-limestone hover:bg-pilis-soft border border-[#DFD9CE] px-3 py-1.5 rounded-xl transition"
+        >
+          Adatlap javítása / törlése
+        </a>
+      </div>
     </div>
   );
 }

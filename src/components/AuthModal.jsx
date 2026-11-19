@@ -103,6 +103,13 @@ export default function AuthModal({
 
   const handleGoogleLogin = async () => {
     if (!supabase) return;
+    if (mode === 'register' && !adultConfirmed) {
+      setFeedback({
+        type: 'err',
+        text: 'A regisztrációhoz pipáld be, hogy elmúltál 18 éves és elfogadod a feltételeket.'
+      });
+      return;
+    }
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin }
@@ -310,7 +317,7 @@ export default function AuthModal({
                       className="accent-pilis w-4 h-4 mt-0.5 shrink-0"
                     />
                     <span>
-                      Elmúltam 18 éves, elolvastam és elfogadom az{' '}
+                      Elmúltam 18 éves, elfogadom az{' '}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -320,9 +327,9 @@ export default function AuthModal({
                         }}
                         className="text-pilis font-bold underline"
                       >
-                        ÁSZF-et, a Házirendet és az Adatkezelési tájékoztatót
+                        ÁSZF-et és a Házirendet
                       </button>
-                      .
+                      , és megismertem az Adatkezelési tájékoztatót.
                     </span>
                   </label>
                 </>
@@ -344,6 +351,20 @@ export default function AuthModal({
             >
               Folytatás Google-fiókkal
             </button>
+            <p className="text-[11px] text-[#5C6B62] text-center leading-snug pt-0.5">
+              A belépéssel igazolod, hogy elmúltál 18 éves, elfogadod az{' '}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (onOpenLegalModal) onOpenLegalModal();
+                }}
+                className="text-pilis font-bold underline"
+              >
+                ÁSZF-et és a Házirendet
+              </button>
+              , valamint megismerted az Adatkezelési tájékoztatót.
+            </p>
           </div>
         )}
       </div>
