@@ -26,6 +26,28 @@ export default function RoadAlertsModal({
   const [submitting, setSubmitting] = useState(false);
   const [noteOpenId, setNoteOpenId] = useState(null);
   const [noteText, setNoteText] = useState('');
+  const [vpStyle, setVpStyle] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen || typeof window === 'undefined' || !window.visualViewport) {
+      setVpStyle(null);
+      return;
+    }
+    const vv = window.visualViewport;
+    const syncViewport = () => {
+      setVpStyle({
+        height: `${Math.round(vv.height)}px`,
+        top: `${Math.round(vv.offsetTop)}px`
+      });
+    };
+    syncViewport();
+    vv.addEventListener('resize', syncViewport);
+    vv.addEventListener('scroll', syncViewport);
+    return () => {
+      vv.removeEventListener('resize', syncViewport);
+      vv.removeEventListener('scroll', syncViewport);
+    };
+  }, [isOpen]);
 
   const activeCategoryConfig = RADAR_CATEGORY_MAP[formCat] || RADAR_CATEGORIES[0];
 
@@ -97,10 +119,11 @@ export default function RoadAlertsModal({
       role="dialog"
       aria-modal="true"
       aria-label="Szentendrei Városi Radar"
-      className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      style={vpStyle || undefined}
+      className="fixed inset-x-0 top-0 h-[100dvh] bg-black/50 z-50 flex items-end sm:items-center justify-center pt-[calc(env(safe-area-inset-top)+0.75rem)] px-0 pb-0 sm:p-4"
     >
-      <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] space-y-3 border border-[#DFD9CE] shadow-2xl max-h-[92vh] overflow-y-auto box-border">
-        <div className="flex justify-between items-start gap-2">
+      <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl px-4 sm:px-5 pt-4 sm:pt-5 pb-0 border border-[#DFD9CE] shadow-2xl max-h-full flex flex-col overflow-hidden box-border">
+        <div className="flex justify-between items-start gap-2 pb-3 shrink-0">
           <div>
             <h3 className="font-display font-extrabold text-lg text-[#18261F]">
               Szentendrei Városi Radar
@@ -118,6 +141,8 @@ export default function RoadAlertsModal({
             Bezárás ✕
           </button>
         </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
@@ -416,6 +441,7 @@ export default function RoadAlertsModal({
             {matchingActiveAlert ? 'Csatolás a meglévő jelzéshez' : 'Jelzés beküldése'}
           </button>
         </form>
+        </div>
       </div>
     </div>
   );
