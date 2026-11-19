@@ -165,7 +165,7 @@ export default function BetaGateModal({
           )}
 
           <a
-            href="mailto:markakardos@gmail.com?subject=Kal%C3%A1ka%20Szentendre%20%E2%80%93%20Megh%C3%ADv%C3%B3k%C3%B3d%20k%C3%A9r%C3%A9se&body=Szia!%20Szentendrei%20lakosk%C3%A9nt%20szeretn%C3%A9k%20megh%C3%ADv%C3%B3k%C3%B3dot%20k%C3%A9rni%20a%20Kal%C3%A1ka%20pr%C3%B3baid%C5%91szak%C3%A1hoz."
+            href="mailto:info@kalakazz.hu?subject=Kal%C3%A1ka%20Szentendre%20%E2%80%93%20Megh%C3%ADv%C3%B3k%C3%B3d%20k%C3%A9r%C3%A9se&body=Szia!%20Szentendrei%20lakosk%C3%A9nt%20szeretn%C3%A9k%20megh%C3%ADv%C3%B3k%C3%B3dot%20k%C3%A9rni%20a%20Kal%C3%A1ka%20pr%C3%B3baid%C5%91szak%C3%A1hoz."
             className="block w-full text-center text-xs font-bold text-pilis hover:underline py-1"
           >
             Nincs még meghívód? Kérj egyet itt →

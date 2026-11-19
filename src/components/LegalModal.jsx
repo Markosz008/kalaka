@@ -108,7 +108,7 @@ export default function LegalModal({ isOpen, onClose }) {
                   1. Adatkezelő és kezelt adatok (GDPR 6. és 13–14. cikk)
                 </div>
                 <p className="text-[#5C6B62]">
-                  Adatkezelő: <strong>Kardos Márk</strong> (2000 Szentendre, Egres út 131/C; e-mail: <strong>markakardos@gmail.com</strong>).
+                  Adatkezelő: <strong>Kardos Márk</strong> (2000 Szentendre, Egres út 131/C; e-mail: <strong>info@kalakazz.hu</strong>).
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li><strong>Fiók, utak, kaláka, chat és radar jelzések</strong> (<em>szerződés teljesítése – 6. cikk (1) b</em>): e-mail cím (nem nyilvános), megjelenő név, városrész, opcionális bemutatkozás és autó megnevezés, közzétett bejegyzések és üzenetek. <em>Megőrzés:</em> a fiók törléséig; a Városi Radar jelzései 45 perc – 6 óra elteltével automatikusan lejárnak.</li>
@@ -177,8 +177,8 @@ export default function LegalModal({ isOpen, onClose }) {
                   <li><strong>Üzemeltető és adatkezelő:</strong> Kardos Márk (magánszemély, nem üzletszerű közösségi működtetés)</li>
                   <li><strong>Levelezési cím:</strong> 2000 Szentendre, Egres út 131/C</li>
                   <li><strong>Kapcsolat, adatvédelem és jogi bejelentések:</strong>{' '}
-                    <a href="mailto:markakardos@gmail.com" className="text-pilis font-bold underline">
-                      markakardos@gmail.com
+                    <a href="mailto:info@kalakazz.hu" className="text-pilis font-bold underline">
+                      info@kalakazz.hu
                     </a>
                   </li>
                   <li><strong>Tárhelyszolgáltató:</strong> Cloudflare, Inc. (101 Townsend St, San Francisco, CA 94107, USA)</li>
@@ -194,7 +194,7 @@ export default function LegalModal({ isOpen, onClose }) {
                   Ha bármelyik fülön (Utak, Kaláka, Városi Radar, Szakik vagy Chat) jogellenes, valótlan, személyiségi jogot sértő vagy adatvédelmi szempontból aggályos tartalmat találsz, jelezd a chat <strong>Jelentés</strong> gombjával, vagy írj közvetlenül ide:
                 </p>
                 <a
-                  href="mailto:markakardos@gmail.com?subject=Kal%C3%A1ka%20Szentendre%20%E2%80%93%20Tartalom%20vagy%20adatlap%20bejelent%C3%A9se"
+                  href="mailto:info@kalakazz.hu?subject=Kal%C3%A1ka%20Szentendre%20%E2%80%93%20Tartalom%20vagy%20adatlap%20bejelent%C3%A9se"
                   className="inline-block bg-limestone hover:bg-pilis-soft text-pilis font-bold px-3 py-2 rounded-xl border border-[#DFD9CE] transition"
                 >
                   Bejelentés küldése e-mailben →

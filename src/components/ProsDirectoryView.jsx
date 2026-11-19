@@ -1363,7 +1363,7 @@ export default function ProsDirectoryView({
           Ez a te vállalkozásod, vagy hibás adatot látsz? Kérésedre azonnal javítjuk vagy töröljük az adatlapot.
         </span>
         <a
-          href="mailto:markakardos@gmail.com?subject=Kal%C3%A1ka%20Szakik%20%E2%80%93%20Adatlap%20jav%C3%ADt%C3%A1sa%20vagy%20t%C3%B6rl%C3%A9se"
+          href="mailto:info@kalakazz.hu?subject=Kal%C3%A1ka%20Szakik%20%E2%80%93%20Adatlap%20jav%C3%ADt%C3%A1sa%20vagy%20t%C3%B6rl%C3%A9se"
           className="shrink-0 text-center font-bold text-pilis bg-limestone hover:bg-pilis-soft border border-[#DFD9CE] px-3 py-1.5 rounded-xl transition"
         >
           Adatlap javítása / törlése
