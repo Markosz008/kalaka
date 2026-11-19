@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RADAR_CATEGORY_MAP } from '../constants/cityRadar.js';
+import { supabase } from '../lib/supabase.js';
+import KalakaLogo from './KalakaLogo.jsx';
+import CityMilestonesModal from './CityMilestonesModal.jsx';
 
 const SEVERITY_RANK = { danger: 3, warn: 2, ok: 1 };
 
@@ -11,6 +14,35 @@ export default function HeaderRoadBar({
   onOpenAuthModal
 }) {
   const isLoggedIn = Boolean(session?.user);
+  const [cityStats, setCityStats] = useState({
+    ride_hearts: 0,
+    favor_hearts: 0,
+    total_hearts: 0
+  });
+  const [loadingCityStats, setLoadingCityStats] = useState(false);
+  const [showCityModal, setShowCityModal] = useState(false);
+
+  const loadCityStats = useCallback(async () => {
+    if (!supabase) return;
+    setLoadingCityStats(true);
+    try {
+      const { data, error } = await supabase.rpc('get_city_heart_stats');
+      if (!error && data) {
+        setCityStats({
+          ride_hearts: Number(data.ride_hearts || 0),
+          favor_hearts: Number(data.favor_hearts || 0),
+          total_hearts: Number(data.total_hearts || 0)
+        });
+      }
+    } catch {
+    } finally {
+      setLoadingCityStats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCityStats();
+  }, [loadCityStats, profile?.ride_hearts, profile?.favor_hearts]);
 
   const { displayAlerts, activeProblemCount } = useMemo(() => {
     const realAlerts = (roadAlerts || []).filter((a) => a && a.id !== 'default-ok');
@@ -76,75 +108,107 @@ export default function HeaderRoadBar({
   };
 
   return (
-    <header className="bg-gradient-to-br from-pilis to-pilis-light text-[#F7F4EC] pt-[calc(1rem+env(safe-area-inset-top))] px-4 pb-5 rounded-b-3xl shadow-md">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
-          <span className="font-display font-extrabold text-xl tracking-tight">
-            Kaláka
-          </span>
-          <span className="text-xs font-medium text-white/70">Szentendre</span>
+    <>
+      <header className="bg-gradient-to-br from-pilis to-pilis-light text-[#F7F4EC] pt-[calc(1rem+env(safe-area-inset-top))] px-4 pb-5 rounded-b-3xl shadow-md">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <KalakaLogo bare className="w-7 h-7 shrink-0" />
+              <span className="font-display font-extrabold text-xl tracking-tight leading-none">
+                Kaláka
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowCityModal(true);
+                loadCityStats();
+              }}
+              className="flex items-center gap-1 text-[11px] font-semibold text-white/90 bg-white/10 hover:bg-white/20 border border-white/15 px-2 py-0.5 rounded-full transition shrink-0"
+              title="Szentendre közös eredménye"
+            >
+              <span>Szentendre</span>
+              <span className="text-white/40">·</span>
+              <svg
+                className="w-3 h-3 text-terracotta fill-current shrink-0"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+              </svg>
+              <span className="font-bold text-white">{cityStats.total_hearts}</span>
+            </button>
+          </div>
+
+          {isLoggedIn ? (
+            <button
+              onClick={onOpenAuthModal}
+              className="text-xs font-semibold bg-white/15 hover:bg-white/25 border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 transition shrink-0 max-w-[140px]"
+            >
+              <span className="font-bold truncate">
+                {profile?.display_name && profile.display_name !== 'Belépés'
+                  ? profile.display_name
+                  : 'Profilom'}
+              </span>
+              {cleanZone && (
+                <span className="text-white/75 hidden sm:inline shrink-0">• {cleanZone}</span>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={onOpenAuthModal}
+              className="text-xs font-bold bg-white text-pilis hover:bg-limestone px-3.5 py-1.5 rounded-full shadow-sm transition shrink-0"
+            >
+              Belépés
+            </button>
+          )}
         </div>
 
-        {isLoggedIn ? (
-          <button
-            onClick={onOpenAuthModal}
-            className="text-xs font-semibold bg-white/15 hover:bg-white/25 border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 transition"
-          >
-            <span className="font-bold">
-              {profile?.display_name && profile.display_name !== 'Belépés'
-                ? profile.display_name
-                : 'Profilom'}
-            </span>
-            {cleanZone && (
-              <span className="text-white/75 hidden sm:inline">• {cleanZone}</span>
+        <button
+          type="button"
+          onClick={onOpenRoadModal}
+          className={`mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs text-left transition hover:bg-white/10 ${
+            statusStyles[currentAlert.status_level] || statusStyles.ok
+          }`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                dotColor[currentAlert.status_level] || dotColor.ok
+              }`}
+            />
+            {isReal && currentAlert.zone && (
+              <span className="text-[10px] font-extrabold bg-white/15 px-1.5 py-0.5 rounded text-white shrink-0">
+                {currentAlert.zone}
+              </span>
             )}
-          </button>
-        ) : (
-          <button
-            onClick={onOpenAuthModal}
-            className="text-xs font-bold bg-white text-pilis hover:bg-limestone px-3.5 py-1.5 rounded-full shadow-sm transition"
-          >
-            Belépés
-          </button>
-        )}
-      </div>
-
-      <button
-        type="button"
-        onClick={onOpenRoadModal}
-        className={`mt-3 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-xs text-left transition hover:bg-white/10 ${
-          statusStyles[currentAlert.status_level] || statusStyles.ok
-        }`}
-      >
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              dotColor[currentAlert.status_level] || dotColor.ok
-            }`}
-          />
-          {isReal && currentAlert.zone && (
-            <span className="text-[10px] font-extrabold bg-white/15 px-1.5 py-0.5 rounded text-white shrink-0">
-              {currentAlert.zone}
+            <span className="truncate font-medium">
+              {currentAlert.message}
             </span>
-          )}
-          <span className="truncate font-medium">
-            {currentAlert.message}
+            {isReal && (currentAlert.confirm_count || 1) > 1 && (
+              <span className="text-[10px] font-bold text-white/80 shrink-0">
+                ({currentAlert.confirm_count} jelzés)
+              </span>
+            )}
+          </div>
+
+          <span className="shrink-0 bg-white/15 px-2.5 py-0.5 rounded-full font-semibold text-[11px]">
+            {activeProblemCount > 1
+              ? `${activeProblemCount} aktív ›`
+              : activeProblemCount === 1
+                ? `${catShort || 'Radar'} ›`
+                : 'Radar ›'}
           </span>
-          {isReal && (currentAlert.confirm_count || 1) > 1 && (
-            <span className="text-[10px] font-bold text-white/80 shrink-0">
-              ({currentAlert.confirm_count} jelzés)
-            </span>
-          )}
-        </div>
+        </button>
+      </header>
 
-        <span className="shrink-0 bg-white/15 px-2.5 py-0.5 rounded-full font-semibold text-[11px]">
-          {activeProblemCount > 1
-            ? `${activeProblemCount} aktív ›`
-            : activeProblemCount === 1
-            ? `${catShort || 'Radar'} ›`
-            : 'Radar ›'}
-        </span>
-      </button>
-    </header>
+      <CityMilestonesModal
+        isOpen={showCityModal}
+        onClose={() => setShowCityModal(false)}
+        stats={cityStats}
+        loading={loadingCityStats}
+      />
+    </>
   );
 }
