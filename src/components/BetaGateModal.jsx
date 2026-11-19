@@ -6,6 +6,7 @@ import {
   savePendingInviteCode,
   clearPendingInviteCode
 } from '../constants/betaConfig.js';
+import KalakaLogo from './KalakaLogo.jsx';
 
 export default function BetaGateModal({
   session,
@@ -94,9 +95,12 @@ export default function BetaGateModal({
   return (
     <div className="fixed inset-0 z-40 bg-limestone/95 backdrop-blur-md overflow-y-auto flex items-center justify-center p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="bg-white w-full max-w-sm rounded-3xl p-5 sm:p-6 border border-[#DFD9CE] shadow-2xl space-y-4">
+        <div className="flex justify-center pt-1">
+          <KalakaLogo className="w-16 h-16 transform hover:scale-105 transition duration-300" />
+        </div>
         <div className="text-center space-y-1.5">
           <div className="inline-block text-[11px] font-bold text-pilis bg-pilis-soft px-3 py-1 rounded-full">
-            Zárt szentendrei próbaidőszak
+            Zárt agglomerációs próbaidőszak
           </div>
           <h1 className="font-display font-extrabold text-2xl text-[#18261F]">
             Kaláka Szentendre
