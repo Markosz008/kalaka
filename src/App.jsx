@@ -255,7 +255,18 @@ export default function App() {
         }
       }
       setProfile(data);
-      setHiddenAgreementIds(getHiddenAgreements(data.id));
+      const dbHidden = Array.isArray(data.hidden_agreement_ids) ? data.hidden_agreement_ids : [];
+      const localHidden = getHiddenAgreements(data.id);
+      const mergedHidden = Array.from(new Set([...dbHidden, ...localHidden]));
+      setHiddenAgreementIds(mergedHidden);
+      localStorage.setItem(`kalaka_hidden_${data.id}`, JSON.stringify(mergedHidden));
+      if (supabase && mergedHidden.length > dbHidden.length) {
+        supabase
+          .from('profiles')
+          .update({ hidden_agreement_ids: mergedHidden })
+          .eq('id', data.id)
+          .then(() => {});
+      }
       setPersonalRoutines(getPersonalRoutines(data.id));
       setSavedPlaces(getSavedPlaces(data.id));
     }
@@ -632,6 +643,13 @@ export default function App() {
             if (!prev.includes(msg.agreement_id)) return prev;
             const next = prev.filter((id) => id !== msg.agreement_id);
             localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
+            if (supabase) {
+              supabase
+                .from('profiles')
+                .update({ hidden_agreement_ids: next })
+                .eq('id', uid)
+                .then(() => {});
+            }
             return next;
           });
           playSoftNotificationTone();
@@ -1459,7 +1477,7 @@ export default function App() {
     fetchAllLiveData(session?.user?.id);
   };
 
-  const handleHideCompletedAgreement = (e, agrId) => {
+  const handleHideCompletedAgreement = async (e, agrId) => {
     e.preventDefault();
     e.stopPropagation();
     const uid = session?.user?.id;
@@ -1468,9 +1486,16 @@ export default function App() {
     setMyAgreements((prev) =>
       prev.map((item) => (item.id === agrId ? { ...item, has_unread: false } : item))
     );
+    setIncomingToast((prev) => (prev?.agreement_id === agrId ? null : prev));
     const next = Array.from(new Set([...hiddenAgreementIds, agrId]));
     setHiddenAgreementIds(next);
     localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
+    if (supabase) {
+      await supabase
+        .from('profiles')
+        .update({ hidden_agreement_ids: next })
+        .eq('id', uid);
+    }
   };
 
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
@@ -1498,7 +1523,7 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-md"
+          className="fixed top-[calc(env(safe-area-inset-top)+0.75rem)] left-1/2 -translate-x-1/2 z-[70] w-[92%] max-w-md"
         >
           <div
             className={`px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold flex items-center justify-between gap-2 ${
@@ -1530,7 +1555,7 @@ export default function App() {
               setIncomingToast(null);
             }
           }}
-          className="fixed top-3 left-3 right-3 max-w-md mx-auto z-50 bg-[#18261F] text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-400/40 flex items-center justify-between gap-3 cursor-pointer"
+          className="fixed top-[calc(env(safe-area-inset-top)+0.75rem)] left-3 right-3 max-w-md mx-auto z-50 bg-[#18261F] text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-400/40 flex items-center justify-between gap-3 cursor-pointer"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full bg-terracotta animate-ping shrink-0" />
