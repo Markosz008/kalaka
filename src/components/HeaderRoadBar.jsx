@@ -144,7 +144,7 @@ export default function HeaderRoadBar({
           {isLoggedIn ? (
             <button
               onClick={onOpenAuthModal}
-              className="text-xs font-semibold bg-white/15 hover:bg-white/25 border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 transition shrink-0 max-w-[140px]"
+              className="text-xs font-semibold bg-white/15 hover:bg-white/25 border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5 transition shrink-0 max-w-[150px] sm:max-w-[280px]"
             >
               <span className="font-bold truncate">
                 {profile?.display_name && profile.display_name !== 'Belépés'
@@ -152,7 +152,7 @@ export default function HeaderRoadBar({
                   : 'Profilom'}
               </span>
               {cleanZone && (
-                <span className="text-white/75 hidden sm:inline shrink-0">• {cleanZone}</span>
+                <span className="text-white/75 hidden sm:inline-block truncate max-w-[120px] shrink-0">• {cleanZone}</span>
               )}
             </button>
           ) : (
