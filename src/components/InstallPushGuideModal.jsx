@@ -307,6 +307,7 @@ export default function InstallPushGuideModal({
             </div>
           )}
 
+          {!info.isStandalone && (
           <div className="bg-white border border-[#DFD9CE] rounded-2xl p-3 text-xs">
             <button
               type="button"
@@ -357,6 +358,7 @@ export default function InstallPushGuideModal({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

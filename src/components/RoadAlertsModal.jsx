@@ -199,27 +199,25 @@ export default function RoadAlertsModal({
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.75rem+env(safe-area-inset-bottom))]"
         >
 
-        <button
-          type="button"
-          onClick={() => setShowPushGuide(true)}
-          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-left text-xs transition ${
-            pushActive
-              ? 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
-              : 'bg-white border-[#DFD9CE] text-[#18261F] hover:border-pilis'
-          }`}
-        >
-          <div className="min-w-0">
-            <div className="font-bold text-[11px] truncate">
-              {pushActive ? 'Értesítések bekapcsolva ✓' : 'Kérj értesítést dugóról és fontos hírekről'}
+        {!pushActive && (
+          <button
+            type="button"
+            onClick={() => setShowPushGuide(true)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-left text-xs transition bg-white border-[#DFD9CE] text-[#18261F] hover:border-pilis"
+          >
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] truncate">
+                Kérj értesítést dugóról és fontos hírekről
+              </div>
+              <div className="text-[10px] text-[#5C6B62] truncate">
+                Telefonos jelzések és főképernyőre rakás
+              </div>
             </div>
-            <div className="text-[10px] text-[#5C6B62] truncate">
-              {pushActive ? 'Értesítési beállítások módosítása' : 'Telefonos jelzések és főképernyőre rakás'}
-            </div>
-          </div>
-          <span className="shrink-0 text-[11px] font-bold bg-limestone px-2.5 py-1 rounded-full text-pilis">
-            Beállítás ›
-          </span>
-        </button>
+            <span className="shrink-0 text-[11px] font-bold bg-limestone px-2.5 py-1 rounded-full text-pilis">
+              Bekapcsolás ›
+            </span>
+          </button>
+        )}
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
