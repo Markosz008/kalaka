@@ -191,3 +191,23 @@ export function triggerRadarPushIfNeeded(supabase, alertId) {
   if (!supabase || !alertId) return;
   callRadarPushEndpoint(supabase, { mode: 'alert', alert_id: alertId }).catch(() => {});
 }
+
+export function triggerAgreementPush(supabase, agreementId, title, body) {
+  if (!supabase || !agreementId) return;
+  callRadarPushEndpoint(supabase, {
+    mode: 'agreement',
+    agreement_id: agreementId,
+    title: title || 'Kaláka Szentendre',
+    body: body || 'Új üzeneted érkezett'
+  }).catch(() => {});
+}
+
+export function syncAppBadge(count) {
+  if (typeof navigator === 'undefined') return;
+  const n = Math.max(0, Number(count) || 0);
+  if (n > 0 && typeof navigator.setAppBadge === 'function') {
+    navigator.setAppBadge(n).catch(() => {});
+  } else if (n === 0 && typeof navigator.clearAppBadge === 'function') {
+    navigator.clearAppBadge().catch(() => {});
+  }
+}
