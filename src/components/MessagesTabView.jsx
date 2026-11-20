@@ -4,13 +4,36 @@ import AvatarBadge from './AvatarBadge.jsx';
 export default function MessagesTabView({
   visibleAgreements,
   onOpenAgreement,
-  onHideCompletedAgreement
+  onHideCompletedAgreement,
+  showPushBanner,
+  onOpenPushSettings
 }) {
   return (
     <div className="space-y-2.5">
       <h2 className="font-display font-extrabold text-lg">
         Beszélgetéseim ({visibleAgreements.length})
       </h2>
+
+      {showPushBanner && onOpenPushSettings && (
+        <div className="bg-pilis-soft/70 border border-pilis/20 rounded-2xl p-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-extrabold text-[#18261F]">
+              Azonnali jelzés új üzenetről
+            </div>
+            <p className="text-[11px] text-[#5C6B62] leading-snug">
+              Kapcsold be az értesítéseket, hogy zárt appnál is szóljunk, ha jelentkezik egy szomszéd.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenPushSettings}
+            className="shrink-0 bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-2 rounded-xl transition"
+          >
+            Bekapcsolás ›
+          </button>
+        </div>
+      )}
+
       {visibleAgreements.length === 0 ? (
         <div className="bg-white rounded-2xl p-6 text-center text-xs text-[#5C6B62] border border-[#DFD9CE] space-y-2">
           <div className="font-bold text-sm text-[#18261F]">

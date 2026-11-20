@@ -120,7 +120,7 @@ export async function subscribeToWebPush(supabase, userId, categories) {
     throw new Error('Nem sikerült bekapcsolni az értesítéseket ezen a telefonon.');
   }
 
-  const cats = Array.isArray(categories) && categories.length > 0
+  const cats = Array.isArray(categories)
     ? categories
     : ['traffic', 'transit', 'utility', 'local'];
 
@@ -140,7 +140,7 @@ export async function subscribeToWebPush(supabase, userId, categories) {
 
 export async function updatePushCategories(supabase, userId, endpoint, categories) {
   if (!supabase || !userId || !endpoint) return;
-  const cats = categories.length > 0 ? categories : ['traffic'];
+  const cats = Array.isArray(categories) ? categories : [];
   const { error } = await supabase
     .from('push_subscriptions')
     .update({ categories: cats })

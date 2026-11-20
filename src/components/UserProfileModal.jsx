@@ -10,7 +10,9 @@ export default function UserProfileModal({
   initialZone,
   currentUser,
   onClose,
-  onProfileUpdated
+  onProfileUpdated,
+  pushEnabled,
+  onOpenPushSettings
 }) {
   const [profileData, setProfileData] = useState(null);
   const [kudosList, setKudosList] = useState([]);
@@ -467,6 +469,31 @@ export default function UserProfileModal({
             {gpsFeedback && (
               <div className="text-[11px] font-semibold text-pilis bg-pilis-soft px-3 py-1.5 rounded-xl">
                 {gpsFeedback}
+              </div>
+            )}
+            {isOwnProfile && onOpenPushSettings && (
+              <div className="pt-2.5 border-t border-[#ECE7DC] flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-[#18261F]">
+                    Telefonos értesítések
+                  </div>
+                  <div className="text-[11px] text-[#5C6B62]">
+                    {pushEnabled
+                      ? 'Aktív — fuvarokról és üzenetekről szólunk'
+                      : 'Kikapcsolva — nem kapsz jelzést zárt appnál'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenPushSettings}
+                  className={`shrink-0 text-xs font-bold px-3 py-1.5 rounded-xl border transition ${
+                    pushEnabled
+                      ? 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-pilis text-white border-pilis hover:bg-pilis-light'
+                  }`}
+                >
+                  {pushEnabled ? 'Beállítás ›' : 'Bekapcsolás ›'}
+                </button>
               </div>
             )}
             {isOwnProfile && (
