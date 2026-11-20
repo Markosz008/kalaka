@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { formatRemainingTime, maskAddressForPublic } from '../constants/szentendreData.js';
 import AvatarBadge from './AvatarBadge.jsx';
+import PickupSelectorModal from './PickupSelectorModal.jsx';
 
 export default function RideCard({
   ride,
@@ -16,6 +17,7 @@ export default function RideCard({
 }) {
   const [selectedStop, setSelectedStop] = useState(ride.stops?.[0] || null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showPickupModal, setShowPickupModal] = useState(false);
 
   const isAsk = ride.kind === 'ask';
   const isRecurring = Boolean(ride.is_recurring);
@@ -32,6 +34,14 @@ export default function RideCard({
   const displayDest = isOwnRide
     ? ride.dest_text
     : ride.public_dest_text || maskAddressForPublic(ride.dest_text);
+
+  const handleJoinClick = () => {
+    if (hasExistingAgreement || isAsk) {
+      onStartAgreement(ride, selectedStop);
+      return;
+    }
+    setShowPickupModal(true);
+  };
 
   return (
     <article
@@ -219,7 +229,7 @@ export default function RideCard({
         ) : (
           <button
             type="button"
-            onClick={() => onStartAgreement(ride, selectedStop)}
+            onClick={handleJoinClick}
             className={`shrink-0 text-xs font-bold px-4 py-2.5 rounded-xl text-white shadow-sm transition active:scale-95 ${
               hasExistingAgreement
                 ? 'bg-emerald-700 hover:bg-emerald-800'
@@ -236,6 +246,19 @@ export default function RideCard({
           </button>
         )}
       </div>
+
+      <PickupSelectorModal
+        isOpen={showPickupModal}
+        ride={ride}
+        initialStop={selectedStop}
+        displayOrigin={displayOrigin}
+        displayDest={displayDest}
+        onClose={() => setShowPickupModal(false)}
+        onConfirm={(picked) => {
+          setShowPickupModal(false);
+          onStartAgreement(ride, picked);
+        }}
+      />
     </article>
   );
 }

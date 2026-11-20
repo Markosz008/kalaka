@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 import { triggerAgreementPush } from '../lib/webPush.js';
+import { estimateRideDetour, resolvePointCoords } from '../lib/detourCalc.js';
 import AvatarBadge from './AvatarBadge.jsx';
 
 const LiveRideMap = React.lazy(() => import('./LiveRideMap.jsx'));
+const DetourPreviewMap = React.lazy(() => import('./DetourPreviewMap.jsx'));
 
 function haversineMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
@@ -38,6 +40,7 @@ export default function AgreementChatModal({
   const [editingCar, setEditingCar] = useState(false);
   const [carDraft, setCarDraft] = useState('');
   const [savingCar, setSavingCar] = useState(false);
+  const [showDetourMap, setShowDetourMap] = useState(false);
 
   const bottomRef = useRef(null);
   const watchIdRef = useRef(null);
@@ -294,14 +297,21 @@ export default function AgreementChatModal({
         }
       }
 
+      const approvalText = bothConfirmed
+        ? `${currentUser?.display_name || 'A csatlakozó'} véglegesítette – a megállapodás rögzítve.`
+        : `${currentUser?.display_name || 'A hirdető'} elfogadta a jelentkezést.`;
       await supabase.from('messages').insert({
         agreement_id: liveAgr.id,
         sender_id: currentUser.id,
-        body: bothConfirmed
-          ? `${currentUser?.display_name || 'A csatlakozó'} véglegesítette – a megállapodás rögzítve.`
-          : `${currentUser?.display_name || 'A hirdető'} elfogadta a jelentkezést.`,
+        body: approvalText,
         is_system_event: true
       });
+      triggerAgreementPush(
+        supabase,
+        liveAgr.id,
+        bothConfirmed ? 'Megállapodás véglegesítve' : 'Jelentkezés elfogadva',
+        approvalText
+      );
 
       setLiveAgr((prev) => ({ ...prev, ...data }));
       if (onAgreementUpdated) onAgreementUpdated(data);
@@ -348,6 +358,12 @@ export default function AgreementChatModal({
           body: systemTexts[nextStatus] || nextStatus,
           is_system_event: true
         });
+        triggerAgreementPush(
+          supabase,
+          liveAgr.id,
+          nextStatus === 'started' ? 'A sofőr elindult' : 'Megérkezés rögzítve',
+          systemTexts[nextStatus] || nextStatus
+        );
 
         setLiveAgr((prev) => ({ ...prev, ...data }));
         if (onAgreementUpdated) onAgreementUpdated(data);
@@ -378,6 +394,12 @@ export default function AgreementChatModal({
           body: 'Pontos várakozási hely megosztva a térképen.',
           is_system_event: true
         });
+        triggerAgreementPush(
+          supabase,
+          liveAgr.id,
+          'Pontos várakozási hely',
+          'Pontos várakozási hely megosztva a térképen.'
+        );
         setSharingPassengerPin(false);
       },
       () => {
@@ -546,6 +568,27 @@ export default function AgreementChatModal({
     return meters < 1000
       ? `Kb. ${mins} perc • ${meters} m`
       : `Kb. ${mins} perc • ${(meters / 1000).toFixed(1)} km`;
+  })();
+
+  const pickupDetourData = (() => {
+    if (!isRideAgreement || !liveAgr.pickup_stop_name) return null;
+    const cleanPickup = liveAgr.pickup_stop_name.replace(/^\d{2}:\d{2}\s*/, '').trim();
+    const pickupCoords = resolvePointCoords(cleanPickup);
+    const titleParts = String(liveAgr.title || '').split('→').map((s) => s.trim());
+    const originText = liveAgr.ride_origin_text || liveAgr.ride?.origin_text || titleParts[0] || '';
+    const destText = liveAgr.ride_dest_text || liveAgr.ride?.dest_text || titleParts[1] || '';
+    const originCoords = resolvePointCoords(originText);
+    const destCoords = resolvePointCoords(destText);
+    const detour = estimateRideDetour(originCoords, destCoords, pickupCoords);
+    return {
+      pickupLabel: liveAgr.pickup_stop_name,
+      originLabel: originText,
+      destLabel: destText,
+      originCoords,
+      destCoords,
+      pickupCoords,
+      detour
+    };
   })();
 
   const quickReplies = isProInquiry
@@ -823,13 +866,24 @@ export default function AgreementChatModal({
 
             <div className="shrink-0 flex items-center gap-1.5">
               {status === 'chatting' && isPostOwner && !ownerConfirmed && (
-                <button
-                  disabled={busy}
-                  onClick={handleSequentialApproval}
-                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                >
-                  Elfogadom
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={handleCancelAgreement}
+                    className="bg-white hover:bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-2.5 py-1.5 rounded-xl"
+                  >
+                    Nem esik útba
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={handleSequentialApproval}
+                    className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
+                  >
+                    Elfogadom
+                  </button>
+                </>
               )}
 
               {status === 'chatting' && !isPostOwner && ownerConfirmed && !joinerConfirmed && (
@@ -899,6 +953,52 @@ export default function AgreementChatModal({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {pickupDetourData && ['chatting', 'agreed'].includes(status) && (
+          <div className="bg-white border-b border-[#DFD9CE]">
+            <div className="px-3.5 py-2 flex items-center justify-between gap-2 flex-wrap">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="text-[11px] text-[#5C6B62] truncate">
+                  Felszállópont: <strong className="text-[#18261F]">{pickupDetourData.pickupLabel}</strong>
+                </div>
+                {pickupDetourData.detour && (
+                  <span
+                    className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full border ${pickupDetourData.detour.badgeClass}`}
+                  >
+                    {pickupDetourData.detour.label}
+                  </span>
+                )}
+              </div>
+              {pickupDetourData.pickupCoords && (
+                <button
+                  type="button"
+                  onClick={() => setShowDetourMap((prev) => !prev)}
+                  className="shrink-0 text-[11px] font-bold px-2.5 py-1.5 rounded-xl bg-limestone hover:bg-pilis-soft text-pilis border border-[#DFD9CE] transition"
+                >
+                  {showDetourMap ? 'Térkép elrejtése' : 'Térképen ›'}
+                </button>
+              )}
+            </div>
+            {showDetourMap && pickupDetourData.pickupCoords && (
+              <div className="border-t border-[#ECE7DC]">
+                <React.Suspense
+                  fallback={
+                    <div className="w-full h-40 flex items-center justify-center text-xs font-semibold text-[#5C6B62] bg-[#E8E4DA]">
+                      Térkép betöltése...
+                    </div>
+                  }
+                >
+                  <DetourPreviewMap
+                    originCoords={pickupDetourData.originCoords}
+                    destCoords={pickupDetourData.destCoords}
+                    pickupCoords={pickupDetourData.pickupCoords}
+                    pickupLabel={pickupDetourData.pickupLabel}
+                  />
+                </React.Suspense>
+              </div>
+            )}
           </div>
         )}
 

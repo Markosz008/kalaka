@@ -525,6 +525,8 @@ export default function App() {
               : a.requester?.avatar_url || null,
             post_owner_id: a.ride?.user_id || a.helper_id,
             car_info: a.ride?.car_info || a.helper?.car_info || null,
+            ride_origin_text: a.ride?.origin_text || null,
+            ride_dest_text: a.ride?.dest_text || null,
             title: a.ride
               ? formatAgreementRideTitle(a.ride.origin_text, a.ride.dest_text, a.status)
               : a.pro
@@ -1291,7 +1293,9 @@ export default function App() {
 
     const requesterId = ride.kind === 'offer' ? session.user.id : ride.user_id;
     const helperId = ride.kind === 'offer' ? ride.user_id : session.user.id;
-    const stopLabel = selectedStop ? `${selectedStop.time} ${selectedStop.name}` : null;
+    const stopLabel = selectedStop
+      ? [selectedStop.time, selectedStop.name].filter(Boolean).join(' ').trim()
+      : null;
 
     const { data: existingAgr } = await supabase
       .from('agreements')
@@ -1307,6 +1311,8 @@ export default function App() {
         ...existingAgr,
         post_owner_id: ride.user_id,
         car_info: resolvedCar,
+        ride_origin_text: ride.origin_text || null,
+        ride_dest_text: ride.dest_text || null,
         partner_name: ride.author_name,
         partner_avatar: ride.author_avatar || null,
         title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, existingAgr.status)
@@ -1335,7 +1341,9 @@ export default function App() {
       ride.kind === 'ask'
         ? 'Szia! Szívesen elviszlek erre az útra.'
         : stopLabel
-        ? `Szia! Felszállnék itt: ${stopLabel}.`
+        ? selectedStop?.detourLabel
+          ? `Szia! Felszállnék itt: ${stopLabel} (${selectedStop.detourLabel}).`
+          : `Szia! Felszállnék itt: ${stopLabel}.`
         : 'Szia! Csatlakoznék az úthoz.';
 
     await supabase.from('messages').insert({
@@ -1356,6 +1364,8 @@ export default function App() {
       ...createdAgr,
       post_owner_id: ride.user_id,
       car_info: resolvedCar,
+      ride_origin_text: ride.origin_text || null,
+      ride_dest_text: ride.dest_text || null,
       partner_name: ride.author_name,
       partner_avatar: ride.author_avatar || null,
       title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, 'chatting')
