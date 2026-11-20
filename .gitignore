@@ -7,3 +7,4 @@ src_backup/
 .DS_Store
 *.log
 *.zip
+client_secret_*.json
