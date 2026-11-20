@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
+import { triggerAgreementPush } from '../lib/webPush.js';
 import AvatarBadge from './AvatarBadge.jsx';
 
 const LiveRideMap = React.lazy(() => import('./LiveRideMap.jsx'));
@@ -229,7 +230,11 @@ export default function AgreementChatModal({
       body: clean,
       is_system_event: false
     });
-    if (error) setErrorBanner(error.message);
+    if (error) {
+      setErrorBanner(error.message);
+    } else {
+      triggerAgreementPush(supabase, liveAgr.id, 'Új üzenet a Kalákán', clean);
+    }
   };
 
   const handleSubmit = async (e) => {

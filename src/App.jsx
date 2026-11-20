@@ -21,7 +21,11 @@ import {
 } from './constants/betaConfig.js';
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
-import { triggerRadarPushIfNeeded } from './lib/webPush.js';
+import {
+  triggerRadarPushIfNeeded,
+  triggerAgreementPush,
+  syncAppBadge
+} from './lib/webPush.js';
 import NewPostModal from './components/NewPostModal.jsx';
 import RidesRoutePanel from './components/RidesRoutePanel.jsx';
 import FavorsTabView from './components/FavorsTabView.jsx';
@@ -776,6 +780,10 @@ export default function App() {
     [visibleAgreements]
   );
 
+  useEffect(() => {
+    syncAppBadge(unreadCount);
+  }, [unreadCount]);
+
   const actionRequiredCount = useMemo(() => {
     const uid = session?.user?.id;
     if (!uid) return 0;
@@ -1253,16 +1261,25 @@ export default function App() {
       return;
     }
 
+    const initialRideMsg =
+      ride.kind === 'ask'
+        ? 'Szia! Szívesen elviszlek erre az útra.'
+        : stopLabel
+        ? `Szia! Felszállnék itt: ${stopLabel}.`
+        : 'Szia! Csatlakoznék az úthoz.';
+
     await supabase.from('messages').insert({
       agreement_id: createdAgr.id,
       sender_id: session.user.id,
-      body:
-        ride.kind === 'ask'
-          ? 'Szia! Szívesen elviszlek erre az útra.'
-          : stopLabel
-          ? `Szia! Felszállnék itt: ${stopLabel}.`
-          : 'Szia! Csatlakoznék az úthoz.'
+      body: initialRideMsg
     });
+
+    triggerAgreementPush(
+      supabase,
+      createdAgr.id,
+      ride.kind === 'ask' ? 'Új fuvarajánlat érkezett' : 'Valaki csatlakozna a fuvarodhoz',
+      initialRideMsg
+    );
 
     const resolvedCar = ride.car_info || (ride.kind === 'ask' ? profile?.car_info || null : null);
     handleOpenAgreement({
@@ -1325,11 +1342,19 @@ export default function App() {
       return;
     }
 
+    const initialFavorMsg = `Szia! Érdekelne: ${favor.title}`;
     await supabase.from('messages').insert({
       agreement_id: createdAgr.id,
       sender_id: session.user.id,
-      body: `Szia! Érdekelne: ${favor.title}`
+      body: initialFavorMsg
     });
+
+    triggerAgreementPush(
+      supabase,
+      createdAgr.id,
+      'Új jelentkező a Kalákádra',
+      initialFavorMsg
+    );
 
     handleOpenAgreement({
       ...createdAgr,
