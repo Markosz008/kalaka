@@ -32,8 +32,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'Új értesítés a szomszédságból',
-    icon: '/icon.svg',
-    badge: '/icon.svg',
+    icon: '/apple-touch-icon.png',
+    badge: '/apple-touch-icon.png',
     tag: data.tag || 'kalaka-notif',
     renotify: true,
     vibrate: [120, 60, 120],

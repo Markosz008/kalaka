@@ -47,7 +47,7 @@ async function buildVapidJwt(audience, subject, pubKeyB64, privKeyB64) {
     crv: 'P-256',
     x: b64UrlEncode(pubBytes.slice(1, 33)),
     y: b64UrlEncode(pubBytes.slice(33, 65)),
-    d: privKeyB64.trim(),
+    d: b64UrlEncode(b64ToBytes(privKeyB64)),
     ext: true
   };
   const signingKey = await crypto.subtle.importKey(
@@ -121,11 +121,12 @@ async function sendSingleWebPush(sub, payloadObj, env) {
     env.VAPID_PRIVATE_KEY
   );
   const body = await encryptWebPushPayload(sub.p256dh, sub.auth, payloadObj);
+  const pubKeyUrl = b64UrlEncode(b64ToBytes(env.VAPID_PUBLIC_KEY));
 
   const res = await fetch(sub.endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC_KEY.trim()}`,
+      Authorization: `vapid t=${jwt}, k=${pubKeyUrl}`,
       'Content-Encoding': 'aes128gcm',
       'Content-Type': 'application/octet-stream',
       TTL: '3600',
@@ -134,7 +135,11 @@ async function sendSingleWebPush(sub, payloadObj, env) {
     body
   });
 
-  return { ok: res.ok, status: res.status, endpoint: sub.endpoint };
+  if (!res.ok) {
+    const errText = (await res.text().catch(() => '')).slice(0, 120);
+    console.error('WebPush delivery failed:', res.status, endpointUrl.host, errText);
+  }
+  return { ok: res.ok, status: res.status, host: endpointUrl.host, endpoint: sub.endpoint };
 }
 
 function getServiceHeaders(env, extra = {}) {
@@ -160,9 +165,11 @@ function jsonResp(obj, status = 200) {
 async function verifyCaller(request, env) {
   const authHeader = request.headers.get('Authorization') || '';
   if (!authHeader.startsWith('Bearer ')) return null;
+  const apiKey = (env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!apiKey) return null;
   const res = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
     headers: {
-      apikey: env.SUPABASE_ANON_KEY,
+      apikey: apiKey,
       Authorization: authHeader
     }
   });
@@ -174,6 +181,7 @@ async function dispatchToSubscriptions(subs, payload, env) {
   let sent = 0;
   let failed = 0;
   const staleEndpoints = [];
+  const statuses = [];
 
   for (let i = 0; i < subs.length; i += 25) {
     const batch = subs.slice(i, i + 25);
@@ -183,8 +191,10 @@ async function dispatchToSubscriptions(subs, payload, env) {
     results.forEach((r) => {
       if (r.status === 'fulfilled' && r.value.ok) {
         sent += 1;
+        statuses.push({ host: r.value.host, status: r.value.status });
       } else {
         failed += 1;
+        statuses.push(r.status === 'fulfilled' ? { host: r.value.host, status: r.value.status } : { error: String(r.reason?.message || 'rejected') });
         if (r.status === 'fulfilled' && (r.value.status === 404 || r.value.status === 410)) {
           staleEndpoints.push(r.value.endpoint);
         }
@@ -203,7 +213,7 @@ async function dispatchToSubscriptions(subs, payload, env) {
     );
   }
 
-  return { sent, failed };
+  return { sent, failed, statuses };
 }
 
 export async function onRequestGet(context) {

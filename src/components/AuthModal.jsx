@@ -9,6 +9,21 @@ import {
 } from '../constants/betaConfig.js';
 import KalakaLogo from './KalakaLogo.jsx';
 
+function translateAuthError(rawMessage) {
+  const msg = String(rawMessage || '').trim();
+  const lower = msg.toLowerCase();
+  if (!msg) return 'Ismeretlen hiba történt. Próbáld újra.';
+  if (lower.includes('invalid login credentials')) return 'Hibás e-mail cím vagy jelszó.';
+  if (lower.includes('email not confirmed')) return 'Még nem erősítetted meg az e-mail címedet. Nézd meg a Spam mappát is.';
+  if (lower.includes('user already registered')) return 'Ezzel az e-mail címmel már regisztráltak. Lépj be, vagy kérj új jelszót.';
+  if (lower.includes('password should be at least')) return 'A jelszónak legalább 6 karakter hosszúnak kell lennie.';
+  if (lower.includes('unable to validate email') || lower.includes('invalid email')) return 'Érvénytelen e-mail cím formátum.';
+  if (lower.includes('rate limit') || lower.includes('for security purposes') || lower.includes('too many requests')) return 'Túl sok próbálkozás, várj egy percet és próbáld újra.';
+  if (lower.includes('different from the old password')) return 'Az új jelszó nem egyezhet meg a régivel.';
+  if (lower.includes('expired') || lower.includes('invalid token')) return 'A link lejárt vagy érvénytelen. Kérj újat.';
+  return msg;
+}
+
 export default function AuthModal({
   isOpen,
   onClose,
@@ -21,6 +36,7 @@ export default function AuthModal({
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [zone, setZone] = useState('Pismány');
   const [inviteCodeInput, setInviteCodeInput] = useState('');
@@ -35,7 +51,11 @@ export default function AuthModal({
     } else {
       setDisplayName('');
     }
-    if (isOpen && !session?.user) {
+    if (isOpen && initialMode === 'recovery') {
+      setMode('recovery');
+      setPassword('');
+      setPasswordConfirm('');
+    } else if (isOpen && !session?.user) {
       setMode(initialMode || 'login');
       const savedCode = getPendingInviteCode();
       if (savedCode) setInviteCodeInput(savedCode);
@@ -54,7 +74,27 @@ export default function AuthModal({
     try {
       const cleanName = displayName.trim() || email.split('@')[0];
 
-      if (mode === 'magic') {
+      if (mode === 'forgot') {
+        const cleanEmail = email.trim();
+        if (!cleanEmail) throw new Error('Add meg az e-mail címed.');
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: window.location.origin
+        });
+        if (error) throw error;
+        setFeedback({
+          type: 'ok',
+          text: 'Jelszó-visszaállító linket küldtünk az e-mail címedre. Nézd meg a Spam mappát is.'
+        });
+      } else if (mode === 'recovery') {
+        if (password.length < 6) throw new Error('Az új jelszó legyen legalább 6 karakter hosszú.');
+        if (password !== passwordConfirm) throw new Error('A két jelszó nem egyezik.');
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+        setFeedback({ type: 'ok', text: 'Új jelszó sikeresen beállítva.' });
+        setPassword('');
+        setPasswordConfirm('');
+        setTimeout(() => onClose(), 900);
+      } else if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({
           email: email.trim(),
           options: {
@@ -114,7 +154,7 @@ export default function AuthModal({
         onClose();
       }
     } catch (err) {
-      setFeedback({ type: 'err', text: err.message });
+      setFeedback({ type: 'err', text: translateAuthError(err?.message) });
     } finally {
       setLoading(false);
     }
@@ -195,7 +235,13 @@ export default function AuthModal({
       <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl p-4 sm:p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border border-[#DFD9CE] shadow-2xl max-h-[90vh] overflow-y-auto box-border">
         <div className="flex items-center justify-between gap-2 mb-3">
           <h3 className="font-display font-extrabold text-lg text-[#18261F] truncate">
-            {session?.user ? 'Profilom' : 'Belépés / Regisztráció'}
+            {mode === 'recovery'
+              ? 'Új jelszó beállítása'
+              : session?.user
+              ? 'Profilom'
+              : mode === 'forgot'
+              ? 'Elfelejtett jelszó'
+              : 'Belépés / Regisztráció'}
           </h3>
           <button
             type="button"
@@ -222,7 +268,38 @@ export default function AuthModal({
           </div>
         )}
 
-        {session?.user ? (
+        {mode === 'recovery' ? (
+          <form onSubmit={handleEmailPasswordAuth} className="space-y-3">
+            <p className="text-xs text-[#5C6B62]">
+              Adj meg egy új jelszót a fiókodhoz (legalább 6 karakter).
+            </p>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Új jelszó (min. 6 karakter)"
+              className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+            />
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={passwordConfirm}
+              onChange={(e) => setPasswordConfirm(e.target.value)}
+              placeholder="Új jelszó mégegyszer"
+              className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-pilis hover:bg-pilis-light text-white font-bold py-3 rounded-xl text-sm transition"
+            >
+              {loading ? 'Mentés...' : 'Új jelszó mentése'}
+            </button>
+          </form>
+        ) : session?.user ? (
           <form onSubmit={handleSaveProfile} className="space-y-3">
             <div className="grid grid-cols-2 gap-2 bg-white p-3 rounded-2xl border border-[#DFD9CE]">
               <div className="bg-pilis-soft/60 p-2.5 rounded-xl">
@@ -303,6 +380,12 @@ export default function AuthModal({
             </div>
 
             <form onSubmit={handleEmailPasswordAuth} className="space-y-2.5">
+              {mode === 'forgot' && (
+                <p className="text-xs text-[#5C6B62] leading-snug">
+                  Add meg a regisztrált e-mail címed, és küldünk egy linket, amivel új jelszót állíthatsz be.
+                </p>
+              )}
+
               {(mode === 'register' || mode === 'magic') && (
                 <>
                   <input
@@ -334,7 +417,7 @@ export default function AuthModal({
                 className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
               />
 
-              {mode !== 'magic' && (
+              {mode !== 'magic' && mode !== 'forgot' && (
                 <input
                   type="password"
                   required
@@ -344,6 +427,21 @@ export default function AuthModal({
                   placeholder="Jelszó (min. 6 karakter)"
                   className="w-full bg-white border border-[#DFD9CE] rounded-xl px-3.5 py-2.5 text-base box-border"
                 />
+              )}
+
+              {mode === 'login' && (
+                <div className="flex justify-end -mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setFeedback(null);
+                    }}
+                    className="text-xs font-semibold text-pilis hover:underline"
+                  >
+                    Elfelejtett jelszó?
+                  </button>
+                </div>
               )}
 
               {mode === 'register' && (
@@ -386,9 +484,27 @@ export default function AuthModal({
                 disabled={loading}
                 className="w-full bg-pilis hover:bg-pilis-light text-white font-bold py-3 rounded-xl text-sm transition"
               >
-                {loading ? 'Folyamatban...' : mode === 'magic' ? 'Link küldése' : mode === 'register' ? 'Regisztráció' : 'Belépés'}
+                {loading
+                  ? 'Folyamatban...'
+                  : mode === 'forgot'
+                  ? 'Visszaállító link küldése'
+                  : mode === 'magic'
+                  ? 'Link küldése'
+                  : mode === 'register'
+                  ? 'Regisztráció'
+                  : 'Belépés'}
               </button>
             </form>
+
+            {mode === 'forgot' && (
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setFeedback(null); }}
+                className="w-full text-xs font-bold text-[#5C6B62] hover:text-pilis py-1"
+              >
+                ← Vissza a belépéshez
+              </button>
+            )}
 
             <button
               type="button"

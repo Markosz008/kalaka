@@ -593,8 +593,12 @@ export default function App() {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, s) => {
+    } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthInitialMode('recovery');
+        setShowAuthModal(true);
+      }
       if (s?.user) {
         loadUserProfile(s.user);
         fetchAllLiveData(s.user.id);
@@ -1985,7 +1989,10 @@ export default function App() {
 
       <AuthModal
         isOpen={showAuthModal}
-        onClose={() => setShowAuthModal(false)}
+        onClose={() => {
+          setShowAuthModal(false);
+          setAuthInitialMode('login');
+        }}
         session={session}
         profile={profile}
         initialMode={authInitialMode}
