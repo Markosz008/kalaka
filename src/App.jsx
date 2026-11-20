@@ -780,9 +780,49 @@ export default function App() {
     [visibleAgreements]
   );
 
+  const [pendingNotifAgrId, setPendingNotifAgrId] = useState(null);
+
   useEffect(() => {
     syncAppBadge(unreadCount);
+    const handleForeground = () => {
+      if (document.visibilityState === 'visible') {
+        syncAppBadge(unreadCount);
+      }
+    };
+    document.addEventListener('visibilitychange', handleForeground);
+    window.addEventListener('focus', handleForeground);
+    return () => {
+      document.removeEventListener('visibilitychange', handleForeground);
+      window.removeEventListener('focus', handleForeground);
+    };
   }, [unreadCount]);
+
+  useEffect(() => {
+    const routeFromUrl = (rawUrl) => {
+      try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        const open = parsed.searchParams.get('open');
+        const agrId = parsed.searchParams.get('agr');
+        if (open === 'radar') {
+          setShowRoadModal(true);
+        } else if (open === 'messages') {
+          setActiveTab('messages');
+          if (agrId) setPendingNotifAgrId(agrId);
+        }
+        if (open || agrId) {
+          window.history.replaceState({}, '', '/');
+        }
+      } catch {}
+    };
+    routeFromUrl(window.location.href);
+    const onSwMessage = (event) => {
+      if (event?.data?.type === 'KALAKA_NOTIF_CLICK' && event.data.url) {
+        routeFromUrl(event.data.url);
+      }
+    };
+    navigator.serviceWorker?.addEventListener?.('message', onSwMessage);
+    return () => navigator.serviceWorker?.removeEventListener?.('message', onSwMessage);
+  }, []);
 
   const actionRequiredCount = useMemo(() => {
     const uid = session?.user?.id;
@@ -1206,6 +1246,15 @@ export default function App() {
     setIncomingToast(null);
     setActiveAgreement(agr);
   };
+
+  useEffect(() => {
+    if (!pendingNotifAgrId) return;
+    const target = myAgreements.find((a) => a.id === pendingNotifAgrId);
+    if (target) {
+      setPendingNotifAgrId(null);
+      handleOpenAgreement(target);
+    }
+  }, [pendingNotifAgrId, myAgreements]);
 
   const handleStartRideAgreement = async (ride, selectedStop) => {
     if (!session?.user) {
