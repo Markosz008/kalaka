@@ -1,0 +1,46 @@
+name: Production Health & TLS Monitor
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  synthetic-monitor:
+    name: Availability, Security Headers & TLS Certificate Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check frontend availability & latency
+        run: |
+          METRICS=$(curl -sS -o /dev/null -w "%{http_code} %{time_total}" https://kalakazz.hu/)
+          CODE=$(echo "$METRICS" | awk '{print $1}')
+          LATENCY=$(echo "$METRICS" | awk '{print $2}')
+          echo "Frontend: HTTP $CODE \vert{} Latency:${LATENCY}s"
+          test "$CODE" -eq 200
+
+      - name: Check edge proxy health (/api/hev)
+        run: |
+          HEV_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://kalakazz.hu/api/hev)
+          echo "Edge API /api/hev: HTTP $HEV_CODE"
+          test "$HEV_CODE" -eq 200
+
+      - name: Verify security headers & push endpoint auth guard
+        run: |
+          HEADERS=$(curl -sSI https://kalakazz.hu/)
+          echo "$HEADERS" | grep -qi "^content-security-policy:"
+          echo "$HEADERS" | grep -qi "^x-content-type-options:"
+          PUSH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' https://kalakazz.hu/api/radar-push)
+          echo "Auth guard /api/radar-push: HTTP $PUSH_CODE"
+          test "$PUSH_CODE" -eq 401
+
+      - name: Check TLS certificate expiration (>= 14 days)
+        run: |
+          EXPIRY_DATE=$(echo | openssl s_client -servername kalakazz.hu -connect kalakazz.hu:443 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+          EXPIRY_EPOCH=$(date -d "$EXPIRY_DATE" +%s)
+          NOW_EPOCH=$(date +%s)
+          DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+          echo "TLS certificate valid until: $EXPIRY_DATE ($DAYS_LEFT days remaining)"
+          if [ "$DAYS_LEFT" -lt 14 ]; then
+            echo "ERROR: TLS certificate expires in less than 14 days."
+            exit 1
+          fi

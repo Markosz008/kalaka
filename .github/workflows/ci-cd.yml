@@ -1,0 +1,119 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  ci-verify:
+    name: Build, Guardrails & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (clean lockfile)
+        run: npm ci
+
+      - name: Guardrail - reject legacy Leaflet imports
+        run: |
+          if grep -rnI "leaflet" src/ vite.config.js 2>/dev/null; then
+            echo "ERROR: Legacy leaflet reference detected in source files."
+            exit 1
+          fi
+
+      - name: Security audit (production dependencies, high/critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verify production build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_GOOGLE_PLACES_API_KEY: ${{ secrets.VITE_GOOGLE_PLACES_API_KEY }}
+        run: npm run build
+
+  deploy-and-smoke-test:
+    name: Deploy to Cloudflare Pages & Smoke Test
+    needs: ci-verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Validate required deployment secrets
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SB_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SB_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          missing=0
+          for var in CF_TOKEN CF_ACCOUNT SB_URL SB_KEY; do
+            if [ -z "${!var}" ]; then
+              echo "ERROR: Missing required secret for $var"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Install dependencies & build production bundle
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          VITE_GOOGLE_PLACES_API_KEY: ${{ secrets.VITE_GOOGLE_PLACES_API_KEY }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=kalaka-szentendre --branch=main
+
+      - name: Post-deploy smoke & security regression tests
+        run: |
+          sleep 15
+          echo "Checking main endpoint..."
+          HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://kalakazz.hu/)
+          echo "GET / -> $HTTP_CODE"
+          test "$HTTP_CODE" -eq 200
+
+          echo "Checking SEO & Open Graph assets..."
+          test "$(curl -sS -o /dev/null -w "%{http_code}" https://kalakazz.hu/robots.txt)" -eq 200
+          test "$(curl -sS -o /dev/null -w "%{http_code}" https://kalakazz.hu/og-image.png)" -eq 200
+
+          echo "Checking Content-Security-Policy header..."
+          curl -sSI https://kalakazz.hu/ | grep -qi "^content-security-policy:"
+
+          echo "Checking unauthenticated rejection on /api/radar-push..."
+          PUSH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' https://kalakazz.hu/api/radar-push)
+          echo "POST /api/radar-push (no auth) -> $PUSH_CODE"
+          test "$PUSH_CODE" -eq 401
+          echo "All smoke and security checks passed."
