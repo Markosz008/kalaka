@@ -16,8 +16,11 @@ function createCarMarkerEl(labelText) {
         </svg>
       </div>
     </div>
-    <span class="mt-0.5 px-2 py-0.5 rounded-full bg-[#18261F]/90 text-white text-[10px] font-bold shadow whitespace-nowrap">${labelText}</span>
   `;
+  const label = document.createElement('span');
+  label.className = 'mt-0.5 px-2 py-0.5 rounded-full bg-[#18261F]/90 text-white text-[10px] font-bold shadow whitespace-nowrap';
+  label.textContent = labelText || '';
+  wrap.appendChild(label);
   return wrap;
 }
 
@@ -31,8 +34,12 @@ function createNeighborMarkerEl(labelText) {
         <path d="M12 11.5c-3.4 0-6 1.8-6 4.2V18a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2.3c0-2.4-2.6-4.2-6-4.2z"/>
       </svg>
     </div>
-    <span data-label class="mt-0.5 px-2 py-0.5 rounded-full bg-[#C25938] text-white text-[10px] font-bold shadow whitespace-nowrap">${labelText}</span>
   `;
+  const label = document.createElement('span');
+  label.setAttribute('data-label', '');
+  label.className = 'mt-0.5 px-2 py-0.5 rounded-full bg-[#C25938] text-white text-[10px] font-bold shadow whitespace-nowrap';
+  label.textContent = labelText || '';
+  wrap.appendChild(label);
   return wrap;
 }
 

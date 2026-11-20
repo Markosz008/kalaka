@@ -183,10 +183,6 @@ async function callRadarPushEndpoint(supabase, payload) {
   return json;
 }
 
-export async function sendTestPush(supabase) {
-  return callRadarPushEndpoint(supabase, { mode: 'test' });
-}
-
 export function triggerRadarPushIfNeeded(supabase, alertId) {
   if (!supabase || !alertId) return;
   callRadarPushEndpoint(supabase, { mode: 'alert', alert_id: alertId }).catch(() => {});
