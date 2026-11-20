@@ -8,8 +8,7 @@ import {
   triggerNativeInstall,
   subscribeToWebPush,
   updatePushCategories,
-  unsubscribeFromWebPush,
-  sendTestPush
+  unsubscribeFromWebPush
 } from '../lib/webPush.js';
 
 export default function InstallPushGuideModal({
@@ -102,7 +101,7 @@ export default function InstallPushGuideModal({
       setSubEndpoint(sub.endpoint);
       setInfo(getDeviceInstallInfo());
       if (onStatusChange) onStatusChange(true);
-      setFeedback({ type: 'ok', text: 'Értesítések bekapcsolva! Alul ki is próbálhatod.' });
+      setFeedback({ type: 'ok', text: 'Értesítések bekapcsolva! Mostantól azonnal szólunk a telefonodon.' });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
     } finally {
@@ -118,24 +117,6 @@ export default function InstallPushGuideModal({
       setSubEndpoint(null);
       if (onStatusChange) onStatusChange(false);
       setFeedback({ type: 'ok', text: 'Értesítések kikapcsolva.' });
-    } catch (err) {
-      setFeedback({ type: 'err', text: err.message });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleTestPush = async () => {
-    setBusy(true);
-    setFeedback(null);
-    try {
-      const res = await sendTestPush(supabase);
-      setFeedback({
-        type: res.ok ? 'ok' : 'err',
-        text: res.ok
-          ? 'Elküldtük — pár másodpercen belül megérkezik a telefonodra.'
-          : 'Most nem érkezett meg. Kapcsold ki, majd újra be az értesítéseket.'
-      });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
     } finally {
@@ -164,7 +145,7 @@ export default function InstallPushGuideModal({
               Telefonos értesítések
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Csak fontos esetekben szólunk, ha legalább 3-an megerősítik a hírt.
+              Szólunk a fuvar- és kaláka-üzenetekről, valamint a kiválasztott városi hírekről.
             </p>
           </div>
           <button
@@ -250,7 +231,7 @@ export default function InstallPushGuideModal({
           {!needsIosInstall && (
             <div className="bg-white border border-[#DFD9CE] rounded-2xl p-3.5 space-y-3 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-extrabold text-[#18261F]">Mely témákról szóljunk?</span>
+                <span className="font-extrabold text-[#18261F]">Városi Radar témák</span>
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                     isSubscribed
@@ -261,6 +242,10 @@ export default function InstallPushGuideModal({
                   {isSubscribed ? 'Aktív ✓' : 'Kikapcsolva'}
                 </span>
               </div>
+
+              <p className="text-[11px] text-[#5C6B62] leading-snug">
+                A fuvar- és kaláka-jelentkezésekről automatikusan szólunk. A városi híreknél csak akkor küldünk jelzést, ha legalább 3-an megerősítik.
+              </p>
 
               <div className="grid grid-cols-2 gap-1.5">
                 {RADAR_CATEGORIES.map((c) => {
@@ -311,24 +296,14 @@ export default function InstallPushGuideModal({
                   {busy ? 'Bekapcsolás...' : 'Értesítések bekapcsolása'}
                 </button>
               ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleTestPush}
-                    className="flex-1 bg-pilis hover:bg-pilis-light disabled:opacity-60 text-white font-bold py-2.5 rounded-xl text-xs transition"
-                  >
-                    {busy ? 'Küldés...' : 'Próbaértesítés'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleDisablePush}
-                    className="bg-limestone hover:bg-red-50 text-[#5C6B62] hover:text-red-800 border border-[#DFD9CE] font-bold py-2.5 px-3 rounded-xl text-xs transition"
-                  >
-                    Kikapcsolás
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleDisablePush}
+                  className="w-full bg-limestone hover:bg-red-50 text-[#5C6B62] hover:text-red-800 border border-[#DFD9CE] font-bold py-2.5 px-3 rounded-xl text-xs transition"
+                >
+                  {busy ? 'Folyamatban...' : 'Értesítések kikapcsolása'}
+                </button>
               )}
             </div>
           )}
