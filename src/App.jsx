@@ -21,10 +21,13 @@ import {
 } from './constants/betaConfig.js';
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
+import InstallPushGuideModal from './components/InstallPushGuideModal.jsx';
 import {
   triggerRadarPushIfNeeded,
   triggerAgreementPush,
-  syncAppBadge
+  syncAppBadge,
+  getCurrentPushSubscription,
+  getDeviceInstallInfo
 } from './lib/webPush.js';
 import NewPostModal from './components/NewPostModal.jsx';
 import RidesRoutePanel from './components/RidesRoutePanel.jsx';
@@ -781,6 +784,20 @@ export default function App() {
   );
 
   const [pendingNotifAgrId, setPendingNotifAgrId] = useState(null);
+  const [showPushModal, setShowPushModal] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const info = getDeviceInstallInfo();
+      const sub = await getCurrentPushSubscription();
+      if (active) setPushEnabled(Boolean(sub?.endpoint) && info.permission === 'granted');
+    })();
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id, showPushModal, showRoadModal]);
 
   useEffect(() => {
     syncAppBadge(unreadCount);
@@ -1800,6 +1817,8 @@ export default function App() {
             visibleAgreements={visibleAgreements}
             onOpenAgreement={handleOpenAgreement}
             onHideCompletedAgreement={handleHideCompletedAgreement}
+            showPushBanner={Boolean(session?.user) && !pushEnabled}
+            onOpenPushSettings={() => setShowPushModal(true)}
           />
         )}
 
@@ -1927,8 +1946,23 @@ export default function App() {
             setProfile(updatedProf);
             fetchAllLiveData(session?.user?.id);
           }}
+          pushEnabled={pushEnabled}
+          onOpenPushSettings={() => setShowPushModal(true)}
         />
       )}
+
+      <InstallPushGuideModal
+        isOpen={showPushModal}
+        onClose={() => setShowPushModal(false)}
+        supabase={supabase}
+        currentUserId={session?.user?.id}
+        showNotice={showNotice}
+        onStatusChange={(active) => setPushEnabled(active)}
+        onNeedAuth={() => {
+          setShowPushModal(false);
+          setShowAuthModal(true);
+        }}
+      />
 
       {BETA_INVITE_ONLY &&
         isSupabaseConfigured &&
