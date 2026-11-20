@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kalaka-szentendre-v2026-11-20-a';
+const CACHE_NAME = 'kalaka-szentendre-v2026-11-20-b';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -57,10 +57,17 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification?.data?.url || '/';
-  event.waitUntil(
+  const tasks = [];
+
+  if (self.navigator && typeof self.navigator.clearAppBadge === 'function') {
+    tasks.push(self.navigator.clearAppBadge().catch(() => {}));
+  }
+
+  tasks.push(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ('focus' in client) {
+          client.postMessage({ type: 'KALAKA_NOTIF_CLICK', url: targetUrl });
           return client.focus();
         }
       }
@@ -69,6 +76,8 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+
+  event.waitUntil(Promise.all(tasks));
 });
 
 self.addEventListener('fetch', (event) => {

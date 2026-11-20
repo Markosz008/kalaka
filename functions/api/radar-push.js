@@ -316,7 +316,7 @@ export async function onRequestPost(context) {
         title: `${alert.zone} (${alert.confirm_count}+ jelzés)`,
         body: alert.message,
         tag: `kalaka-radar-${alert.category}-${alert.zone}`,
-        url: '/'
+        url: '/?open=radar'
       },
       env
     );
@@ -358,7 +358,7 @@ export async function onRequestPost(context) {
         title: cleanTitle,
         body: cleanBody,
         tag: `kalaka-agr-${agr.id}`,
-        url: '/',
+        url: `/?open=messages&agr=${encodeURIComponent(agr.id)}`,
         badge: 1
       },
       env
