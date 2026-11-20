@@ -51,7 +51,7 @@ export default function InstallPushGuideModal({
             .eq('user_id', currentUserId)
             .eq('endpoint', sub.endpoint)
             .maybeSingle();
-          if (active && Array.isArray(data?.categories) && data.categories.length > 0) {
+          if (active && Array.isArray(data?.categories)) {
             setSelectedCats(data.categories);
           }
         }
@@ -75,7 +75,6 @@ export default function InstallPushGuideModal({
     const next = exists
       ? selectedCats.filter((c) => c !== catId)
       : [...selectedCats, catId];
-    if (next.length === 0) return;
     setSelectedCats(next);
 
     if (isSubscribed && supabase && currentUserId && subEndpoint) {
@@ -136,7 +135,7 @@ export default function InstallPushGuideModal({
       role="dialog"
       aria-modal="true"
       aria-label="Értesítések és főképernyőhöz adás"
-      className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center pt-[calc(env(safe-area-inset-top)+0.75rem)] px-0 pb-0 sm:p-4"
+      className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center pt-[calc(env(safe-area-inset-top)+0.75rem)] px-0 pb-0 sm:p-4"
     >
       <div className="bg-limestone w-full max-w-md rounded-t-3xl sm:rounded-3xl px-4 sm:px-5 pt-4 sm:pt-5 pb-0 border border-[#DFD9CE] shadow-2xl max-h-full flex flex-col overflow-hidden box-border">
         <div className="flex justify-between items-start gap-2 pb-3 shrink-0">
