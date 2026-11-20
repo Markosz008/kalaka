@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js';
 import { SZENTENDRE_ZONES } from '../constants/szentendreData.js';
 import AvatarBadge from './AvatarBadge.jsx';
 import AvatarCropModal from './AvatarCropModal.jsx';
+import { unsubscribeFromWebPush } from '../lib/webPush.js';
 
 export default function UserProfileModal({
   userId,
@@ -294,6 +295,7 @@ export default function UserProfileModal({
 
   const handleSignOut = async () => {
     if (!supabase) return;
+    await unsubscribeFromWebPush(supabase, currentUser?.id).catch(() => {});
     await supabase.auth.signOut();
     onClose();
   };

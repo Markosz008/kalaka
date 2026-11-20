@@ -239,28 +239,6 @@ export async function onRequestPost(context) {
     return jsonResp({ error: 'Érvénytelen kérés' }, 400);
   }
 
-  if (body.mode === 'test') {
-    const subRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${encodeURIComponent(user.id)}&select=endpoint,p256dh,auth`,
-      { headers: getServiceHeaders(env) }
-    );
-    const subs = subRes.ok ? await subRes.json() : [];
-    if (!subs.length) {
-      return jsonResp({ error: 'Először kapcsold be az értesítéseket ezen a telefonon.' }, 404);
-    }
-    const result = await dispatchToSubscriptions(
-      subs,
-      {
-        title: 'Kaláka Szentendre',
-        body: 'Minden rendben! Ha fontos helyi hír vagy dugó van, azonnal szólunk.',
-        tag: `kalaka-test-${Date.now()}`,
-        url: '/'
-      },
-      env
-    );
-    return jsonResp({ ok: result.sent > 0, ...result });
-  }
-
   if (body.mode === 'alert' && body.alert_id) {
     const alertId = String(body.alert_id).trim();
     const alertRes = await fetch(
@@ -326,12 +304,15 @@ export async function onRequestPost(context) {
   if (body.mode === 'agreement' && body.agreement_id) {
     const agrId = String(body.agreement_id).trim();
     const agrRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/agreements?id=eq.${encodeURIComponent(agrId)}&select=id,requester_id,helper_id`,
+      `${env.SUPABASE_URL}/rest/v1/agreements?id=eq.${encodeURIComponent(agrId)}&select=id,requester_id,helper_id,status,ride_id,favor_id`,
       { headers: getServiceHeaders(env) }
     );
     const agrRows = agrRes.ok ? await agrRes.json() : [];
     const agr = agrRows[0];
     if (!agr) return jsonResp({ skipped: true, reason: 'not_found' });
+    if (['completed', 'cancelled'].includes(agr.status)) {
+      return jsonResp({ skipped: true, reason: 'closed' });
+    }
 
     const isParticipant = user.id === agr.requester_id || user.id === agr.helper_id;
     if (!isParticipant) return jsonResp({ error: 'Nincs jogosultság' }, 403);
@@ -339,6 +320,16 @@ export async function onRequestPost(context) {
     const recipientId = user.id === agr.requester_id ? agr.helper_id : agr.requester_id;
     if (!recipientId || recipientId === user.id) {
       return jsonResp({ skipped: true, reason: 'no_recipient' });
+    }
+
+    const msgRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/messages?agreement_id=eq.${encodeURIComponent(agrId)}&sender_id=eq.${encodeURIComponent(user.id)}&order=created_at.desc&limit=1&select=body,created_at`,
+      { headers: getServiceHeaders(env) }
+    );
+    const msgRows = msgRes.ok ? await msgRes.json() : [];
+    const latestMsg = msgRows[0];
+    if (!latestMsg || Date.now() - new Date(latestMsg.created_at).getTime() > 2 * 60 * 1000) {
+      return jsonResp({ skipped: true, reason: 'no_recent_message' });
     }
 
     const subRes = await fetch(
@@ -350,8 +341,12 @@ export async function onRequestPost(context) {
       return jsonResp({ ok: true, sent: 0, failed: 0 });
     }
 
-    const cleanTitle = String(body.title || 'Kaláka Szentendre').slice(0, 80);
-    const cleanBody = String(body.body || 'Új üzeneted érkezett').slice(0, 160);
+    const cleanTitle = agr.ride_id
+      ? 'Új fuvar-üzenet'
+      : agr.favor_id
+      ? 'Új Kaláka-üzenet'
+      : 'Új üzenet a Kalákán';
+    const cleanBody = String(latestMsg.body || 'Új üzeneted érkezett').slice(0, 160);
     const result = await dispatchToSubscriptions(
       subs,
       {

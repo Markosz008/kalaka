@@ -23,7 +23,7 @@ export default function LegalModal({ isOpen, onClose }) {
               Jogi feltételek és Adatvédelem
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Kaláka Szentendre • Hatályos: 2026. november 19-től
+              Kaláka Szentendre • Hatályos: 2026. november 20-tól
             </p>
           </div>
           <button
@@ -90,10 +90,10 @@ export default function LegalModal({ isOpen, onClose }) {
 
               <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-1.5">
                 <div className="font-bold text-sm text-pilis">
-                  4. Városi Radar és Közösségi Házirend
+                  4. Városi Radar, Értesítések és Közösségi Házirend
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
-                  <li>A Városi Radar lakossági bejelentéseken alapuló, tájékoztató jellegű helyzetkép; az adatok pontosságáért és időszerűségéért az üzemeltető nem vállal felelősséget.</li>
+                  <li>A Városi Radar lakossági bejelentéseken alapuló, tájékoztató jellegű helyzetkép, a telefonos push értesítések pedig külső értesítési hálózatokon (Apple/Google/Mozilla) keresztül érkeznek; az adatok pontosságáért, illetve az értesítések késéséért vagy kimaradásáért az üzemeltető nem vállal felelősséget.</li>
                   <li><strong>Szigorúan tilos</strong> más személy rendszámát, nevét, arcképét vagy pontos lakcímét engedély nélkül közzétenni, illetve bűncselekménnyel gyanúsítani vagy zaklatni bárkit. Vészhelyzetben mindig a <strong>112</strong>-t hívd.</li>
                   <li>Meghiúsult találkozó vagy fuvar esetén a chatben a <strong>Lemondás</strong> gombbal jelezd a partnerednek. A házirendet sértő tartalmakat az üzemeltető eltávolíthatja, súlyos vagy ismétlődő jogsértés esetén a fiókot felfüggesztheti.</li>
                 </ul>
@@ -114,7 +114,7 @@ export default function LegalModal({ isOpen, onClose }) {
                   <li><strong>Fiók, utak, kaláka, chat és radar jelzések</strong> (<em>szerződés teljesítése – 6. cikk (1) b</em>): e-mail cím (nem nyilvános), megjelenő név, városrész, opcionális bemutatkozás és autó megnevezés, közzétett bejegyzések és üzenetek. <em>Megőrzés:</em> a fiók törléséig; a Városi Radar jelzései 45 perc – 6 óra elteltével automatikusan lejárnak.</li>
                   <li><strong>Profilkép</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a; Ptk. 2:48. §</em>): a feltöltött arckép a többi belépett felhasználó számára látható. <em>Megőrzés:</em> cseréig vagy fióktörlésig.</li>
                   <li><strong>Helyadatok és élő GPS</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): a pontos házszámok a nyilvános kártyákon automatikusan maszkolva jelennek meg. Az élő GPS-megosztás csak külön gombnyomásra indul, és a fuvar lezárásakor („Megérkeztem”) azonnal törlődik.</li>
-                  <li><strong>Telefonos push értesítések</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): az eszköz értesítési végpontja és a választott témák. Bármikor kikapcsolható a Radar beállításaiban; kikapcsoláskor vagy fióktörléskor törlődik.</li>
+                  <li><strong>Telefonos push értesítések</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): az eszköz egyedi értesítési végpontja, a Web Push titkosítási kulcsok és a választott Városi Radar témák. Bármikor módosítható vagy kikapcsolható a <strong>Profilodban</strong>; kikapcsoláskor, kijelentkezéskor vagy fióktörléskor azonnal törlődik.</li>
                   <li><strong>Helyi Szakik nyilvános üzleti adatai</strong> (<em>jogos érdek – 6. cikk (1) f; GDPR 14. cikk</em>): helyi lakosok által megadott, a szolgáltató által nyilvánosan közzétett név, szakma, városrész és üzleti telefonszám. Az érintett vállalkozó a GDPR 21. cikke alapján bármikor kérheti adatlapja módosítását vagy azonnali törlését.</li>
                 </ul>
               </div>
@@ -159,6 +159,7 @@ export default function LegalModal({ isOpen, onClose }) {
                   <li><strong>Bejelentkezési munkamenet (sb-*-auth-token):</strong> hogy ne léptessen ki minden oldalfrissítéskor.</li>
                   <li><strong>Saját beállítások és olvasottság (kalaka_routines_*, kalaka_read_*, kalaka_hidden_*, kalaka_*):</strong> elmentett szokásos útvonalaid, olvasott/elrejtett üzeneteid és helyi szűrőállapotok.</li>
                   <li><strong>Ideiglenes útvonal-gyorsítótár (osrm_v2_*):</strong> a térképi útvonal gyorsabb betöltéséhez, kizárólag az aktuális böngésző-munkamenet végéig.</li>
+                  <li><strong>Service Worker és alkalmazás-gyorsítótár (sw.js / Cache API):</strong> a főképernyőre telepített (PWA) működéshez és a háttérben érkező telefonos értesítések fogadásához.</li>
                 </ul>
                 <p className="text-[#5C6B62]">
                   Ezeket a tárolt adatokat a böngésződ beállításaiban bármikor törölheted, fióktörléskor pedig az alkalmazás is eltávolítja őket.
