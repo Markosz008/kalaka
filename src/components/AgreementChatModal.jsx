@@ -4,6 +4,8 @@ import { resolveCoordsFromText } from '../constants/szentendreData.js';
 import { triggerAgreementPush } from '../lib/webPush.js';
 import { estimateRideDetour, resolvePointCoords } from '../lib/detourCalc.js';
 import AvatarBadge from './AvatarBadge.jsx';
+import ChatEmojiPicker from './ChatEmojiPicker.jsx';
+import ChatMessageBubble from './ChatMessageBubble.jsx';
 
 const LiveRideMap = React.lazy(() => import('./LiveRideMap.jsx'));
 const DetourPreviewMap = React.lazy(() => import('./DetourPreviewMap.jsx'));
@@ -41,9 +43,14 @@ export default function AgreementChatModal({
   const [carDraft, setCarDraft] = useState('');
   const [savingCar, setSavingCar] = useState(false);
   const [showDetourMap, setShowDetourMap] = useState(false);
+  const [activeMsgId, setActiveMsgId] = useState(null);
+  const [editingMsg, setEditingMsg] = useState(null);
+  const [confirmDeleteMsgId, setConfirmDeleteMsgId] = useState(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const bottomRef = useRef(null);
   const watchIdRef = useRef(null);
+  const inputRef = useRef(null);
 
   const isUuid = (val) =>
     typeof val === 'string' &&
@@ -103,6 +110,21 @@ export default function AgreementChatModal({
           if (!mounted || !payload.new) return;
           setMessages((prev) =>
             prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `agreement_id=eq.${agreement.id}`
+        },
+        (payload) => {
+          if (!mounted || !payload.new) return;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m))
           );
         }
       )
@@ -240,12 +262,112 @@ export default function AgreementChatModal({
     }
   };
 
+  const handleStartEditMessage = (msg) => {
+    setEditingMsg({ id: msg.id, body: msg.body });
+    setText(msg.body || '');
+    setActiveMsgId(null);
+    setConfirmDeleteMsgId(null);
+    setShowEmojiPicker(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMsg(null);
+    setText('');
+  };
+
+  const handleDeleteMessage = async (msgId) => {
+    setActiveMsgId(null);
+    setConfirmDeleteMsgId(null);
+    if (editingMsg?.id === msgId) {
+      setEditingMsg(null);
+      setText('');
+    }
+    const nowIso = new Date().toISOString();
+    if (!isLiveDbAgreement) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === msgId ? { ...m, body: 'Üzenet törölve', deleted_at: nowIso } : m
+        )
+      );
+      return;
+    }
+    const { data, error } = await supabase
+      .from('messages')
+      .update({ deleted_at: nowIso, body: 'Üzenet törölve' })
+      .eq('id', msgId)
+      .eq('sender_id', currentUser.id)
+      .select('*')
+      .single();
+    if (error) {
+      setErrorBanner(error.message);
+      return;
+    }
+    if (data) {
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, ...data } : m)));
+    }
+  };
+
+  const handlePickEmoji = (emoji) => {
+    const el = inputRef.current;
+    if (el && typeof el.selectionStart === 'number') {
+      const start = el.selectionStart;
+      const end = el.selectionEnd ?? start;
+      const next = text.slice(0, start) + emoji + text.slice(end);
+      setText(next);
+      setTimeout(() => {
+        el.focus();
+        const pos = start + emoji.length;
+        el.setSelectionRange(pos, pos);
+      }, 0);
+    } else {
+      setText((prev) => prev + emoji);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    const msg = text;
+    const clean = text.trim();
+    if (!clean) return;
+    setShowEmojiPicker(false);
+
+    if (editingMsg) {
+      const targetId = editingMsg.id;
+      if (clean === (editingMsg.body || '').trim()) {
+        setEditingMsg(null);
+        setText('');
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      if (!isLiveDbAgreement) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === targetId ? { ...m, body: clean, edited_at: nowIso } : m))
+        );
+        setEditingMsg(null);
+        setText('');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('messages')
+        .update({ body: clean, edited_at: nowIso })
+        .eq('id', targetId)
+        .eq('sender_id', currentUser.id)
+        .select('*')
+        .single();
+      if (error) {
+        setErrorBanner(error.message);
+        return;
+      }
+      if (data) {
+        setMessages((prev) => prev.map((m) => (m.id === targetId ? { ...m, ...data } : m)));
+      }
+      setEditingMsg(null);
+      setText('');
+      return;
+    }
+
     setText('');
-    await sendMessage(msg);
+    await sendMessage(clean);
   };
 
   const handleSequentialApproval = async () => {
@@ -1067,45 +1189,87 @@ export default function AgreementChatModal({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
           {messages.map((m) => (
-            <div
+            <ChatMessageBubble
               key={m.id}
-              className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm ${
-                m.is_system_event
-                  ? 'mx-auto bg-emerald-50 text-emerald-900 text-xs font-semibold text-center border border-emerald-200'
-                  : m.sender_id === currentUser?.id
-                  ? 'ml-auto bg-pilis text-white rounded-br-sm'
-                  : 'bg-white text-[#18261F] border border-[#DFD9CE] rounded-bl-sm'
-              }`}
-            >
-              {m.body}
-            </div>
+              message={m}
+              isOwn={!m.is_system_event && m.sender_id === currentUser?.id}
+              isMenuOpen={activeMsgId === m.id}
+              isBeingEdited={editingMsg?.id === m.id}
+              isConfirmingDelete={confirmDeleteMsgId === m.id}
+              onToggleMenu={() => {
+                setActiveMsgId((prev) => (prev === m.id ? null : m.id));
+                setConfirmDeleteMsgId(null);
+              }}
+              onStartEdit={() => handleStartEditMessage(m)}
+              onRequestDelete={() => setConfirmDeleteMsgId(m.id)}
+              onCancelDelete={() => setConfirmDeleteMsgId(null)}
+              onConfirmDelete={() => handleDeleteMessage(m.id)}
+            />
           ))}
           <div ref={bottomRef} />
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-2">
-          {quickReplies.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => sendMessage(q)}
-              className="shrink-0 text-xs bg-white border border-[#DFD9CE] px-3 py-1.5 rounded-full hover:border-pilis"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
+        {!editingMsg && (
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-2">
+            {quickReplies.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => sendMessage(q)}
+                className="shrink-0 text-xs bg-white border border-[#DFD9CE] px-3 py-1.5 rounded-full hover:border-pilis"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-[#DFD9CE] flex gap-2">
+        {editingMsg && (
+          <div className="px-3.5 py-2 bg-pilis-soft/70 border-t border-[#DFD9CE] flex items-center justify-between gap-2 text-xs">
+            <span className="font-semibold text-pilis truncate">
+              Szerkesztés: „{editingMsg.body}”
+            </span>
+            <button
+              type="button"
+              onClick={handleCancelEditMessage}
+              className="shrink-0 font-bold text-[#5C6B62] hover:text-black px-2 py-0.5 rounded-lg bg-white border border-[#DFD9CE]"
+            >
+              Mégse
+            </button>
+          </div>
+        )}
+
+        {showEmojiPicker && (
+          <ChatEmojiPicker
+            onSelect={handlePickEmoji}
+            onClose={() => setShowEmojiPicker(false)}
+          />
+        )}
+
+        <form onSubmit={handleSubmit} className="p-3 bg-white border-t border-[#DFD9CE] flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Hangulatjelek"
+            onClick={() => setShowEmojiPicker((prev) => !prev)}
+            className={`shrink-0 w-10 h-10 rounded-full border flex items-center justify-center text-lg transition ${
+              showEmojiPicker
+                ? 'bg-pilis-soft border-pilis'
+                : 'bg-limestone border-[#DFD9CE] hover:border-pilis'
+            }`}
+          >
+            😊
+          </button>
           <input
+            ref={inputRef}
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Üzenet írása..."
+            onFocus={() => setShowEmojiPicker(false)}
+            placeholder={editingMsg ? 'Üzenet módosítása...' : 'Üzenet írása...'}
             className="flex-1 min-w-0 bg-limestone border border-[#DFD9CE] rounded-full px-4 py-2.5 text-base focus:outline-none focus:border-pilis"
           />
-          <button type="submit" className="shrink-0 bg-pilis text-white font-bold text-sm px-5 py-2.5 rounded-full">
-            Küldés
+          <button type="submit" className="shrink-0 bg-pilis text-white font-bold text-sm px-4 sm:px-5 py-2.5 rounded-full">
+            {editingMsg ? 'Mentés' : 'Küldés'}
           </button>
         </form>
       </div>
