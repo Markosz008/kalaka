@@ -59,6 +59,28 @@ export function getDeviceInstallInfo() {
   return { isStandalone, isIOS, isAndroid, isInAppBrowser, supportsPush, permission };
 }
 
+const JIT_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function shouldPromptForMessagePush(userId) {
+  if (typeof window === 'undefined' || !userId) return false;
+  try {
+    const raw = window.localStorage.getItem(`kalaka_jit_push_snooze_${userId}`);
+    if (!raw) return true;
+    const ts = Number(raw);
+    if (!Number.isFinite(ts)) return true;
+    return Date.now() - ts > JIT_SNOOZE_MS;
+  } catch {
+    return true;
+  }
+}
+
+export function snoozeMessagePushPrompt(userId) {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    window.localStorage.setItem(`kalaka_jit_push_snooze_${userId}`, String(Date.now()));
+  } catch {}
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -120,9 +142,7 @@ export async function subscribeToWebPush(supabase, userId, categories) {
     throw new Error('Nem sikerült bekapcsolni az értesítéseket ezen a telefonon.');
   }
 
-  const cats = Array.isArray(categories)
-    ? categories
-    : ['traffic', 'transit', 'utility', 'local'];
+  const cats = Array.isArray(categories) ? categories : [];
 
   const { error } = await supabase.from('push_subscriptions').upsert(
     {

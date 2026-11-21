@@ -333,7 +333,7 @@ export async function onRequestPost(context) {
     }
 
     const msgRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/messages?agreement_id=eq.${encodeURIComponent(agrId)}&sender_id=eq.${encodeURIComponent(user.id)}&order=created_at.desc&limit=1&select=body,created_at`,
+      `${env.SUPABASE_URL}/rest/v1/messages?agreement_id=eq.${encodeURIComponent(agrId)}&sender_id=eq.${encodeURIComponent(user.id)}&order=created_at.desc&limit=2&select=body,created_at`,
       { headers: getServiceHeaders(env) }
     );
     const msgRows = msgRes.ok ? await msgRes.json() : [];
@@ -341,15 +341,13 @@ export async function onRequestPost(context) {
     if (!latestMsg || Date.now() - new Date(latestMsg.created_at).getTime() > 2 * 60 * 1000) {
       return jsonResp({ skipped: true, reason: 'no_recent_message' });
     }
+    const prevMsg = msgRows[1] || null;
 
     const subRes = await fetch(
       `${env.SUPABASE_URL}/rest/v1/push_subscriptions?user_id=eq.${encodeURIComponent(recipientId)}&select=endpoint,p256dh,auth`,
       { headers: getServiceHeaders(env) }
     );
     const subs = subRes.ok ? await subRes.json() : [];
-    if (!subs.length) {
-      return jsonResp({ ok: true, sent: 0, failed: 0 });
-    }
 
     const cleanTitle = agr.ride_id
       ? 'Új fuvar-üzenet'
@@ -357,19 +355,115 @@ export async function onRequestPost(context) {
       ? 'Új Kaláka-üzenet'
       : 'Új üzenet a Kalákán';
     const cleanBody = String(latestMsg.body || 'Új üzeneted érkezett').slice(0, 160);
-    const result = await dispatchToSubscriptions(
-      subs,
-      {
+
+    let result = { sent: 0, failed: 0 };
+    if (subs.length > 0) {
+      result = await dispatchToSubscriptions(
+        subs,
+        {
+          title: cleanTitle,
+          body: cleanBody,
+          tag: `kalaka-agr-${agr.id}`,
+          url: `/?open=messages&agr=${encodeURIComponent(agr.id)}`,
+          badge: 1
+        },
+        env
+      );
+    }
+
+    let emailFallback = { sent: false, reason: 'push_delivered' };
+    if (result.sent === 0) {
+      emailFallback = await sendAgreementEmailFallback(env, {
+        recipientId,
+        senderId: user.id,
+        agrId: agr.id,
         title: cleanTitle,
         body: cleanBody,
-        tag: `kalaka-agr-${agr.id}`,
-        url: `/?open=messages&agr=${encodeURIComponent(agr.id)}`,
-        badge: 1
-      },
-      env
-    );
-    return jsonResp({ ok: true, ...result });
+        prevMsg
+      });
+    }
+
+    return jsonResp({ ok: true, ...result, emailFallback });
   }
 
   return jsonResp({ error: 'Ismeretlen művelet' }, 400);
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+async function sendAgreementEmailFallback(env, { recipientId, senderId, agrId, title, body, prevMsg }) {
+  if (!env.RESEND_API_KEY) {
+    return { sent: false, reason: 'not_configured' };
+  }
+  if (prevMsg?.created_at && Date.now() - new Date(prevMsg.created_at).getTime() < 15 * 60 * 1000) {
+    return { sent: false, reason: 'cooldown' };
+  }
+
+  try {
+    const [userRes, senderRes] = await Promise.all([
+      fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(recipientId)}`, {
+        headers: getServiceHeaders(env)
+      }),
+      fetch(
+        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(senderId)}&select=display_name`,
+        { headers: getServiceHeaders(env) }
+      )
+    ]);
+
+    const recipientData = userRes.ok ? await userRes.json() : null;
+    const recipientEmail = recipientData?.email;
+    if (!recipientEmail) {
+      return { sent: false, reason: 'no_email' };
+    }
+
+    const senderRows = senderRes.ok ? await senderRes.json() : [];
+    const senderName = senderRows?.[0]?.display_name || 'Egy szomszéd';
+    const baseUrl = (env.PUBLIC_APP_URL || 'https://kalakazz.hu').replace(/\/$/, '');
+    const openUrl = `${baseUrl}/?open=messages&agr=${encodeURIComponent(agrId)}`;
+    const fromAddr = env.RESEND_FROM || 'Kaláka Szentendre <ertesites@kalakazz.hu>';
+
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#18261F;background:#F7F5F0;border-radius:16px;">
+        <div style="font-size:13px;font-weight:700;color:#1E4D3B;margin-bottom:8px;">Kaláka – Szentendre</div>
+        <h2 style="font-size:18px;margin:0 0 12px 0;color:#18261F;">${escapeHtml(senderName)} írt neked</h2>
+        <div style="background:#FFFFFF;border:1px solid #DFD9CE;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5;margin-bottom:18px;">
+          ${escapeHtml(body)}
+        </div>
+        <a href="${openUrl}" style="display:inline-block;background:#1E4D3B;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:14px;padding:12px 20px;border-radius:12px;">
+          Válaszolok a Kalákában
+        </a>
+        <p style="font-size:11px;color:#5C6B62;margin-top:20px;line-height:1.4;">
+          Azért kaptad ezt az e-mailt, mert nincs bekapcsolva telefonos értesítésed a Kalákában. Ha bekapcsolod az appban, e-mail helyett azonnal a telefonodra érkezik a jelzés.
+        </p>
+      </div>
+    `;
+
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: fromAddr,
+        to: [recipientEmail],
+        subject: `${senderName}: ${title}`,
+        text: `${senderName} írt neked a Kalákán:\n\n${body}\n\nVálaszolj itt: ${openUrl}`,
+        html
+      })
+    });
+
+    if (!resendRes.ok) {
+      return { sent: false, reason: `resend_${resendRes.status}` };
+    }
+    return { sent: true };
+  } catch {
+    return { sent: false, reason: 'exception' };
+  }
 }

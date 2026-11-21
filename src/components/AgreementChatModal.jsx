@@ -26,7 +26,9 @@ export default function AgreementChatModal({
   agreement,
   currentUser,
   onClose,
-  onAgreementUpdated
+  onAgreementUpdated,
+  showPushBanner = false,
+  onOpenPushSettings
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -1183,6 +1185,21 @@ export default function AgreementChatModal({
               className="shrink-0 bg-amber-900 text-white font-bold px-2.5 py-1 rounded-lg"
             >
               Pozíció küldése
+            </button>
+          </div>
+        )}
+
+        {showPushBanner && onOpenPushSettings && (
+          <div className="bg-pilis-soft/80 border-b border-pilis/20 px-3.5 py-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-semibold text-[#18261F] leading-tight">
+              Bezárt appnál most nem kapsz jelzést a válaszokról.
+            </span>
+            <button
+              type="button"
+              onClick={onOpenPushSettings}
+              className="shrink-0 bg-pilis hover:bg-pilis-light text-white text-[11px] font-bold px-2.5 py-1 rounded-lg transition"
+            >
+              Bekapcsolom
             </button>
           </div>
         )}

@@ -22,12 +22,15 @@ import {
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
 import InstallPushGuideModal from './components/InstallPushGuideModal.jsx';
+import MessagePushPromptModal from './components/MessagePushPromptModal.jsx';
 import {
   triggerRadarPushIfNeeded,
   triggerAgreementPush,
   syncAppBadge,
   getCurrentPushSubscription,
-  getDeviceInstallInfo
+  getDeviceInstallInfo,
+  shouldPromptForMessagePush,
+  snoozeMessagePushPrompt
 } from './lib/webPush.js';
 import NewPostModal from './components/NewPostModal.jsx';
 import RidesRoutePanel from './components/RidesRoutePanel.jsx';
@@ -791,6 +794,7 @@ export default function App() {
 
   const [pendingNotifAgrId, setPendingNotifAgrId] = useState(null);
   const [showPushModal, setShowPushModal] = useState(false);
+  const [jitPushPrompt, setJitPushPrompt] = useState(null);
   const [pushEnabled, setPushEnabled] = useState(false);
 
   useEffect(() => {
@@ -804,6 +808,15 @@ export default function App() {
       active = false;
     };
   }, [session?.user?.id, showPushModal, showRoadModal]);
+
+  const maybeOpenJitPushPrompt = (title, subtitle) => {
+    const uid = session?.user?.id;
+    if (!uid || pushEnabled) return;
+    const info = getDeviceInstallInfo();
+    if (info.permission === 'denied') return;
+    if (!shouldPromptForMessagePush(uid)) return;
+    setJitPushPrompt({ title, subtitle });
+  };
 
   useEffect(() => {
     syncAppBadge(unreadCount);
@@ -1054,6 +1067,10 @@ export default function App() {
       setInlineComposerMode(null);
       setInlineNote('');
       showNotice('Útvonal közzétéve ✓');
+      maybeOpenJitPushPrompt(
+        'Szóljunk, ha jelentkezik valaki az utadra?',
+        'Csak a saját üzeneteidről és fuvar-visszaigazolásokról küldünk jelzést. Városi hírekkel nem zavarunk, amíg külön nem kéred.'
+      );
     } catch (err) {
       showNotice(`Hiba a mentéskor: ${err.message}`, 'err');
     } finally {
@@ -1250,16 +1267,17 @@ export default function App() {
     setNewNote('');
     showNotice(editingItemId ? 'Módosítások mentve ✓' : 'Közzétéve ✓');
     fetchAllLiveData(session.user.id);
+    if (!editingItemId) {
+      maybeOpenJitPushPrompt(
+        newKind === 'favor'
+          ? 'Szóljunk, ha jelentkezik egy szomszéd?'
+          : 'Szóljunk, ha jelentkezik valaki az utadra?',
+        'Csak a saját üzeneteidről és visszaigazolásokról kapsz jelzést — a Városi Radart külön kapcsolhatod be.'
+      );
+    }
   };
 
   const handleOpenAgreement = (agr) => {
-    if (
-      typeof window !== 'undefined' &&
-      'Notification' in window &&
-      Notification.permission === 'default'
-    ) {
-      Notification.requestPermission().catch(() => {});
-    }
     if (session?.user?.id && agr?.id) {
       markAgreementReadStorage(session.user.id, agr.id);
       setMyAgreements((prev) =>
@@ -1965,6 +1983,24 @@ export default function App() {
         />
       )}
 
+      <MessagePushPromptModal
+        isOpen={Boolean(jitPushPrompt)}
+        title={jitPushPrompt?.title}
+        subtitle={jitPushPrompt?.subtitle}
+        supabase={supabase}
+        currentUserId={session?.user?.id}
+        onClose={() => setJitPushPrompt(null)}
+        onSnooze={() => {
+          snoozeMessagePushPrompt(session?.user?.id);
+          setJitPushPrompt(null);
+        }}
+        onEnabled={() => {
+          setPushEnabled(true);
+          showNotice('Üzenet-értesítések bekapcsolva ✓');
+          setJitPushPrompt(null);
+        }}
+      />
+
       <InstallPushGuideModal
         isOpen={showPushModal}
         onClose={() => setShowPushModal(false)}
@@ -2019,6 +2055,8 @@ export default function App() {
         onInspectUser={setInspectedUser}
         agreement={activeAgreement}
         currentUser={profile}
+        showPushBanner={Boolean(session?.user) && !pushEnabled}
+        onOpenPushSettings={() => setShowPushModal(true)}
         onClose={() => {
           if (session?.user?.id && activeAgreement?.id) {
             markAgreementReadStorage(session.user.id, activeAgreement.id);

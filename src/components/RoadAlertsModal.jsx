@@ -34,6 +34,7 @@ export default function RoadAlertsModal({
   const [vpStyle, setVpStyle] = useState(null);
   const [showPushGuide, setShowPushGuide] = useState(false);
   const [pushActive, setPushActive] = useState(false);
+  const [radarCatCount, setRadarCatCount] = useState(0);
   const scrollAreaRef = useRef(null);
 
   const scrollFocusedInput = useCallback((explicitEl) => {
@@ -58,14 +59,29 @@ export default function RoadAlertsModal({
   useEffect(() => {
     if (!isOpen) return;
     let alive = true;
-    getCurrentPushSubscription().then((sub) => {
+    (async () => {
+      const sub = await getCurrentPushSubscription();
       if (!alive) return;
-      setPushActive(Boolean(sub) && getDeviceInstallInfo().permission === 'granted');
-    });
+      const active = Boolean(sub?.endpoint) && getDeviceInstallInfo().permission === 'granted';
+      setPushActive(active);
+      if (active && supabase && currentUserId) {
+        const { data } = await supabase
+          .from('push_subscriptions')
+          .select('categories')
+          .eq('user_id', currentUserId)
+          .eq('endpoint', sub.endpoint)
+          .maybeSingle();
+        if (alive) {
+          setRadarCatCount(Array.isArray(data?.categories) ? data.categories.length : 0);
+        }
+      } else if (alive) {
+        setRadarCatCount(0);
+      }
+    })();
     return () => {
       alive = false;
     };
-  }, [isOpen]);
+  }, [isOpen, showPushGuide, supabase, currentUserId]);
 
   useEffect(() => {
     if (!isOpen || typeof document === 'undefined') return;
@@ -199,25 +215,37 @@ export default function RoadAlertsModal({
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pb-[calc(1.75rem+env(safe-area-inset-bottom))]"
         >
 
-        {!pushActive && (
-          <button
-            type="button"
-            onClick={() => setShowPushGuide(true)}
-            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-left text-xs transition bg-white border-[#DFD9CE] text-[#18261F] hover:border-pilis"
-          >
-            <div className="min-w-0">
-              <div className="font-bold text-[11px] truncate">
-                Kérj értesítést dugóról és fontos hírekről
-              </div>
-              <div className="text-[10px] text-[#5C6B62] truncate">
-                Telefonos jelzések és főképernyőre rakás
-              </div>
+        <button
+          type="button"
+          onClick={() => setShowPushGuide(true)}
+          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border text-left text-xs transition ${
+            pushActive && radarCatCount > 0
+              ? 'bg-pilis-soft/70 border-pilis/30 text-[#18261F]'
+              : 'bg-white border-[#DFD9CE] text-[#18261F] hover:border-pilis'
+          }`}
+        >
+          <div className="min-w-0">
+            <div className="font-bold text-[11px] truncate">
+              {pushActive && radarCatCount > 0
+                ? `Radar értesítések aktívak (${radarCatCount} téma)`
+                : 'Kérj külön értesítést dugóról és városi hírekről'}
             </div>
-            <span className="shrink-0 text-[11px] font-bold bg-limestone px-2.5 py-1 rounded-full text-pilis">
-              Bekapcsolás ›
-            </span>
-          </button>
-        )}
+            <div className="text-[10px] text-[#5C6B62] truncate">
+              {pushActive && radarCatCount > 0
+                ? 'Bármikor módosíthatod a témákat — az üzeneteidtől függetlenül'
+                : 'A Radar külön választható, nem keveredik a saját üzeneteiddel'}
+            </div>
+          </div>
+          <span
+            className={`shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full ${
+              pushActive && radarCatCount > 0
+                ? 'bg-white text-pilis'
+                : 'bg-limestone text-pilis'
+            }`}
+          >
+            {pushActive && radarCatCount > 0 ? 'Módosítás ›' : 'Beállítás ›'}
+          </span>
+        </button>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
@@ -529,6 +557,7 @@ export default function RoadAlertsModal({
         onNeedAuth={onNeedAuth}
         showNotice={showNotice}
         onStatusChange={setPushActive}
+        initialFocus="radar"
       />
     </div>
   );

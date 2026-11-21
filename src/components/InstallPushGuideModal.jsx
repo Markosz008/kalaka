@@ -18,12 +18,13 @@ export default function InstallPushGuideModal({
   currentUserId,
   onNeedAuth,
   showNotice,
-  onStatusChange
+  onStatusChange,
+  initialFocus = 'messages'
 }) {
   const [info, setInfo] = useState(() => getDeviceInstallInfo());
   const [canNativeInstall, setCanNativeInstall] = useState(() => hasNativeInstallPrompt());
   const [subEndpoint, setSubEndpoint] = useState(null);
-  const [selectedCats, setSelectedCats] = useState(['traffic', 'transit', 'utility', 'local']);
+  const [selectedCats, setSelectedCats] = useState([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [guideTab, setGuideTab] = useState(() => (getDeviceInstallInfo().isAndroid ? 'android' : 'ios'));
@@ -57,6 +58,9 @@ export default function InstallPushGuideModal({
         }
       } else {
         setSubEndpoint(null);
+        if (active) {
+          setSelectedCats([]);
+        }
       }
     })();
 
@@ -80,7 +84,13 @@ export default function InstallPushGuideModal({
     if (isSubscribed && supabase && currentUserId && subEndpoint) {
       try {
         await updatePushCategories(supabase, currentUserId, subEndpoint, next);
-        if (showNotice) showNotice('Értesítési témák elmentve ✓');
+        if (showNotice) {
+          showNotice(
+            next.length === 0
+              ? 'Városi Radar elnémítva (az üzeneteid továbbra is megérkeznek)'
+              : 'Városi Radar témák elmentve ✓'
+          );
+        }
       } catch (err) {
         setFeedback({ type: 'err', text: err.message });
       }
@@ -96,11 +106,17 @@ export default function InstallPushGuideModal({
     setBusy(true);
     setFeedback(null);
     try {
-      const sub = await subscribeToWebPush(supabase, currentUserId, selectedCats);
+      const catsToSave = selectedCats;
+      const sub = await subscribeToWebPush(supabase, currentUserId, catsToSave);
       setSubEndpoint(sub.endpoint);
       setInfo(getDeviceInstallInfo());
       if (onStatusChange) onStatusChange(true);
-      setFeedback({ type: 'ok', text: 'Értesítések bekapcsolva! Mostantól azonnal szólunk a telefonodon.' });
+      setFeedback({
+        type: 'ok',
+        text: catsToSave.length > 0
+          ? 'Üzenet- és Radar-értesítések bekapcsolva!'
+          : 'Üzenet-értesítések bekapcsolva! A Városi Radar témáit lent bármikor hozzáadhatod.'
+      });
     } catch (err) {
       setFeedback({ type: 'err', text: err.message });
     } finally {
@@ -141,10 +157,10 @@ export default function InstallPushGuideModal({
         <div className="flex justify-between items-start gap-2 pb-3 shrink-0">
           <div>
             <h3 className="font-display font-extrabold text-lg text-[#18261F]">
-              Telefonos értesítések
+              {initialFocus === 'radar' ? 'Városi Radar értesítések' : 'Telefonos értesítések'}
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Szólunk a fuvar- és kaláka-üzenetekről, valamint a kiválasztott városi hírekről.
+              A privát üzenetek alapból külön működnek a Városi Radar riasztásaitól.
             </p>
           </div>
           <button
@@ -228,83 +244,116 @@ export default function InstallPushGuideModal({
           )}
 
           {!needsIosInstall && (
-            <div className="bg-white border border-[#DFD9CE] rounded-2xl p-3.5 space-y-3 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-extrabold text-[#18261F]">Városi Radar témák</span>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    isSubscribed
-                      ? 'bg-emerald-100 text-emerald-900'
-                      : 'bg-limestone text-[#5C6B62]'
-                  }`}
-                >
-                  {isSubscribed ? 'Aktív ✓' : 'Kikapcsolva'}
-                </span>
+            <>
+              <div className="bg-white border border-[#DFD9CE] rounded-2xl p-3.5 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-extrabold text-[#18261F]">Privát üzenetek és fuvarok</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isSubscribed
+                        ? 'bg-emerald-100 text-emerald-900'
+                        : 'bg-limestone text-[#5C6B62]'
+                    }`}
+                  >
+                    {isSubscribed ? 'Aktív ✓' : 'Kikapcsolva'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-[#5C6B62] leading-snug">
+                  Zárt appnál is azonnal szólunk új üzenetről, elfogadásról és indulásról. Városi hírekkel alapból nem zavarunk.
+                </p>
+
+                {info.permission === 'denied' && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-900">
+                    Az értesítések le vannak tiltva ennél az oldalnál. A telefon Beállítások → Értesítések menüjében tudod újra engedélyezni.
+                  </div>
+                )}
+
+                {feedback && (
+                  <div
+                    className={`rounded-xl p-2.5 text-[11px] font-semibold ${
+                      feedback.type === 'ok'
+                        ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                        : 'bg-red-50 text-red-900 border border-red-200'
+                    }`}
+                  >
+                    {feedback.text}
+                  </div>
+                )}
+
+                {!isSubscribed ? (
+                  <button
+                    type="button"
+                    disabled={busy || !info.supportsPush}
+                    onClick={handleEnablePush}
+                    className="w-full bg-pilis hover:bg-pilis-light disabled:opacity-60 text-white font-bold py-2.5 rounded-xl text-xs transition"
+                  >
+                    {busy ? 'Bekapcsolás...' : 'Értesítések bekapcsolása'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={handleDisablePush}
+                    className="w-full bg-limestone hover:bg-red-50 text-[#5C6B62] hover:text-red-800 border border-[#DFD9CE] font-bold py-2.5 px-3 rounded-xl text-xs transition"
+                  >
+                    {busy ? 'Folyamatban...' : 'Összes értesítés kikapcsolása'}
+                  </button>
+                )}
               </div>
 
-              <p className="text-[11px] text-[#5C6B62] leading-snug">
-                A fuvar- és kaláka-jelentkezésekről automatikusan szólunk. A városi híreknél csak akkor küldünk jelzést, ha legalább 3-an megerősítik.
-              </p>
+              <div
+                className={`bg-white rounded-2xl p-3.5 space-y-2.5 text-xs border ${
+                  initialFocus === 'radar'
+                    ? 'border-pilis ring-1 ring-pilis/30'
+                    : 'border-[#DFD9CE]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-extrabold text-[#18261F]">Városi Radar témák (külön választható)</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isSubscribed && selectedCats.length > 0
+                        ? 'bg-pilis-soft text-pilis'
+                        : 'bg-limestone text-[#5C6B62]'
+                    }`}
+                  >
+                    {isSubscribed && selectedCats.length > 0 ? `${selectedCats.length} aktív` : 'Kikapcsolva'}
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-2 gap-1.5">
-                {RADAR_CATEGORIES.map((c) => {
-                  const on = selectedCats.includes(c.id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => handleToggleCategory(c.id)}
-                      className={`py-2 px-2.5 rounded-xl border text-left font-bold text-[11px] flex items-center justify-between transition ${
-                        on
-                          ? 'bg-pilis-soft text-pilis border-pilis/40'
-                          : 'bg-limestone text-[#5C6B62] border-[#DFD9CE]'
-                      }`}
-                    >
-                      <span>{c.label}</span>
-                      <span>{on ? '✓' : '+'}</span>
-                    </button>
-                  );
-                })}
+                <p className="text-[11px] text-[#5C6B62] leading-snug">
+                  Csak akkor küldünk városi riasztást, ha legalább 3-an megerősítik. Ha mindet kikapcsolod, a Radar elnémul, de a saját üzeneteid továbbra is megérkeznek.
+                </p>
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  {RADAR_CATEGORIES.map((c) => {
+                    const on = selectedCats.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleToggleCategory(c.id)}
+                        className={`py-2 px-2.5 rounded-xl border text-left font-bold text-[11px] flex items-center justify-between transition ${
+                          on
+                            ? 'bg-pilis-soft text-pilis border-pilis/40'
+                            : 'bg-limestone text-[#5C6B62] border-[#DFD9CE]'
+                        }`}
+                      >
+                        <span>{c.label}</span>
+                        <span>{on ? '✓' : '+'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {!isSubscribed && selectedCats.length > 0 && (
+                  <p className="text-[11px] font-semibold text-pilis">
+                    Nyomj fent az „Értesítések bekapcsolása” gombra a kiválasztott témák mentéséhez.
+                  </p>
+                )}
               </div>
-
-              {info.permission === 'denied' && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-[11px] text-red-900">
-                  Az értesítések le vannak tiltva ennél az oldalnál. A telefon Beállítások → Értesítések menüjében tudod újra engedélyezni.
-                </div>
-              )}
-
-              {feedback && (
-                <div
-                  className={`rounded-xl p-2.5 text-[11px] font-semibold ${
-                    feedback.type === 'ok'
-                      ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
-                      : 'bg-red-50 text-red-900 border border-red-200'
-                  }`}
-                >
-                  {feedback.text}
-                </div>
-              )}
-
-              {!isSubscribed ? (
-                <button
-                  type="button"
-                  disabled={busy || !info.supportsPush}
-                  onClick={handleEnablePush}
-                  className="w-full bg-pilis hover:bg-pilis-light disabled:opacity-60 text-white font-bold py-2.5 rounded-xl text-xs transition"
-                >
-                  {busy ? 'Bekapcsolás...' : 'Értesítések bekapcsolása'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={handleDisablePush}
-                  className="w-full bg-limestone hover:bg-red-50 text-[#5C6B62] hover:text-red-800 border border-[#DFD9CE] font-bold py-2.5 px-3 rounded-xl text-xs transition"
-                >
-                  {busy ? 'Folyamatban...' : 'Értesítések kikapcsolása'}
-                </button>
-              )}
-            </div>
+            </>
           )}
 
           {!info.isStandalone && (
