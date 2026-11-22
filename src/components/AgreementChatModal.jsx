@@ -442,8 +442,12 @@ export default function AgreementChatModal({
       let nextHelperAgreed = Boolean(liveAgr.helper_agreed);
 
       if (isPostOwner && !ownerConfirmed) {
-        if (ownerIsHelper) nextHelperAgreed = true;
-        else nextReqAgreed = true;
+        if (ownerIsHelper) {
+          nextHelperAgreed = true;
+        } else {
+          nextReqAgreed = true;
+          if (isRideAgreement) nextHelperAgreed = true;
+        }
       } else if (!isPostOwner && ownerConfirmed && !joinerConfirmed) {
         if (ownerIsHelper) nextReqAgreed = true;
         else nextHelperAgreed = true;
@@ -482,7 +486,9 @@ export default function AgreementChatModal({
       }
 
       const approvalText = bothConfirmed
-        ? `${currentUser?.display_name || 'A csatlakozó'} véglegesítette – a megállapodás rögzítve.`
+        ? isPostOwner && isRideAgreement && !ownerIsHelper
+          ? `${currentUser?.display_name || 'Az utas'} elfogadta a fuvarajánlatot – a megállapodás rögzítve.`
+          : `${currentUser?.display_name || 'A csatlakozó'} véglegesítette – a megállapodás rögzítve.`
         : `${currentUser?.display_name || 'A hirdető'} elfogadta a jelentkezést.`;
       await supabase.from('messages').insert({
         agreement_id: liveAgr.id,
@@ -775,9 +781,35 @@ export default function AgreementChatModal({
     };
   })();
 
+  const showHeaderCancel =
+    !isProInquiry &&
+    ['chatting', 'agreed', 'started'].includes(status) &&
+    !(status === 'chatting' && isPostOwner && !ownerConfirmed);
+
+  const rideDepRaw = liveAgr.ride_departure_at || liveAgr.ride?.departure_at || null;
+  const rideDepLabel = (() => {
+    if (!rideDepRaw) return '';
+    const d = new Date(rideDepRaw);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' });
+  })();
+
+  const fullRouteLabel =
+    liveAgr.ride_origin_text && liveAgr.ride_dest_text
+      ? `${liveAgr.ride_origin_text} → ${liveAgr.ride_dest_text}`
+      : liveAgr.title || '';
+
   const quickReplies = isProInquiry
-    ? ['Szia! Mikor lenne szabad időpontod?', 'Szentendrén belül kiszállással is vállalod?', 'Köszönöm a gyors választ!']
-    : ['Ott leszek a megállóban.', '2 perc és érkezem.', 'Köszönöm a segítséget!'];
+    ? [
+        'Szia! Mikor lenne szabad időpontod?',
+        'Szentendrén belül kiszállással is vállalod?',
+        'Köszönöm a gyors választ!'
+      ]
+    : isRideAgreement
+    ? isHelper
+      ? ['2 perc és érkezem.', 'Most indulok, nemsokára ott vagyok.', 'Hol találkozunk pontosan?']
+      : ['Mikor indulsz kb.?', 'Ott leszek a megállóban.', 'Köszönöm a fuvart!']
+    : ['Mikor lenne jó neked?', 'Megbeszéltük, köszi!', 'Köszönöm a segítséget!'];
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
@@ -831,7 +863,7 @@ export default function AgreementChatModal({
 
           {(liveAgr.car_info ||
             (isRideAgreement && isHelper && !editingCar) ||
-            (!isProInquiry && ['chatting', 'agreed', 'started'].includes(status)) ||
+            showHeaderCancel ||
             (!isProInquiry && status !== 'chatting')) && (
             <div className="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#ECE7DC]">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -855,7 +887,7 @@ export default function AgreementChatModal({
                 )}
               </div>
               <div className="flex items-center gap-1.5 ml-auto">
-                {!isProInquiry && ['chatting', 'agreed', 'started'].includes(status) && (
+                {showHeaderCancel && (
                   <button
                     type="button"
                     disabled={busy}
@@ -1016,20 +1048,29 @@ export default function AgreementChatModal({
         {!isProInquiry && (
           <div
             className={`bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex gap-2 ${
-              (status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester
+              (status === 'chatting' && isPostOwner && !ownerConfirmed) ||
+              ((status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester)
                 ? 'flex-col items-stretch'
                 : 'flex-wrap items-center justify-between'
             }`}
           >
-            <div className="text-xs font-semibold text-[#18261F] min-w-0">
+            <div className="text-xs font-semibold text-[#18261F] min-w-0 space-y-0.5">
               {status === 'chatting' && !ownerConfirmed && (
-                isPostOwner
-                  ? isRideAgreement
-                    ? ownerIsHelper
-                      ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
-                      : 'Új fuvarajánlat • Fogadd el, ha jó az indulás'
-                    : 'Új jelentkezés • Fogadd el, ha megfelel'
-                  : 'Várakozás a hirdető jóváhagyására'
+                <div>
+                  {isPostOwner
+                    ? isRideAgreement
+                      ? ownerIsHelper
+                        ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
+                        : 'Új fuvarajánlat • Fogadd el, ha jó az indulás'
+                      : 'Új jelentkezés • Fogadd el, ha megfelel'
+                    : 'Várakozás a hirdető jóváhagyására'}
+                </div>
+              )}
+              {status === 'chatting' && isPostOwner && !ownerConfirmed && isRideAgreement && fullRouteLabel && (
+                <div className="text-[11px] font-medium text-[#4A5850] leading-snug">
+                  {fullRouteLabel}
+                  {rideDepLabel ? ` • Indulás: ${rideDepLabel}` : ''}
+                </div>
               )}
               {status === 'chatting' && ownerConfirmed && !joinerConfirmed && (
                 isPostOwner
@@ -1064,7 +1105,8 @@ export default function AgreementChatModal({
 
             <div
               className={`flex items-center gap-1.5 ${
-                (status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester
+                (status === 'chatting' && isPostOwner && !ownerConfirmed) ||
+                ((status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester)
                   ? 'w-full'
                   : 'shrink-0'
               }`}
@@ -1075,7 +1117,7 @@ export default function AgreementChatModal({
                     type="button"
                     disabled={busy}
                     onClick={handleCancelAgreement}
-                    className="bg-white hover:bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-2.5 py-1.5 rounded-xl"
+                    className="flex-1 bg-white hover:bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-3 py-2 rounded-xl"
                   >
                     {isRideAgreement && ownerIsHelper ? 'Nem esik útba' : 'Nem jó'}
                   </button>
@@ -1083,7 +1125,7 @@ export default function AgreementChatModal({
                     type="button"
                     disabled={busy}
                     onClick={handleSequentialApproval}
-                    className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
+                    className="flex-[2] bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-2 rounded-xl"
                   >
                     Elfogadom
                   </button>

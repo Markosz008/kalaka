@@ -208,6 +208,11 @@ export function triggerRadarPushIfNeeded(supabase, alertId) {
   callRadarPushEndpoint(supabase, { mode: 'alert', alert_id: alertId }).catch(() => {});
 }
 
+export function triggerNewRidePush(supabase, rideId) {
+  if (!supabase || !rideId) return;
+  callRadarPushEndpoint(supabase, { mode: 'new_ride', ride_id: rideId }).catch(() => {});
+}
+
 export function triggerAgreementPush(supabase, agreementId, title, body) {
   if (!supabase || !agreementId) return;
   callRadarPushEndpoint(supabase, {

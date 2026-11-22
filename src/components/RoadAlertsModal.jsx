@@ -72,7 +72,10 @@ export default function RoadAlertsModal({
           .eq('endpoint', sub.endpoint)
           .maybeSingle();
         if (alive) {
-          setRadarCatCount(Array.isArray(data?.categories) ? data.categories.length : 0);
+          const activeRadar = Array.isArray(data?.categories)
+            ? data.categories.filter((id) => id !== 'ride_ask' && id !== 'ride_offer')
+            : [];
+          setRadarCatCount(activeRadar.length);
         }
       } else if (alive) {
         setRadarCatCount(0);

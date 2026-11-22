@@ -311,6 +311,56 @@ export async function onRequestPost(context) {
     return jsonResp({ ok: true, ...result });
   }
 
+  if (body.mode === 'new_ride' && body.ride_id) {
+    const rideId = String(body.ride_id).trim();
+    const rideRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/rides?id=eq.${encodeURIComponent(rideId)}&select=id,user_id,kind,origin_text,dest_text,departure_at,created_at`,
+      { headers: getServiceHeaders(env) }
+    );
+    const rideRows = rideRes.ok ? await rideRes.json() : [];
+    const ride = rideRows[0];
+    if (!ride) return jsonResp({ skipped: true, reason: 'not_found' });
+    if (ride.user_id !== user.id) return jsonResp({ error: 'Nincs jogosultság' }, 403);
+    if (Date.now() - new Date(ride.created_at).getTime() > 5 * 60 * 1000) {
+      return jsonResp({ skipped: true, reason: 'too_old' });
+    }
+
+    const subCat = ride.kind === 'ask' ? 'ride_ask' : 'ride_offer';
+    const catFilter = encodeURIComponent(`{"${subCat}"}`);
+    const subRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/push_subscriptions?categories=cs.${catFilter}&user_id=neq.${encodeURIComponent(user.id)}&select=endpoint,p256dh,auth`,
+      { headers: getServiceHeaders(env) }
+    );
+    const subs = subRes.ok ? await subRes.json() : [];
+    if (!subs.length) {
+      return jsonResp({ ok: true, sent: 0, failed: 0 });
+    }
+
+    let depLabel = '';
+    if (ride.departure_at) {
+      try {
+        depLabel = new Intl.DateTimeFormat('hu-HU', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Budapest'
+        }).format(new Date(ride.departure_at));
+      } catch {}
+    }
+
+    const routeText = `${ride.origin_text || ''} → ${ride.dest_text || ''}`.trim();
+    const result = await dispatchToSubscriptions(
+      subs,
+      {
+        title: ride.kind === 'ask' ? 'Új fuvar-kérés Szentendrén' : 'Új szabad hely Szentendrén',
+        body: `${routeText}${depLabel ? ` (${depLabel})` : ''}`.slice(0, 160),
+        tag: `kalaka-ride-${ride.id}`,
+        url: '/?open=rides'
+      },
+      env
+    );
+    return jsonResp({ ok: true, ...result });
+  }
+
   if (body.mode === 'agreement' && body.agreement_id) {
     const agrId = String(body.agreement_id).trim();
     const agrRes = await fetch(

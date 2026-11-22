@@ -25,6 +25,7 @@ import InstallPushGuideModal from './components/InstallPushGuideModal.jsx';
 import MessagePushPromptModal from './components/MessagePushPromptModal.jsx';
 import {
   triggerRadarPushIfNeeded,
+  triggerNewRidePush,
   triggerAgreementPush,
   syncAppBadge,
   getCurrentPushSubscription,
@@ -478,7 +479,7 @@ export default function App() {
           *,
           requester:profiles!agreements_requester_id_fkey(display_name, avatar_url),
           helper:profiles!agreements_helper_id_fkey(display_name, car_info, avatar_url),
-          ride:rides(origin_text, dest_text, kind, user_id, car_info),
+          ride:rides(origin_text, dest_text, kind, user_id, car_info, departure_at),
           favor:favors(title),
           pro:local_pros(business_name, profession_name)
         `)
@@ -530,6 +531,7 @@ export default function App() {
             car_info: a.ride?.car_info || a.helper?.car_info || null,
             ride_origin_text: a.ride?.origin_text || null,
             ride_dest_text: a.ride?.dest_text || null,
+            ride_departure_at: a.ride?.departure_at || null,
             title: a.ride
               ? formatAgreementRideTitle(a.ride.origin_text, a.ride.dest_text, a.status)
               : a.pro
@@ -621,13 +623,26 @@ export default function App() {
       }
     });
 
+    let wakeRetryTimer = null;
     const handleWakeOrFocus = () => {
-      if (document.visibilityState === 'visible') {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
         scheduleDebouncedRefresh(uid);
+        if (wakeRetryTimer) clearTimeout(wakeRetryTimer);
+        wakeRetryTimer = setTimeout(() => {
+          fetchAllLiveData(uid);
+        }, 1500);
       }
     };
     document.addEventListener('visibilitychange', handleWakeOrFocus);
     window.addEventListener('focus', handleWakeOrFocus);
+    window.addEventListener('pageshow', handleWakeOrFocus);
+    window.addEventListener('online', handleWakeOrFocus);
+
+    const feedPollTimer = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchAllLiveData(uid);
+      }
+    }, 15000);
 
     const globalChannel = supabase
       .channel('public-feed-changes')
@@ -682,12 +697,20 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'local_pros' }, () =>
         scheduleDebouncedRefresh(uid)
       )
-      .subscribe();
+      .subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          scheduleDebouncedRefresh(uid);
+        }
+      });
 
     return () => {
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleWakeOrFocus);
       window.removeEventListener('focus', handleWakeOrFocus);
+      window.removeEventListener('pageshow', handleWakeOrFocus);
+      window.removeEventListener('online', handleWakeOrFocus);
+      clearInterval(feedPollTimer);
+      if (wakeRetryTimer) clearTimeout(wakeRetryTimer);
       supabase.removeChannel(globalChannel);
       if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
     };
@@ -1047,11 +1070,26 @@ export default function App() {
         payload.dest_lng = endPt.lng;
       }
 
-      const { error } = await supabase.from('rides').insert(payload);
+      let insertedRideId = null;
+      const { data: insRide, error } = await supabase
+        .from('rides')
+        .insert(payload)
+        .select('id')
+        .single();
       if (error) {
         const { origin_lat, origin_lng, dest_lat, dest_lng, ...basicPayload } = payload;
-        const { error: retryErr } = await supabase.from('rides').insert(basicPayload);
+        const { data: retryRide, error: retryErr } = await supabase
+          .from('rides')
+          .insert(basicPayload)
+          .select('id')
+          .single();
         if (retryErr) throw retryErr;
+        insertedRideId = retryRide?.id || null;
+      } else {
+        insertedRideId = insRide?.id || null;
+      }
+      if (insertedRideId) {
+        triggerNewRidePush(supabase, insertedRideId);
       }
 
       if (chosenCar && !profile?.car_info) {
@@ -1241,18 +1279,29 @@ export default function App() {
           }
         }
       } else {
-        const { error } = await supabase
+        let insertedRideId = null;
+        const { data: insRide, error } = await supabase
           .from('rides')
-          .insert({ ...ridePayload, user_id: session.user.id });
+          .insert({ ...ridePayload, user_id: session.user.id })
+          .select('id')
+          .single();
         if (error) {
           const { origin_lat, origin_lng, dest_lat, dest_lng, ...basic } = ridePayload;
-          const { error: retryErr } = await supabase
+          const { data: retryRide, error: retryErr } = await supabase
             .from('rides')
-            .insert({ ...basic, user_id: session.user.id });
+            .insert({ ...basic, user_id: session.user.id })
+            .select('id')
+            .single();
           if (retryErr) {
             showNotice(`Mentési hiba: ${retryErr.message}`, 'err');
             return;
           }
+          insertedRideId = retryRide?.id || null;
+        } else {
+          insertedRideId = insRide?.id || null;
+        }
+        if (insertedRideId) {
+          triggerNewRidePush(supabase, insertedRideId);
         }
       }
       recordPersonalRoutine(session.user.id, newFrom.trim(), newTo.trim(), startPt, endPt);
@@ -1384,6 +1433,7 @@ export default function App() {
       car_info: resolvedCar,
       ride_origin_text: ride.origin_text || null,
       ride_dest_text: ride.dest_text || null,
+      ride_departure_at: ride.departure_at || null,
       partner_name: ride.author_name,
       partner_avatar: ride.author_avatar || null,
       title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, 'chatting')

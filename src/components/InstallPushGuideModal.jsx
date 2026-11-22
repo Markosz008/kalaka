@@ -87,8 +87,8 @@ export default function InstallPushGuideModal({
         if (showNotice) {
           showNotice(
             next.length === 0
-              ? 'Városi Radar elnémítva (az üzeneteid továbbra is megérkeznek)'
-              : 'Városi Radar témák elmentve ✓'
+              ? 'Plusz értesítések elnémítva (a saját üzeneteid továbbra is megérkeznek)'
+              : 'Értesítési beállítások elmentve ✓'
           );
         }
       } catch (err) {
@@ -300,6 +300,53 @@ export default function InstallPushGuideModal({
                     {busy ? 'Folyamatban...' : 'Összes értesítés kikapcsolása'}
                   </button>
                 )}
+              </div>
+
+              <div className="bg-white rounded-2xl p-3.5 space-y-2.5 text-xs border border-[#DFD9CE]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-extrabold text-[#18261F]">Új fuvar-értesítések (külön választható)</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isSubscribed &&
+                      selectedCats.some((id) => id === 'ride_ask' || id === 'ride_offer')
+                        ? 'bg-pilis-soft text-pilis'
+                        : 'bg-limestone text-[#5C6B62]'
+                    }`}
+                  >
+                    {isSubscribed &&
+                    selectedCats.some((id) => id === 'ride_ask' || id === 'ride_offer')
+                      ? `${selectedCats.filter((id) => id === 'ride_ask' || id === 'ride_offer').length} aktív`
+                      : 'Kikapcsolva'}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-[#5C6B62] leading-snug">
+                  Szólunk, ha egy szomszéd épp fuvart kér vagy szabad helyet hirdet, hogy ne kelljen percenként megnyitnod az appot.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {[
+                    { id: 'ride_ask', label: 'Fuvar-kérések (sofőröknek)' },
+                    { id: 'ride_offer', label: 'Szabad helyek (utasoknak)' }
+                  ].map((opt) => {
+                    const on = selectedCats.includes(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleToggleCategory(opt.id)}
+                        className={`py-2 px-2.5 rounded-xl border text-left font-bold text-[11px] flex items-center justify-between transition ${
+                          on
+                            ? 'bg-pilis-soft text-pilis border-pilis/40'
+                            : 'bg-limestone text-[#5C6B62] border-[#DFD9CE]'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        <span>{on ? '✓' : '+'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div
