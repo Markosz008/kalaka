@@ -88,15 +88,37 @@ export default function AgreementChatModal({
     }
 
     let mounted = true;
+    let isTerminal = ['completed', 'cancelled'].includes(agreement.status);
+    let syncing = false;
 
-    supabase
-      .from('messages')
-      .select('*')
-      .eq('agreement_id', agreement.id)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        if (mounted && data) setMessages(data);
-      });
+    const syncAgreementState = async () => {
+      if (!mounted || syncing) return;
+      syncing = true;
+      try {
+        const [{ data: msgData }, { data: agrData }] = await Promise.all([
+          supabase
+            .from('messages')
+            .select('*')
+            .eq('agreement_id', agreement.id)
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('agreements')
+            .select('*')
+            .eq('id', agreement.id)
+            .maybeSingle()
+        ]);
+        if (!mounted) return;
+        if (msgData) setMessages(msgData);
+        if (agrData) {
+          isTerminal = ['completed', 'cancelled'].includes(agrData.status);
+          setLiveAgr((prev) => (prev ? { ...prev, ...agrData } : agrData));
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+
+    syncAgreementState();
 
     const channel = supabase
       .channel(`agr-chat-${agreement.id}`)
@@ -140,13 +162,51 @@ export default function AgreementChatModal({
         },
         (payload) => {
           if (!mounted || !payload.new) return;
+          isTerminal = ['completed', 'cancelled'].includes(payload.new.status);
           setLiveAgr((prev) => (prev ? { ...prev, ...payload.new } : payload.new));
         }
       )
-      .subscribe();
+      .subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          syncAgreementState();
+        }
+      });
+
+    const handleResume = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        syncAgreementState();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleResume);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleResume);
+      window.addEventListener('pageshow', handleResume);
+      window.addEventListener('online', handleResume);
+    }
+
+    const pollTimer = setInterval(() => {
+      if (
+        !isTerminal &&
+        (typeof document === 'undefined' || document.visibilityState === 'visible')
+      ) {
+        syncAgreementState();
+      }
+    }, 5000);
 
     return () => {
       mounted = false;
+      clearInterval(pollTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleResume);
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleResume);
+        window.removeEventListener('pageshow', handleResume);
+        window.removeEventListener('online', handleResume);
+      }
       supabase.removeChannel(channel);
     };
   }, [agreement?.id]);
@@ -954,11 +1014,21 @@ export default function AgreementChatModal({
         )}
 
         {!isProInquiry && (
-          <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
+          <div
+            className={`bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex gap-2 ${
+              (status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester
+                ? 'flex-col items-stretch'
+                : 'flex-wrap items-center justify-between'
+            }`}
+          >
             <div className="text-xs font-semibold text-[#18261F] min-w-0">
               {status === 'chatting' && !ownerConfirmed && (
                 isPostOwner
-                  ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
+                  ? isRideAgreement
+                    ? ownerIsHelper
+                      ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
+                      : 'Új fuvarajánlat • Fogadd el, ha jó az indulás'
+                    : 'Új jelentkezés • Fogadd el, ha megfelel'
                   : 'Várakozás a hirdető jóváhagyására'
               )}
               {status === 'chatting' && ownerConfirmed && !joinerConfirmed && (
@@ -967,9 +1037,13 @@ export default function AgreementChatModal({
                   : 'A hirdető elfogadta • Véglegesítsd a csatlakozást'
               )}
               {status === 'agreed' && (
-                isHelper
-                  ? 'Megállapodva • Induláskor indítsd a követést'
-                  : 'Megállapodva • Várakozás a sofőr indulására'
+                isRideAgreement
+                  ? isHelper
+                    ? 'Megállapodva • Induláskor indítsd a követést'
+                    : 'Megállapodva • Várakozás a sofőr indulására'
+                  : isRequester
+                    ? `Megállapodva • Ha ${liveAgr.partner_name} segített, igazold vissza`
+                    : 'Megállapodva • Várakozás a másik fél visszaigazolására'
               )}
               {status === 'started' && (
                 <span className="flex items-center gap-1.5 text-pilis font-bold">
@@ -988,7 +1062,13 @@ export default function AgreementChatModal({
               {status === 'cancelled' && 'Lemondva ✕'}
             </div>
 
-            <div className="shrink-0 flex items-center gap-1.5">
+            <div
+              className={`flex items-center gap-1.5 ${
+                (status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester
+                  ? 'w-full'
+                  : 'shrink-0'
+              }`}
+            >
               {status === 'chatting' && isPostOwner && !ownerConfirmed && (
                 <>
                   <button
@@ -997,7 +1077,7 @@ export default function AgreementChatModal({
                     onClick={handleCancelAgreement}
                     className="bg-white hover:bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-2.5 py-1.5 rounded-xl"
                   >
-                    Nem esik útba
+                    {isRideAgreement && ownerIsHelper ? 'Nem esik útba' : 'Nem jó'}
                   </button>
                   <button
                     type="button"
@@ -1055,12 +1135,12 @@ export default function AgreementChatModal({
               )}
 
               {(status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester && (
-                <div className="flex items-center gap-1.5">
+                <div className="w-full flex items-center gap-2">
                   <select
                     value={kudosTag}
                     onChange={(e) => setKudosTag(e.target.value)}
                     aria-label="Visszajelzés típusa"
-                    className="bg-white border border-[#DFD9CE] text-[#18261F] text-[11px] font-bold px-2 py-1.5 rounded-xl"
+                    className="flex-1 min-w-0 bg-white border border-[#DFD9CE] text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl"
                   >
                     <option value="Pontos és segítőkész">👏 Pontos, segítőkész</option>
                     <option value="Szuper útitárs">🚗 Szuper útitárs</option>
@@ -1070,7 +1150,7 @@ export default function AgreementChatModal({
                   <button
                     disabled={busy}
                     onClick={handleGiveKudos}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl shadow shrink-0"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow shrink-0"
                   >
                     Segített nekem ✓
                   </button>
