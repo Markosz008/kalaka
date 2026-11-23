@@ -23,7 +23,7 @@ export default function LegalModal({ isOpen, onClose }) {
               Jogi feltételek és Adatvédelem
             </h3>
             <p className="text-[11px] text-[#5C6B62]">
-              Kaláka Szentendre • Hatályos: 2026. november 20-tól
+              Kaláka Szentendre • Hatályos: 2026. november 23-tól
             </p>
           </div>
           <button
@@ -93,7 +93,7 @@ export default function LegalModal({ isOpen, onClose }) {
                   4. Városi Radar, Értesítések és Közösségi Házirend
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
-                  <li>A Városi Radar lakossági bejelentéseken alapuló, tájékoztató jellegű helyzetkép, a telefonos push értesítések pedig külső értesítési hálózatokon (Apple/Google/Mozilla) keresztül érkeznek; az adatok pontosságáért, illetve az értesítések késéséért vagy kimaradásáért az üzemeltető nem vállal felelősséget.</li>
+                  <li>A Városi Radar lakossági bejelentéseken alapuló, tájékoztató jellegű helyzetkép, a telefonos push és e-mail értesítések (üzenetek, új fuvarok, radar) pedig külső hálózatokon (Apple/Google/Mozilla/e-mail) keresztül érkeznek; az adatok pontosságáért, illetve az értesítések késéséért vagy kimaradásáért az üzemeltető nem vállal felelősséget.</li>
                   <li><strong>Szigorúan tilos</strong> más személy rendszámát, nevét, arcképét vagy pontos lakcímét engedély nélkül közzétenni, illetve bűncselekménnyel gyanúsítani vagy zaklatni bárkit. Vészhelyzetben mindig a <strong>112</strong>-t hívd.</li>
                   <li>Meghiúsult találkozó vagy fuvar esetén a chatben a <strong>Lemondás</strong> gombbal jelezd a partnerednek. A házirendet sértő tartalmakat az üzemeltető eltávolíthatja, súlyos vagy ismétlődő jogsértés esetén a fiókot felfüggesztheti.</li>
                 </ul>
@@ -108,27 +108,28 @@ export default function LegalModal({ isOpen, onClose }) {
                   1. Adatkezelő és kezelt adatok (GDPR 6. és 13–14. cikk)
                 </div>
                 <p className="text-[#5C6B62]">
-                  Adatkezelő: <strong>Kardos Márk</strong> (2000 Szentendre, Egres út 131/C; e-mail: <strong>info@kalakazz.hu</strong>).
+                  Adatkezelő: <strong>Kardos Márk</strong> (2000 Szentendre; e-mail: <strong>info@kalakazz.hu</strong>).
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li><strong>Fiók, utak, kaláka, chat és radar jelzések</strong> (<em>szerződés teljesítése – 6. cikk (1) b</em>): e-mail cím (nem nyilvános), megjelenő név, városrész, opcionális bemutatkozás és autó megnevezés, közzétett bejegyzések és üzenetek. <em>Megőrzés:</em> a fiók törléséig; a Városi Radar jelzései 45 perc – 6 óra elteltével automatikusan lejárnak.</li>
                   <li><strong>Profilkép</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a; Ptk. 2:48. §</em>): a feltöltött arckép a többi belépett felhasználó számára látható. <em>Megőrzés:</em> cseréig vagy fióktörlésig.</li>
-                  <li><strong>Helyadatok és élő GPS</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): a pontos házszámok a nyilvános kártyákon automatikusan maszkolva jelennek meg. Az élő GPS-megosztás csak külön gombnyomásra indul, és a fuvar lezárásakor („Megérkeztem”) azonnal törlődik.</li>
-                  <li><strong>Telefonos push értesítések</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): az eszköz egyedi értesítési végpontja, a Web Push titkosítási kulcsok és a választott Városi Radar témák. Bármikor módosítható vagy kikapcsolható a <strong>Profilodban</strong>; kikapcsoláskor, kijelentkezéskor vagy fióktörléskor azonnal törlődik.</li>
+                  <li><strong>Helyadatok és élő GPS</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): a pontos házszámok a nyilvános kártyákon automatikusan maszkolva jelennek meg. Az élő GPS-megosztás csak külön gombnyomásra indul, és a fuvar lezárásakor („Megérkeztem”) vagy lemondásakor azonnal törlődik.</li>
+                  <li><strong>Telefonos push és e-mail értesítések</strong> (<em>önkéntes hozzájárulás – 6. cikk (1) a</em>): az eszköz egyedi értesítési végpontja, a Web Push titkosítási kulcsok, valamint a választott értesítési körök (privát üzenetek/fuvar-visszaigazolások, opcionális új fuvar-értesítések és Városi Radar témák). Bármikor módosítható vagy kikapcsolható a <strong>Profilodban</strong>; kikapcsoláskor, kijelentkezéskor vagy fióktörléskor azonnal törlődik.</li>
                   <li><strong>Helyi Szakik nyilvános üzleti adatai</strong> (<em>jogos érdek – 6. cikk (1) f; GDPR 14. cikk</em>): helyi lakosok által megadott, a szolgáltató által nyilvánosan közzétett név, szakma, városrész és üzleti telefonszám. Az érintett vállalkozó a GDPR 21. cikke alapján bármikor kérheti adatlapja módosítását vagy azonnali törlését.</li>
                 </ul>
               </div>
 
               <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-1.5">
                 <div className="font-bold text-sm text-pilis">
-                  2. Adatfeldolgozók és harmadik országba (USA) továbbítás
+                  2. Adatfeldolgozók és EGT-n kívüli (USA, Szingapúr) továbbítás
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li><strong>Supabase, Inc.:</strong> adatbázis, hitelesítés és profilkép-tárhely.</li>
                   <li><strong>Cloudflare, Inc.:</strong> webes tárhelyszolgáltatás (Cloudflare Pages), hálózati védelem és Web Push küldő szerverfunkció.</li>
-                  <li><strong>Google LLC / Apple Inc. / Mozilla:</strong> opcionális Google-belépés, címkiegészítés (Google Places), valamint a bekapcsolt telefonos értesítések kézbesítése (APNs / FCM).</li>
-                  <li><strong>Térkép- és útvonalszerverek:</strong> a böngésző a térkép és útvonal megjelenítéséhez közvetlenül hívja az OpenFreeMap, OpenStreetMap (Photon), OSRM és Esri szervereit — ezek technikai okból látják az IP-címedet, fiókadatot viszont nem kapnak.</li>
-                  <li>Az EGT-n kívüli (USA) szolgáltatók felé történő adattovábbítás garanciája az <strong>EU–USA Adatvédelmi Keretrendszer (DPF)</strong> és az Európai Bizottság <strong>Általános Szerződési Feltételei (SCC)</strong>.</li>
+                  <li><strong>Google LLC / Apple Inc. / Mozilla:</strong> opcionális Google-belépés, valamint a bekapcsolt telefonos értesítések kézbesítése (APNs / FCM).</li>
+                  <li><strong>Resend, Inc.:</strong> opcionális tranzakciós e-mail értesítések kézbesítése, ha nincs aktív telefonos push az eszközön.</li>
+                  <li><strong>Térkép- és útvonalszerverek:</strong> a böngésző a térkép, címkeresés és útvonal megjelenítéséhez közvetlenül hívja az OpenFreeMap, OpenStreetMap (Photon), OSRM és Esri szervereit — ezek technikai okból látják az IP-címedet, fiókadatot viszont nem kapnak.</li>
+                  <li>Az EGT-n kívüli szolgáltatók felé történő adattovábbítás garanciája az <strong>EU–USA Adatvédelmi Keretrendszer (DPF)</strong> és az Európai Bizottság <strong>Általános Szerződési Feltételei (SCC)</strong>.</li>
                 </ul>
               </div>
 
@@ -157,7 +158,7 @@ export default function LegalModal({ isOpen, onClose }) {
                 </p>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li><strong>Bejelentkezési munkamenet (sb-*-auth-token):</strong> hogy ne léptessen ki minden oldalfrissítéskor.</li>
-                  <li><strong>Saját beállítások és olvasottság (kalaka_routines_*, kalaka_read_*, kalaka_hidden_*, kalaka_*):</strong> elmentett szokásos útvonalaid, olvasott/elrejtett üzeneteid és helyi szűrőállapotok.</li>
+                  <li><strong>Saját beállítások és olvasottság (kalaka_routines_*, kalaka_read_*, kalaka_hidden_*, kalaka_jit_push_snooze_*, kalaka_*):</strong> elmentett szokásos útvonalaid, olvasott/elrejtett üzeneteid, értesítés-emlékeztető halasztása és helyi szűrőállapotok.</li>
                   <li><strong>Ideiglenes útvonal-gyorsítótár (osrm_v2_*):</strong> a térképi útvonal gyorsabb betöltéséhez, kizárólag az aktuális böngésző-munkamenet végéig.</li>
                   <li><strong>Service Worker és alkalmazás-gyorsítótár (sw.js / Cache API):</strong> a főképernyőre telepített (PWA) működéshez és a háttérben érkező telefonos értesítések fogadásához.</li>
                 </ul>
@@ -176,7 +177,7 @@ export default function LegalModal({ isOpen, onClose }) {
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li><strong>Üzemeltető és adatkezelő:</strong> Kardos Márk (magánszemély, nem üzletszerű közösségi működtetés)</li>
-                  <li><strong>Levelezési cím:</strong> 2000 Szentendre, Egres út 131/C</li>
+                  <li><strong>Település:</strong> 2000 Szentendre (hivatalos levelezési cím kérésre e-mailben)</li>
                   <li><strong>Kapcsolat, adatvédelem és jogi bejelentések:</strong>{' '}
                     <a href="mailto:info@kalakazz.hu" className="text-pilis font-bold underline">
                       info@kalakazz.hu

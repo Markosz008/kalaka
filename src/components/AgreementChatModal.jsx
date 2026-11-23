@@ -670,7 +670,7 @@ export default function AgreementChatModal({
       const wasAgreed = ['agreed', 'started'].includes(status);
       const { data, error } = await supabase
         .from('agreements')
-        .update({ status: 'cancelled' })
+        .update({ status: 'cancelled', driver_lat: null, driver_lng: null })
         .eq('id', liveAgr.id)
         .select('*')
         .single();

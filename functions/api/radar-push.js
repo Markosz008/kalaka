@@ -314,15 +314,29 @@ export async function onRequestPost(context) {
   if (body.mode === 'new_ride' && body.ride_id) {
     const rideId = String(body.ride_id).trim();
     const rideRes = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/rides?id=eq.${encodeURIComponent(rideId)}&select=id,user_id,kind,origin_text,dest_text,departure_at,created_at`,
+      `${env.SUPABASE_URL}/rest/v1/rides?id=eq.${encodeURIComponent(rideId)}&select=id,user_id,kind,origin_text,dest_text,departure_at,created_at,push_sent_at`,
       { headers: getServiceHeaders(env) }
     );
     const rideRows = rideRes.ok ? await rideRes.json() : [];
     const ride = rideRows[0];
     if (!ride) return jsonResp({ skipped: true, reason: 'not_found' });
     if (ride.user_id !== user.id) return jsonResp({ error: 'Nincs jogosultság' }, 403);
+    if (ride.push_sent_at) return jsonResp({ skipped: true, reason: 'already_sent' });
     if (Date.now() - new Date(ride.created_at).getTime() > 5 * 60 * 1000) {
       return jsonResp({ skipped: true, reason: 'too_old' });
+    }
+
+    const claimRes = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/rides?id=eq.${encodeURIComponent(rideId)}&push_sent_at=is.null`,
+      {
+        method: 'PATCH',
+        headers: getServiceHeaders(env, { Prefer: 'return=representation' }),
+        body: JSON.stringify({ push_sent_at: new Date().toISOString() })
+      }
+    );
+    const claimed = claimRes.ok ? await claimRes.json() : [];
+    if (!claimed.length) {
+      return jsonResp({ skipped: true, reason: 'already_claimed' });
     }
 
     const subCat = ride.kind === 'ask' ? 'ride_ask' : 'ride_offer';

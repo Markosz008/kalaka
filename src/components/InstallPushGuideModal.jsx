@@ -360,12 +360,16 @@ export default function InstallPushGuideModal({
                   <span className="font-extrabold text-[#18261F]">Városi Radar témák (külön választható)</span>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isSubscribed && selectedCats.length > 0
+                      isSubscribed &&
+                      selectedCats.some((id) => id !== 'ride_ask' && id !== 'ride_offer')
                         ? 'bg-pilis-soft text-pilis'
                         : 'bg-limestone text-[#5C6B62]'
                     }`}
                   >
-                    {isSubscribed && selectedCats.length > 0 ? `${selectedCats.length} aktív` : 'Kikapcsolva'}
+                    {isSubscribed &&
+                    selectedCats.some((id) => id !== 'ride_ask' && id !== 'ride_offer')
+                      ? `${selectedCats.filter((id) => id !== 'ride_ask' && id !== 'ride_offer').length} aktív`
+                      : 'Kikapcsolva'}
                   </span>
                 </div>
 

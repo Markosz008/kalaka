@@ -8,3 +8,4 @@ src_backup/
 *.log
 *.zip
 client_secret_*.json
+apply_gemini_patch.py
