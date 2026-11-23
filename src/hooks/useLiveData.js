@@ -59,16 +59,29 @@ export function useLiveData({
       const cleanZone = (authUser.user_metadata?.zone || 'Pismány')
         .replace(/\s*\(.*?\)\s*/g, '')
         .trim();
-      const { data: inserted } = await supabase
+      const baseName =
+        fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName;
+      let { data: inserted, error: insErr } = await supabase
         .from('profiles')
         .insert({
           id: authUser.id,
-          display_name:
-            fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
+          display_name: baseName,
           zone: cleanZone
         })
         .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
         .single();
+      if (insErr && insErr.code === '23505') {
+        const { data: retryIns } = await supabase
+          .from('profiles')
+          .insert({
+            id: authUser.id,
+            display_name: `${baseName} ${authUser.id.slice(0, 3).toUpperCase()}`,
+            zone: cleanZone
+          })
+          .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
+          .single();
+        inserted = retryIns;
+      }
       data = inserted;
     } else if (data.display_name === 'Belépés') {
       const fixedName = authUser.email?.split('@')[0] || 'Szomszéd';

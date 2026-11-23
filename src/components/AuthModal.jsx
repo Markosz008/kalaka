@@ -21,6 +21,7 @@ function translateAuthError(rawMessage) {
   if (lower.includes('rate limit') || lower.includes('for security purposes') || lower.includes('too many requests')) return 'Túl sok próbálkozás, várj egy percet és próbáld újra.';
   if (lower.includes('different from the old password')) return 'Az új jelszó nem egyezhet meg a régivel.';
   if (lower.includes('expired') || lower.includes('invalid token')) return 'A link lejárt vagy érvénytelen. Kérj újat.';
+  if (lower.includes('profiles_display_name_unique') || lower.includes('duplicate key')) return 'Ez a név már foglalt — tegyél hozzá egy kezdőbetűt (pl. Péter K.).';
   return msg;
 }
 
@@ -110,6 +111,13 @@ export default function AuthModal({
         }
         if (!adultConfirmed) {
           throw new Error('A regisztrációhoz fogadd el az ÁSZF-et és az Adatkezelési tájékoztatót.');
+        }
+
+        const { data: nameFree } = await supabase.rpc('is_display_name_available', {
+          p_name: cleanName
+        });
+        if (nameFree === false) {
+          throw new Error('Ez a név már foglalt — tegyél hozzá egy kezdőbetűt (pl. Péter K.).');
         }
 
         const cleanInvite = inviteCodeInput.trim().toUpperCase();
@@ -218,7 +226,7 @@ export default function AuthModal({
       onProfileUpdated(data);
       setFeedback({ type: 'ok', text: 'Profil mentve.' });
     } catch (err) {
-      setFeedback({ type: 'err', text: err.message });
+      setFeedback({ type: 'err', text: translateAuthError(err?.message) });
     } finally {
       setLoading(false);
     }

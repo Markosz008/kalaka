@@ -20,8 +20,7 @@ export default function UserProfileModal({
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState(false);
   const [inviterName, setInviterName] = useState(null);
-  const [verifyingGps, setVerifyingGps] = useState(false);
-  const [gpsFeedback, setGpsFeedback] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
   const isOwnProfile = Boolean(currentUser?.id && userId === currentUser.id);
   const [editing, setEditing] = useState(false);
@@ -45,7 +44,7 @@ export default function UserProfileModal({
       const [{ data: prof }, { data: rawKudos }] = await Promise.all([
         supabase
           .from('profiles')
-          .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invited_by, invite_code, created_at')
+          .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, invited_by, invite_code, created_at')
           .eq('id', userId)
           .maybeSingle(),
         supabase
@@ -132,9 +131,15 @@ export default function UserProfileModal({
   const handleSaveOwnProfile = async (e) => {
     e.preventDefault();
     if (!isOwnProfile || !supabase) return;
+    const cleanName = editName.trim();
+    if (cleanName.length < 2) {
+      setFeedback({ type: 'err', text: 'A neved legyen legalább 2 karakter.' });
+      return;
+    }
     setSaving(true);
+    setFeedback(null);
     const patch = {
-      display_name: editName.trim() || displayName,
+      display_name: cleanName,
       zone: editZone,
       bio: editBio.trim() || null,
       car_info: editCar.trim() || null
@@ -149,7 +154,15 @@ export default function UserProfileModal({
 
     setSaving(false);
     if (error) {
-      setGpsFeedback(`Mentési hiba: ${error.message}`);
+      const isDup =
+        error.code === '23505' ||
+        String(error.message || '').toLowerCase().includes('profiles_display_name_unique');
+      setFeedback({
+        type: 'err',
+        text: isDup
+          ? 'Ez a név már foglalt — tegyél hozzá egy kezdőbetűt (pl. Péter K.).'
+          : `Mentési hiba: ${error.message}`
+      });
       return;
     }
     setProfileData(data);
@@ -168,7 +181,7 @@ export default function UserProfileModal({
     if (!blob || !isOwnProfile || !supabase) return;
     setPendingAvatarFile(null);
     setUploadingAvatar(true);
-    setGpsFeedback(null);
+    setFeedback(null);
     try {
       const filePath = `${userId}/avatar_${Date.now()}.jpg`;
       const { error: upErr } = await supabase.storage
@@ -187,53 +200,12 @@ export default function UserProfileModal({
       if (dbErr) throw dbErr;
       setProfileData(updatedProf);
       if (onProfileUpdated) onProfileUpdated(updatedProf);
-      setGpsFeedback('Profilkép frissítve ✓');
+      setFeedback({ type: 'ok', text: 'Profilkép frissítve ✓' });
     } catch (err) {
-      setGpsFeedback(`Képfeltöltési hiba: ${err.message}`);
+      setFeedback({ type: 'err', text: `Képfeltöltési hiba: ${err.message}` });
     } finally {
       setUploadingAvatar(false);
     }
-  };
-
-  const handleVerifyLocalGps = () => {
-    if (!navigator.geolocation || !isOwnProfile || !supabase) return;
-    setVerifyingGps(true);
-    setGpsFeedback(null);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const { data: verified, error: rpcErr } = await supabase.rpc('verify_local_gps', {
-          p_lat: latitude,
-          p_lng: longitude
-        });
-        if (rpcErr) {
-          setVerifyingGps(false);
-          setGpsFeedback(`Hiba az igazoláskor: ${rpcErr.message}`);
-          return;
-        }
-        if (!verified) {
-          setVerifyingGps(false);
-          setGpsFeedback('A jelenlegi helyzeted kívül esik Szentendre térségén.');
-          return;
-        }
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-        setVerifyingGps(false);
-        if (data) {
-          setProfileData(data);
-          if (onProfileUpdated) onProfileUpdated(data);
-        }
-        setGpsFeedback('Szentendrei jelenlét sikeresen igazolva ✓');
-      },
-      () => {
-        setVerifyingGps(false);
-        setGpsFeedback('Engedélyezd a helymeghatározást a böngészőben.');
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
   };
 
   const handleDeleteOwnAccount = async () => {
@@ -288,7 +260,7 @@ export default function UserProfileModal({
       await supabase.auth.signOut();
       onClose();
     } catch (err) {
-      setGpsFeedback(`Hiba a törléskor: ${err.message}`);
+      setFeedback({ type: 'err', text: `Hiba a törléskor: ${err.message}` });
       setDeletingAccount(false);
     }
   };
@@ -345,11 +317,6 @@ export default function UserProfileModal({
                 <span className="text-[11px] font-bold bg-pilis-soft text-pilis px-2.5 py-0.5 rounded-full">
                   {displayZone}
                 </span>
-                {profileData?.is_gps_local_verified && (
-                  <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
-                    ✓ Igazolt helyi
-                  </span>
-                )}
               </div>
               <div className="text-xs text-[#5C6B62] mt-0.5">
                 Közösségi tag • {joinedLabel} óta
@@ -404,16 +371,14 @@ export default function UserProfileModal({
                 {profileData.bio}
               </p>
             ) : (
-              <p className="text-xs text-[#7A867E] italic">
-                {isOwnProfile
-                  ? 'Még nem írtál rövid bemutatkozást (pl. merre szoktál ingázni).'
-                  : 'Még nem adott meg bemutatkozást.'}
+              <p className="text-xs text-[#5C6B62] italic">
+                {isOwnProfile ? 'Nincs még bemutatkozásod.' : 'Nincs megadva.'}
               </p>
             )}
 
             {profileData?.car_info && (
               <div className="pt-2 border-t border-[#ECE7DC] flex items-center justify-between text-xs">
-                <span className="font-semibold text-[#5C6B62]">Szokásos autó:</span>
+                <span className="font-semibold text-[#5C6B62]">Autó:</span>
                 <span className="font-bold text-[#18261F]">🚗 {profileData.car_info}</span>
               </div>
             )}
@@ -456,21 +421,15 @@ export default function UserProfileModal({
               </div>
             )}
 
-            {isOwnProfile && !profileData?.is_gps_local_verified && (
-              <div className="pt-2 border-t border-[#ECE7DC]">
-                <button
-                  type="button"
-                  disabled={verifyingGps}
-                  onClick={handleVerifyLocalGps}
-                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold text-xs py-2 rounded-xl transition"
-                >
-                  {verifyingGps ? 'GPS ellenőrzése...' : '📍 Szentendrei tartózkodás igazolása (GPS)'}
-                </button>
-              </div>
-            )}
-            {gpsFeedback && (
-              <div className="text-[11px] font-semibold text-pilis bg-pilis-soft px-3 py-1.5 rounded-xl">
-                {gpsFeedback}
+            {feedback && (
+              <div
+                className={`text-[11px] font-semibold px-3 py-1.5 rounded-xl ${
+                  feedback.type === 'err'
+                    ? 'text-red-900 bg-red-50 border border-red-200'
+                    : 'text-pilis bg-pilis-soft'
+                }`}
+              >
+                {feedback.text}
               </div>
             )}
             {isOwnProfile && onOpenPushSettings && (
@@ -481,8 +440,8 @@ export default function UserProfileModal({
                   </div>
                   <div className="text-[11px] text-[#5C6B62]">
                     {pushEnabled
-                      ? 'Aktív — fuvarokról és üzenetekről szólunk'
-                      : 'Kikapcsolva — nem kapsz jelzést zárt appnál'}
+                      ? 'Aktív'
+                      : 'Kikapcsolva'}
                   </div>
                 </div>
                 <button
@@ -502,7 +461,10 @@ export default function UserProfileModal({
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    setFeedback(null);
+                    setEditing(true);
+                  }}
                   className="flex-1 bg-limestone hover:bg-[#E5DFD3] text-[#18261F] font-bold text-xs py-2.5 rounded-xl border border-[#DFD9CE] transition"
                 >
                   Adatlap szerkesztése
@@ -516,26 +478,6 @@ export default function UserProfileModal({
                 </button>
               </div>
             )}
-            {isOwnProfile && (
-              <div className="pt-2 border-t border-[#ECE7DC] flex justify-end">
-                <button
-                  type="button"
-                  disabled={deletingAccount}
-                  onClick={handleDeleteOwnAccount}
-                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition ${
-                    confirmDeleteAccount
-                      ? 'bg-red-700 text-white'
-                      : 'text-[#7A867E] hover:text-red-700'
-                  }`}
-                >
-                  {deletingAccount
-                    ? 'Adatok törlése...'
-                    : confirmDeleteAccount
-                    ? 'Biztosan végleg törlöd a fiókodat? Koppints újra ✕'
-                    : 'Fiók és adatok végleges törlése'}
-                </button>
-              </div>
-            )}
           </div>
         ) : (
           <form
@@ -543,8 +485,13 @@ export default function UserProfileModal({
             className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2.5"
           >
             <div className="text-xs font-bold text-[#18261F]">
-              Saját közösségi adatlap szerkesztése
+              Adatlap szerkesztése
             </div>
+            {feedback?.type === 'err' && (
+              <div className="text-[11px] font-semibold text-red-900 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl">
+                {feedback.text}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[11px] font-bold text-[#5C6B62] block mb-1">
@@ -578,26 +525,26 @@ export default function UserProfileModal({
 
             <div>
               <label className="text-[11px] font-bold text-[#5C6B62] block mb-1">
-                Rövid bemutatkozás a szomszédoknak
+                Bemutatkozás
               </label>
               <textarea
                 rows={2}
                 value={editBio}
                 onChange={(e) => setEditBio(e.target.value)}
-                placeholder="Pl. Munkanapokon reggel Újpestre járok, szívesen elviszek bárkit a HÉV-ig..."
+                placeholder="Pl. Hétköznap reggel a HÉV-hez járok..."
                 className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs"
               />
             </div>
 
             <div>
               <label className="text-[11px] font-bold text-[#5C6B62] block mb-1">
-                Szokásos autó (opcionális – bármikor átírhatod)
+                Autód (opcionális)
               </label>
               <input
                 type="text"
                 value={editCar}
                 onChange={(e) => setEditCar(e.target.value)}
-                placeholder="Pl. Fehér Mini / Fekete Audi"
+                placeholder="Pl. Kék kombi / Fehér Swift"
                 className="w-full bg-limestone border border-[#DFD9CE] rounded-xl px-3 py-2 text-xs font-semibold"
               />
             </div>
@@ -605,7 +552,10 @@ export default function UserProfileModal({
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => setEditing(false)}
+                onClick={() => {
+                  setFeedback(null);
+                  setEditing(false);
+                }}
                 className="flex-1 bg-limestone text-[#5C6B62] font-bold text-xs py-2.5 rounded-xl border border-[#DFD9CE]"
               >
                 Mégse
@@ -621,19 +571,11 @@ export default function UserProfileModal({
           </form>
         )}
 
-        <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
-          <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
-            Legutóbbi visszaigazolások ({totalKudos})
-          </div>
-          {loading ? (
-            <div className="text-xs text-[#7A867E]">Adatok betöltése...</div>
-          ) : kudosList.length === 0 ? (
-            <div className="text-xs text-[#7A867E]">
-              {totalKudos > 0
-                ? `${totalKudos} sikeres közösségi visszaigazolás rögzítve.`
-                : 'Még nincs lezárt visszaigazolása.'}
+        {!loading && kudosList.length > 0 && (
+          <div className="bg-white rounded-2xl p-3.5 border border-[#DFD9CE] space-y-2">
+            <div className="text-[11px] font-bold text-[#5C6B62] uppercase tracking-wide">
+              Legutóbbi visszaigazolások ({kudosList.length})
             </div>
-          ) : (
             <div className="space-y-1.5">
               {kudosList.slice(0, 6).map((k) => (
                 <div
@@ -650,8 +592,29 @@ export default function UserProfileModal({
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {isOwnProfile && !editing && (
+          <div className="pt-1 text-center">
+            <button
+              type="button"
+              disabled={deletingAccount}
+              onClick={handleDeleteOwnAccount}
+              className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg transition ${
+                confirmDeleteAccount
+                  ? 'bg-red-700 text-white font-bold'
+                  : 'text-[#5C6B62] hover:text-red-700 underline decoration-[#DFD9CE]'
+              }`}
+            >
+              {deletingAccount
+                ? 'Adatok törlése...'
+                : confirmDeleteAccount
+                ? 'Biztosan végleg törlöd a fiókodat? Koppints újra ✕'
+                : 'Fiók és adatok végleges törlése'}
+            </button>
+          </div>
+        )}
       </div>
 
       {pendingAvatarFile && (

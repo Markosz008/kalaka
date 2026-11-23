@@ -21,10 +21,6 @@ export default function FavorsTabView({
 }) {
   return (
     <>
-      <React.Suspense fallback={<div className="h-44 sm:h-52 rounded-2xl bg-[#EAE5DC] border border-[#DFD9CE]" />}>
-        <FavorsMap favors={favors} onSelectFavor={onStartFavorAgreement} />
-      </React.Suspense>
-
       <KalakaQuickComposer
         userZone={profile?.zone || 'Pismány'}
         onSubmitFavor={async ({ title, description, validMins, minHearts }) => {
@@ -51,14 +47,15 @@ export default function FavorsTabView({
         }}
       />
 
+      <React.Suspense fallback={<div className="h-14 rounded-2xl bg-[#EAE5DC] border border-[#DFD9CE]" />}>
+        <FavorsMap favors={favors} onSelectFavor={onStartFavorAgreement} />
+      </React.Suspense>
+
       {favors.length === 0 ? (
-        <div className="bg-white rounded-2xl p-6 text-center border border-[#DFD9CE] space-y-2.5">
+        <div className="bg-white rounded-2xl p-5 text-center border border-[#DFD9CE]">
           <div className="text-sm font-bold text-[#18261F]">
             Még nincs aktív Kaláka-kérés.
           </div>
-          <p className="text-xs text-[#5C6B62]">
-            Írd be fentre egy sorban, mire van szükséged vagy miben tudsz segíteni a szomszédoknak!
-          </p>
         </div>
       ) : (
         favors.map((fav) => (

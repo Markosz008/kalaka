@@ -73,7 +73,7 @@ export default function LegalModal({ isOpen, onClose }) {
                 </div>
                 <ul className="list-disc pl-4 space-y-1 text-[#5C6B62]">
                   <li>A felületen <strong>üzletszerű, haszonszerzési célú személyszállítás (2012. évi XLI. tv. szerinti engedélyköteles taxizás vagy fuvarozás) szigorúan tilos</strong>. Az utak kizárólag szomszédsági szívességi vagy önköltség-megosztásos alapon szervezhetők.</li>
-                  <li>Az üzemeltető nem ellenőrzi a járművek műszaki állapotát, a KGFB érvényességét, sem a sofőrök jogosítványát. A profilon látható szentendrei helyi igazolás kizárólag helyi tartózkodást jelez, <strong>nem személyazonosság- vagy erkölcsi ellenőrzés</strong>.</li>
+                  <li>Az üzemeltető nem ellenőrzi a járművek műszaki állapotát, a KGFB érvényességét, sem a sofőrök jogosítványát, és <strong>nem végez személyazonosság- vagy erkölcsi ellenőrzést</strong>.</li>
                   <li>Az együttutazásban mindenki saját felelősségére vesz részt. Az üzemeltető kizár minden felelősséget az elmaradt fuvarokból, késésekből, balesetekből, illetve személyi vagy vagyoni károkból eredő igényekkel szemben.</li>
                 </ul>
               </div>
