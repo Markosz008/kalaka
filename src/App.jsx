@@ -1058,7 +1058,10 @@ export default function App() {
             }}
             onOpenLegalModal={() => setShowLegalModal(true)}
             onApproved={() => {
-              if (session?.user) loadUserProfile(session.user);
+              if (session?.user) {
+                loadUserProfile(session.user);
+                fetchAllLiveData(session.user.id);
+              }
             }}
           />
         )}

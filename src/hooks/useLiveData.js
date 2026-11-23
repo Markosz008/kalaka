@@ -212,8 +212,7 @@ export function useLiveData({
       setSession(s);
       setAuthReady(true);
       if (s?.user) {
-        loadUserProfile(s.user);
-        fetchAllLiveData(s.user.id);
+        loadUserProfile(s.user).finally(() => fetchAllLiveData(s.user.id));
       } else {
         fetchAllLiveData(null);
       }
@@ -228,8 +227,7 @@ export function useLiveData({
         setShowAuthModal(true);
       }
       if (s?.user) {
-        loadUserProfile(s.user);
-        fetchAllLiveData(s.user.id);
+        loadUserProfile(s.user).finally(() => fetchAllLiveData(s.user.id));
       } else {
         setProfile(DEFAULT_PROFILE);
         setMyAgreements([]);
