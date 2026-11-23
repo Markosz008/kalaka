@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabase.js';
 import { resolveCoordsFromText } from '../constants/szentendreData.js';
 import { triggerAgreementPush } from '../lib/webPush.js';
 import { estimateRideDetour, resolvePointCoords } from '../lib/detourCalc.js';
-import AvatarBadge from './AvatarBadge.jsx';
 import ChatEmojiPicker from './ChatEmojiPicker.jsx';
 import ChatMessageBubble from './ChatMessageBubble.jsx';
+import AgreementStatusBar from './AgreementStatusBar.jsx';
+import AgreementChatHeader from './AgreementChatHeader.jsx';
+import { useAgreementSync } from '../hooks/useAgreementSync.js';
 
 const LiveRideMap = React.lazy(() => import('./LiveRideMap.jsx'));
 const DetourPreviewMap = React.lazy(() => import('./DetourPreviewMap.jsx'));
@@ -30,13 +32,20 @@ export default function AgreementChatModal({
   showPushBanner = false,
   onOpenPushSettings
 }) {
-  const [messages, setMessages] = useState([]);
+  const {
+    messages,
+    setMessages,
+    liveAgr,
+    setLiveAgr,
+    gpsErrorMsg,
+    setGpsErrorMsg,
+    gpsActive,
+    isLiveDbAgreement
+  } = useAgreementSync(agreement, currentUser?.id);
+
   const [text, setText] = useState('');
-  const [liveAgr, setLiveAgr] = useState(agreement || null);
   const [busy, setBusy] = useState(false);
-  const [gpsErrorMsg, setGpsErrorMsg] = useState(null);
   const [errorBanner, setErrorBanner] = useState(null);
-  const [gpsActive, setGpsActive] = useState(false);
   const [sharingPassengerPin, setSharingPassengerPin] = useState(false);
   const [showReportBox, setShowReportBox] = useState(false);
   const [reportReason, setReportReason] = useState('');
@@ -51,14 +60,8 @@ export default function AgreementChatModal({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const bottomRef = useRef(null);
-  const watchIdRef = useRef(null);
   const inputRef = useRef(null);
 
-  const isUuid = (val) =>
-    typeof val === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-
-  const isLiveDbAgreement = Boolean(supabase && isUuid(agreement?.id));
   const isRequester = liveAgr?.requester_id === currentUser?.id;
   const isHelper = liveAgr?.helper_id === currentUser?.id;
   const isProInquiry = Boolean(liveAgr?.pro_id);
@@ -77,188 +80,10 @@ export default function AgreementChatModal({
     : Boolean(liveAgr?.helper_agreed);
 
   useEffect(() => {
-    setLiveAgr(agreement || null);
     setEditingCar(false);
     setCarDraft(agreement?.car_info || '');
     setErrorBanner(null);
-    setGpsErrorMsg(null);
-    if (!agreement?.id || !supabase || !isUuid(agreement.id)) {
-      setMessages([]);
-      return;
-    }
-
-    let mounted = true;
-    let isTerminal = ['completed', 'cancelled'].includes(agreement.status);
-    let syncing = false;
-
-    const syncAgreementState = async () => {
-      if (!mounted || syncing) return;
-      syncing = true;
-      try {
-        const [{ data: msgData }, { data: agrData }] = await Promise.all([
-          supabase
-            .from('messages')
-            .select('*')
-            .eq('agreement_id', agreement.id)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('agreements')
-            .select('*')
-            .eq('id', agreement.id)
-            .maybeSingle()
-        ]);
-        if (!mounted) return;
-        if (msgData) setMessages(msgData);
-        if (agrData) {
-          isTerminal = ['completed', 'cancelled'].includes(agrData.status);
-          setLiveAgr((prev) => (prev ? { ...prev, ...agrData } : agrData));
-        }
-      } finally {
-        syncing = false;
-      }
-    };
-
-    syncAgreementState();
-
-    const channel = supabase
-      .channel(`agr-chat-${agreement.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `agreement_id=eq.${agreement.id}`
-        },
-        (payload) => {
-          if (!mounted || !payload.new) return;
-          setMessages((prev) =>
-            prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new]
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `agreement_id=eq.${agreement.id}`
-        },
-        (payload) => {
-          if (!mounted || !payload.new) return;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === payload.new.id ? { ...m, ...payload.new } : m))
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'agreements',
-          filter: `id=eq.${agreement.id}`
-        },
-        (payload) => {
-          if (!mounted || !payload.new) return;
-          isTerminal = ['completed', 'cancelled'].includes(payload.new.status);
-          setLiveAgr((prev) => (prev ? { ...prev, ...payload.new } : payload.new));
-        }
-      )
-      .subscribe((subStatus) => {
-        if (subStatus === 'SUBSCRIBED') {
-          syncAgreementState();
-        }
-      });
-
-    const handleResume = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        syncAgreementState();
-      }
-    };
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleResume);
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleResume);
-      window.addEventListener('pageshow', handleResume);
-      window.addEventListener('online', handleResume);
-    }
-
-    const pollTimer = setInterval(() => {
-      if (
-        !isTerminal &&
-        (typeof document === 'undefined' || document.visibilityState === 'visible')
-      ) {
-        syncAgreementState();
-      }
-    }, 5000);
-
-    return () => {
-      mounted = false;
-      clearInterval(pollTimer);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleResume);
-      }
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', handleResume);
-        window.removeEventListener('pageshow', handleResume);
-        window.removeEventListener('online', handleResume);
-      }
-      supabase.removeChannel(channel);
-    };
   }, [agreement?.id]);
-
-  useEffect(() => {
-    if (!isLiveDbAgreement || !isRideAgreement || status !== 'started' || !isHelper) {
-      if (watchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      setGpsActive(false);
-      return;
-    }
-
-    if (!navigator.geolocation) {
-      setGpsErrorMsg('A böngésződ nem támogatja a GPS-helyzetmegosztást.');
-      return;
-    }
-
-    setGpsActive(true);
-    let lastSentAt = 0;
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      async (pos) => {
-        const now = Date.now();
-        if (now - lastSentAt < 4000) return;
-        lastSentAt = now;
-        const { latitude: lat, longitude: lng } = pos.coords;
-        setGpsErrorMsg(null);
-        await supabase
-          .from('agreements')
-          .update({
-            driver_lat: lat,
-            driver_lng: lng,
-            driver_updated_at: new Date().toISOString()
-          })
-          .eq('id', liveAgr.id);
-      },
-      () => {
-        setGpsErrorMsg('Engedélyezd a GPS-t, vagy küldd el a pozíciódat gombbal.');
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-    );
-
-    return () => {
-      if (watchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-      }
-      setGpsActive(false);
-    };
-  }, [isLiveDbAgreement, isRideAgreement, status, isHelper, liveAgr?.id]);
 
   const handleSaveRideCar = async (e) => {
     e.preventDefault();
@@ -565,6 +390,48 @@ export default function AgreementChatModal({
     }
   };
 
+  const handleProAccept = async () => {
+    setBusy(true);
+    try {
+      const { data } = await supabase
+        .from('agreements')
+        .update({ status: 'agreed', helper_agreed: true })
+        .eq('id', liveAgr.id)
+        .select('*')
+        .single();
+      if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
+      await supabase.from('messages').insert({
+        agreement_id: liveAgr.id,
+        sender_id: currentUser.id,
+        body: 'A szakember elvállalta a munkát.',
+        is_system_event: true
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleProComplete = async () => {
+    setBusy(true);
+    try {
+      const { data } = await supabase
+        .from('agreements')
+        .update({ status: 'completed', requester_agreed: true })
+        .eq('id', liveAgr.id)
+        .select('*')
+        .single();
+      if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
+      await supabase.from('messages').insert({
+        agreement_id: liveAgr.id,
+        sender_id: currentUser.id,
+        body: 'Munka lezárva – az ajánlás megnyílt a szakember adatlapján.',
+        is_system_event: true
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSharePassengerLocation = () => {
     if (!navigator.geolocation || !isLiveDbAgreement) return;
     setSharingPassengerPin(true);
@@ -814,393 +681,60 @@ export default function AgreementChatModal({
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-limestone w-full max-w-lg h-[100dvh] sm:h-[660px] rounded-none sm:rounded-3xl flex flex-col overflow-hidden shadow-2xl border-0 sm:border sm:border-[#DFD9CE] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-        <div className="bg-white px-3.5 py-2.5 border-b border-[#DFD9CE] space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <button type="button" onClick={onClose} className="text-2xl font-bold text-[#18261F] px-1 shrink-0 leading-none">
-                ‹
-              </button>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  const partnerId =
-                    liveAgr.requester_id === currentUser?.id
-                      ? liveAgr.helper_id
-                      : liveAgr.requester_id;
-                  if (onInspectUser && partnerId) {
-                    onInspectUser({ userId: partnerId, name: liveAgr.partner_name });
-                  }
-                }}
-                className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer hover:opacity-80 transition"
-                title="Adatlap megtekintése"
-              >
-                <AvatarBadge
-                  src={liveAgr.partner_avatar}
-                  name={liveAgr.partner_name}
-                  sizeClass="w-9 h-9 text-sm shrink-0"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-sm text-[#18261F] truncate">
-                    {liveAgr.partner_name}
-                  </div>
-                  <div className="text-[11px] text-[#5C6B62] truncate">
-                    {liveAgr.title}
-                    {liveAgr.pickup_stop_name ? ` • ${liveAgr.pickup_stop_name}` : ''}
-                  </div>
-                </div>
-              </div>
-            </div>
+        <AgreementChatHeader
+          liveAgr={liveAgr}
+          currentUser={currentUser}
+          onInspectUser={onInspectUser}
+          onClose={onClose}
+          isRideAgreement={isRideAgreement}
+          isHelper={isHelper}
+          isProInquiry={isProInquiry}
+          status={status}
+          showHeaderCancel={showHeaderCancel}
+          busy={busy}
+          editingCar={editingCar}
+          setEditingCar={setEditingCar}
+          carDraft={carDraft}
+          setCarDraft={setCarDraft}
+          savingCar={savingCar}
+          onSaveRideCar={handleSaveRideCar}
+          onCancelAgreement={handleCancelAgreement}
+          onReport={handleReport}
+          errorBanner={errorBanner}
+          showReportBox={showReportBox}
+          setShowReportBox={setShowReportBox}
+          reportReason={reportReason}
+          setReportReason={setReportReason}
+          onSubmitReport={handleSubmitReport}
+        />
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-xs font-bold text-[#5C6B62] hover:text-black bg-limestone px-2.5 py-1.5 rounded-lg shrink-0"
-            >
-              Bezárás ✕
-            </button>
-          </div>
-
-          {(liveAgr.car_info ||
-            (isRideAgreement && isHelper && !editingCar) ||
-            showHeaderCancel ||
-            (!isProInquiry && status !== 'chatting')) && (
-            <div className="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t border-[#ECE7DC]">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {liveAgr.car_info && (
-                  <span className="text-[11px] font-bold bg-[#ECE7DC] text-[#18261F] px-2.5 py-1 rounded-full">
-                    {liveAgr.car_info}
-                  </span>
-                )}
-                {isRideAgreement && isHelper && !editingCar && (
-                  <button
-                    type="button"
-                    onClick={(ev) => {
-                      ev.stopPropagation();
-                      setCarDraft(liveAgr.car_info || '');
-                      setEditingCar(true);
-                    }}
-                    className="text-[11px] font-bold text-pilis bg-pilis-soft px-2.5 py-1 rounded-full hover:bg-pilis hover:text-white transition"
-                  >
-                    {liveAgr.car_info ? 'Autó módosítása' : '+ Autó megadása'}
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 ml-auto">
-                {showHeaderCancel && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleCancelAgreement}
-                    className="text-[11px] font-bold text-[#5C6B62] hover:text-red-700 bg-limestone px-2.5 py-1 rounded-lg border border-[#DFD9CE]"
-                  >
-                    Lemondás
-                  </button>
-                )}
-                {!isProInquiry && status !== 'chatting' && (
-                  <button
-                    type="button"
-                    onClick={handleReport}
-                    className="text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg"
-                  >
-                    Jelentés
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {editingCar && (
-          <form onSubmit={handleSaveRideCar} className="px-3.5 py-2 bg-limestone border-t border-[#DFD9CE] flex items-center gap-2">
-            <input
-              type="text"
-              value={carDraft}
-              onChange={(e) => setCarDraft(e.target.value)}
-              placeholder="Milyen autóval mész? (pl. Kék kombi)"
-              className="flex-1 min-w-0 bg-white border border-[#DFD9CE] rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:border-pilis"
-            />
-            <button
-              type="submit"
-              disabled={savingCar}
-              className="bg-pilis text-white font-bold text-xs px-3 py-1.5 rounded-xl shrink-0"
-            >
-              {savingCar ? '...' : 'Mentés'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditingCar(false)}
-              className="bg-white text-[#5C6B62] border border-[#DFD9CE] font-bold text-xs px-2.5 py-1.5 rounded-xl shrink-0"
-            >
-              ✕
-            </button>
-          </form>
-        )}
-
-        {errorBanner && (
-          <div className="bg-red-100 text-red-900 text-xs font-semibold px-4 py-2 border-b border-red-200">
-            {errorBanner}
-          </div>
-        )}
-
-        {showReportBox && (
-          <form
-            onSubmit={handleSubmitReport}
-            className="bg-red-50 px-4 py-2.5 border-b border-red-200 flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={reportReason}
-              onChange={(e) => setReportReason(e.target.value)}
-              placeholder="Írd le röviden a problémát..."
-              className="flex-1 min-w-0 bg-white border border-red-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none"
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              className="shrink-0 bg-red-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl"
-            >
-              Küldés
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowReportBox(false)}
-              className="shrink-0 text-xs font-bold text-[#5C6B62] px-1.5"
-            >
-              ✕
-            </button>
-          </form>
-        )}
-
-        {isProInquiry && liveAgr.helper_id && (
-          <div className="bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-[#18261F] min-w-0">
-              {status === 'chatting' && (
-                isHelper
-                  ? 'Érdeklődés érkezett • Fogadd el, ha elvállalod'
-                  : 'Egyeztetés folyamatban a szakemberrel'
-              )}
-              {status === 'agreed' && (
-                isRequester
-                  ? 'Elvállalva • Ha elkészült a munka, zárd le és ajánld'
-                  : 'Elvállalva • Várakozás a megrendelő lezárására'
-              )}
-              {status === 'completed' && 'Munka lezárva ✓ • Ajánlás megnyitva'}
-            </div>
-
-            <div className="shrink-0">
-              {status === 'chatting' && isHelper && (
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    const { data } = await supabase
-                      .from('agreements')
-                      .update({ status: 'agreed', helper_agreed: true })
-                      .eq('id', liveAgr.id)
-                      .select('*')
-                      .single();
-                    if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
-                    await supabase.from('messages').insert({
-                      agreement_id: liveAgr.id,
-                      sender_id: currentUser.id,
-                      body: 'A szakember elvállalta a munkát.',
-                      is_system_event: true
-                    });
-                    setBusy(false);
-                  }}
-                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                >
-                  Elvállaltam
-                </button>
-              )}
-
-              {status === 'agreed' && isRequester && (
-                <button
-                  disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    const { data } = await supabase
-                      .from('agreements')
-                      .update({ status: 'completed', requester_agreed: true })
-                      .eq('id', liveAgr.id)
-                      .select('*')
-                      .single();
-                    if (data) setLiveAgr((prev) => ({ ...prev, ...data }));
-                    await supabase.from('messages').insert({
-                      agreement_id: liveAgr.id,
-                      sender_id: currentUser.id,
-                      body: 'Munka lezárva – az ajánlás megnyílt a szakember adatlapján.',
-                      is_system_event: true
-                    });
-                    setBusy(false);
-                  }}
-                  className="bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow"
-                >
-                  Elkészült, ajánlom
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {!isProInquiry && (
-          <div
-            className={`bg-[#ECE7DC] px-4 py-2.5 border-b border-[#DFD9CE] flex gap-2 ${
-              (status === 'chatting' && isPostOwner && !ownerConfirmed) ||
-              ((status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester)
-                ? 'flex-col items-stretch'
-                : 'flex-wrap items-center justify-between'
-            }`}
-          >
-            <div className="text-xs font-semibold text-[#18261F] min-w-0 space-y-0.5">
-              {status === 'chatting' && !ownerConfirmed && (
-                <div>
-                  {isPostOwner
-                    ? isRideAgreement
-                      ? ownerIsHelper
-                        ? 'Új jelentkezés • Fogadd el, ha belefér az útba'
-                        : 'Új fuvarajánlat • Fogadd el, ha jó az indulás'
-                      : 'Új jelentkezés • Fogadd el, ha megfelel'
-                    : 'Várakozás a hirdető jóváhagyására'}
-                </div>
-              )}
-              {status === 'chatting' && isPostOwner && !ownerConfirmed && isRideAgreement && fullRouteLabel && (
-                <div className="text-[11px] font-medium text-[#4A5850] leading-snug">
-                  {fullRouteLabel}
-                  {rideDepLabel ? ` • Indulás: ${rideDepLabel}` : ''}
-                </div>
-              )}
-              {status === 'chatting' && ownerConfirmed && !joinerConfirmed && (
-                isPostOwner
-                  ? 'Elfogadtad • Várakozás a csatlakozó véglegesítésére'
-                  : 'A hirdető elfogadta • Véglegesítsd a csatlakozást'
-              )}
-              {status === 'agreed' && (
-                isRideAgreement
-                  ? isHelper
-                    ? 'Megállapodva • Induláskor indítsd a követést'
-                    : 'Megállapodva • Várakozás a sofőr indulására'
-                  : isRequester
-                    ? `Megállapodva • Ha ${liveAgr.partner_name} segített, igazold vissza`
-                    : 'Megállapodva • Várakozás a másik fél visszaigazolására'
-              )}
-              {status === 'started' && (
-                <span className="flex items-center gap-1.5 text-pilis font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse shrink-0" />
-                  <span className="truncate">
-                    {etaSummary || (gpsActive ? 'Élő helyzet megosztva' : 'Sofőr úton van')}
-                  </span>
-                </span>
-              )}
-              {status === 'arrived' && (
-                isRequester
-                  ? `Megérkeztetek • Igazold vissza: ${liveAgr.partner_name} elvitt`
-                  : 'Megérkezve • Várakozás az utas visszaigazolására'
-              )}
-              {status === 'completed' && 'Lezárva ✓'}
-              {status === 'cancelled' && 'Lemondva ✕'}
-            </div>
-
-            <div
-              className={`flex items-center gap-1.5 ${
-                (status === 'chatting' && isPostOwner && !ownerConfirmed) ||
-                ((status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester)
-                  ? 'w-full'
-                  : 'shrink-0'
-              }`}
-            >
-              {status === 'chatting' && isPostOwner && !ownerConfirmed && (
-                <>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleCancelAgreement}
-                    className="flex-1 bg-white hover:bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-3 py-2 rounded-xl"
-                  >
-                    {isRideAgreement && ownerIsHelper ? 'Nem esik útba' : 'Nem jó'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={handleSequentialApproval}
-                    className="flex-[2] bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-2 rounded-xl"
-                  >
-                    Elfogadom
-                  </button>
-                </>
-              )}
-
-              {status === 'chatting' && !isPostOwner && ownerConfirmed && !joinerConfirmed && (
-                <button
-                  disabled={busy}
-                  onClick={handleSequentialApproval}
-                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                >
-                  Véglegesítem
-                </button>
-              )}
-
-              {status === 'agreed' && isRideAgreement && isHelper && (
-                <button
-                  disabled={busy}
-                  onClick={() => handleUpdateStatus('started')}
-                  className="bg-pilis hover:bg-pilis-light text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                >
-                  Elindultam
-                </button>
-              )}
-
-              {status === 'started' && (
-                <>
-                  {isRequester && (
-                    <button
-                      type="button"
-                      disabled={sharingPassengerPin}
-                      onClick={handleSharePassengerLocation}
-                      className="bg-white text-[#18261F] border border-[#DFD9CE] text-xs font-bold px-2.5 py-1.5 rounded-xl"
-                    >
-                      {sharingPassengerPin ? '...' : 'Itt állok'}
-                    </button>
-                  )}
-                  {isHelper && (
-                    <button
-                      disabled={busy}
-                      onClick={() => handleUpdateStatus('arrived')}
-                      className="bg-terracotta text-white text-xs font-bold px-3 py-1.5 rounded-xl"
-                    >
-                      Megérkeztem
-                    </button>
-                  )}
-                </>
-              )}
-
-              {(status === 'arrived' || (!isRideAgreement && status === 'agreed')) && isRequester && (
-                <div className="w-full flex items-center gap-2">
-                  <select
-                    value={kudosTag}
-                    onChange={(e) => setKudosTag(e.target.value)}
-                    aria-label="Visszajelzés típusa"
-                    className="flex-1 min-w-0 bg-white border border-[#DFD9CE] text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl"
-                  >
-                    <option value="Pontos és segítőkész">👏 Pontos, segítőkész</option>
-                    <option value="Szuper útitárs">🚗 Szuper útitárs</option>
-                    <option value="Gyors segítség">⚡ Gyors segítség</option>
-                    <option value="Igazi jó szomszéd">🤝 Igazi jó szomszéd</option>
-                  </select>
-                  <button
-                    disabled={busy}
-                    onClick={handleGiveKudos}
-                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow shrink-0"
-                  >
-                    Segített nekem ✓
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <AgreementStatusBar
+          isProInquiry={isProInquiry}
+          isRideAgreement={isRideAgreement}
+          liveAgr={liveAgr}
+          status={status}
+          isHelper={isHelper}
+          isRequester={isRequester}
+          isPostOwner={isPostOwner}
+          ownerIsHelper={ownerIsHelper}
+          ownerConfirmed={ownerConfirmed}
+          joinerConfirmed={joinerConfirmed}
+          fullRouteLabel={fullRouteLabel}
+          rideDepLabel={rideDepLabel}
+          etaSummary={etaSummary}
+          gpsActive={gpsActive}
+          busy={busy}
+          sharingPassengerPin={sharingPassengerPin}
+          kudosTag={kudosTag}
+          onChangeKudosTag={setKudosTag}
+          onProAccept={handleProAccept}
+          onProComplete={handleProComplete}
+          onCancelAgreement={handleCancelAgreement}
+          onSequentialApproval={handleSequentialApproval}
+          onUpdateStatus={handleUpdateStatus}
+          onSharePassengerLocation={handleSharePassengerLocation}
+          onGiveKudos={handleGiveKudos}
+        />
 
         {pickupDetourData && ['chatting', 'agreed'].includes(status) && (
           <div className="bg-white border-b border-[#DFD9CE]">
