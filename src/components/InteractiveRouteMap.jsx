@@ -358,13 +358,28 @@ export default function InteractiveRouteMap({
 
   const handleCenterGps = () => {
     if (!navigator.geolocation || !mapRef.current) return;
-    navigator.geolocation.getCurrentPosition((pos) => {
-      mapRef.current?.flyTo({
-        center: [pos.coords.longitude, pos.coords.latitude],
-        zoom: 15.5,
-        duration: 400
-      });
-    });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        const map = mapRef.current;
+        if (!map) return;
+
+        if (!map._userLocMarker) {
+          const el = document.createElement('div');
+          el.style.cssText =
+            'width:16px;height:16px;border-radius:9999px;background:#2563EB;border:3px solid #FFFFFF;box-shadow:0 0 0 4px rgba(37,99,235,0.28)';
+          map._userLocMarker = new maplibregl.Marker({ element: el })
+            .setLngLat([lng, lat])
+            .addTo(map);
+        } else {
+          map._userLocMarker.setLngLat([lng, lat]);
+        }
+
+        map.flyTo({ center: [lng, lat], zoom: 15.2, duration: 400 });
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
   };
 
   if (mapError) {
@@ -447,7 +462,7 @@ export default function InteractiveRouteMap({
           <button
             type="button"
             onClick={handleCenterGps}
-            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE] focus:outline-none focus-visible:ring-2 focus-visible:ring-pilis"
           >
             Saját helyzet
           </button>
@@ -457,7 +472,7 @@ export default function InteractiveRouteMap({
             onClick={toggleExpand}
             aria-label={isExpanded ? 'Térkép kicsinyítése' : 'Térkép nagyítása'}
             title={isExpanded ? 'Bezárás' : 'Nagyítás'}
-            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+            className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE] focus:outline-none focus-visible:ring-2 focus-visible:ring-pilis"
           >
             {isExpanded ? 'Bezárás ✕' : '⛶'}
           </button>

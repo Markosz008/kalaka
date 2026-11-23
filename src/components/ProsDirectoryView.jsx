@@ -1150,7 +1150,7 @@ export default function ProsDirectoryView({
               <button
                 type="button"
                 onClick={handleCenterUserGps}
-                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE] focus:outline-none focus-visible:ring-2 focus-visible:ring-pilis"
               >
                 Saját helyzet
               </button>
@@ -1160,7 +1160,7 @@ export default function ProsDirectoryView({
                 onClick={() => setIsMapExpanded((v) => !v)}
                 aria-label={isMapExpanded ? 'Térkép kicsinyítése' : 'Térkép nagyítása'}
                 title={isMapExpanded ? 'Bezárás' : 'Nagyítás'}
-                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE]"
+                className="bg-white/95 backdrop-blur hover:bg-limestone text-[#18261F] text-xs font-bold px-2.5 py-2 rounded-xl shadow-sm border border-[#DFD9CE] focus:outline-none focus-visible:ring-2 focus-visible:ring-pilis"
               >
                 {isMapExpanded ? 'Bezárás ✕' : '⛶'}
               </button>
