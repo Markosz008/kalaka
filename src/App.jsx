@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from './lib/supabase.js';
-import { computeStopsAlongRoute } from './lib/routing.js';
 import {
   resolveCoordsFromText,
   maskAddressForPublic
 } from './constants/szentendreData.js';
 import HeaderRoadBar from './components/HeaderRoadBar.jsx';
 import { stripAccents } from './components/AddressAutocompleteInput.jsx';
-import { parseFavorTag } from './components/FavorCard.jsx';
 import AgreementChatModal from './components/AgreementChatModal.jsx';
 import UserProfileModal from './components/UserProfileModal.jsx';
 import LegalModal from './components/LegalModal.jsx';
@@ -15,9 +13,7 @@ import AuthModal from './components/AuthModal.jsx';
 import BetaGateModal from './components/BetaGateModal.jsx';
 import {
   BETA_INVITE_ONLY,
-  captureInviteFromUrl,
-  getPendingInviteCode,
-  clearPendingInviteCode
+  captureInviteFromUrl
 } from './constants/betaConfig.js';
 import MessagesTabView from './components/MessagesTabView.jsx';
 import RoadAlertsModal from './components/RoadAlertsModal.jsx';
@@ -25,8 +21,6 @@ import InstallPushGuideModal from './components/InstallPushGuideModal.jsx';
 import MessagePushPromptModal from './components/MessagePushPromptModal.jsx';
 import {
   triggerRadarPushIfNeeded,
-  triggerNewRidePush,
-  triggerAgreementPush,
   syncAppBadge,
   getCurrentPushSubscription,
   getDeviceInstallInfo,
@@ -40,60 +34,21 @@ import RidesFeedView from './components/RidesFeedView.jsx';
 import BottomNavBar from './components/BottomNavBar.jsx';
 import {
   BASE_QUICK_DESTINATIONS,
-  formatAgreementRideTitle,
   normalizeRouteToken,
   geocodeAddressFallback,
-  getReadTimestamps,
-  markAgreementReadStorage,
-  getHiddenAgreements,
-  getPersonalRoutines,
-  recordPersonalRoutine,
-  getSavedPlaces,
-  playSoftNotificationTone,
-  triggerSystemNotification,
-  getNextQuarterHourHHMM,
-  getUpcomingRoundTimeSlots,
-  resolveAutoDayForTime,
-  formatDayLabelFromIso
+  markAgreementReadStorage
 } from './lib/appStorage.js';
+import { useAgreementActions } from './hooks/useAgreementActions.js';
+import { usePostCrud } from './hooks/usePostCrud.js';
+import { useLiveData } from './hooks/useLiveData.js';
 
 const ProsDirectoryView = React.lazy(() => import('./components/ProsDirectoryView.jsx'));
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('rides');
-  const [session, setSession] = useState(null);
   const [authInitialMode, setAuthInitialMode] = useState('login');
-  const [profile, setProfile] = useState({
-    id: 'guest-user',
-    display_name: '',
-    zone: 'Pismány',
-    ride_hearts: 0,
-    favor_hearts: 0
-  });
-
-  const [roadAlerts, setRoadAlerts] = useState([
-    {
-      id: 'default-ok',
-      category: 'traffic',
-      zone: 'Szentendre',
-      status_level: 'ok',
-      message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták',
-      author_name: 'Közösségi útinfó',
-      confirm_count: 0,
-      clear_count: 0,
-      updates: [],
-      created_at: new Date().toISOString()
-    }
-  ]);
-  const [myAlertVotes, setMyAlertVotes] = useState({});
-
-  const [rides, setRides] = useState([]);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [rideKindFilter, setRideKindFilter] = useState('all');
-  const [favors, setFavors] = useState([]);
-  const [pros, setPros] = useState([]);
-  const [myAgreements, setMyAgreements] = useState([]);
 
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
@@ -111,30 +66,11 @@ export default function App() {
   }, [showMap]);
   const [selectedRideForMap, setSelectedRideForMap] = useState(null);
 
-  const [inlineComposerMode, setInlineComposerMode] = useState(null);
-  const [inlineTime, setInlineTime] = useState(() => getNextQuarterHourHHMM());
-  const [inlineSchedule, setInlineSchedule] = useState('Munkanapokon (H–P)');
-  const [inlineSeats, setInlineSeats] = useState(3);
-  const [inlineNote, setInlineNote] = useState('');
-  const [inlineCarInfo, setInlineCarInfo] = useState('');
-  const [inlineSaving, setInlineSaving] = useState(false);
-
   const [activeAgreement, setActiveAgreement] = useState(null);
-  const notifiedMsgKeysRef = useRef(new Set());
-  const fetchDebounceRef = useRef(null);
-
   const [inspectedUser, setInspectedUser] = useState(null);
-  const [kudosCountByUser, setKudosCountByUser] = useState({});
-  const [searchStatsMap, setSearchStatsMap] = useState({});
-  const [personalRoutines, setPersonalRoutines] = useState(() => getPersonalRoutines(null));
-  const [savedPlaces, setSavedPlaces] = useState(() => getSavedPlaces(null));
   const [locatingOriginGps, setLocatingOriginGps] = useState(false);
-  const [incomingToast, setIncomingToast] = useState(null);
   const [appNotice, setAppNotice] = useState(null);
-  const [hiddenAgreementIds, setHiddenAgreementIds] = useState([]);
 
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [editingItemId, setEditingItemId] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showRoadModal, setShowRoadModal] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -144,19 +80,38 @@ export default function App() {
   const [selectedRoadHub, setSelectedRoadHub] = useState('11-es út');
   const roadInputRef = useRef(null);
 
-  const [newKind, setNewKind] = useState('offer');
-  const [newFavorMode, setNewFavorMode] = useState('ask');
-  const [newFrom, setNewFrom] = useState('');
-  const [newTo, setNewTo] = useState('');
-  const [newFromCoords, setNewFromCoords] = useState(null);
-  const [newToCoords, setNewToCoords] = useState(null);
-  const [newTime, setNewTime] = useState('05:50');
-  const [newScheduleText, setNewScheduleText] = useState('Munkanapokon (H–P)');
-  const [newSeats, setNewSeats] = useState(3);
-  const [newValidMins, setNewValidMins] = useState(720);
-  const [newNote, setNewNote] = useState('');
-  const [newMinHearts, setNewMinHearts] = useState(0);
-  const [showModalAdvanced, setShowModalAdvanced] = useState(false);
+  const {
+    session,
+    authReady,
+    profile,
+    setProfile,
+    roadAlerts,
+    myAlertVotes,
+    rides,
+    setRides,
+    initialLoading,
+    favors,
+    setFavors,
+    pros,
+    myAgreements,
+    setMyAgreements,
+    kudosCountByUser,
+    searchStatsMap,
+    personalRoutines,
+    setPersonalRoutines,
+    savedPlaces,
+    setSavedPlaces,
+    incomingToast,
+    setIncomingToast,
+    hiddenAgreementIds,
+    setHiddenAgreementIds,
+    loadUserProfile,
+    fetchAllLiveData
+  } = useLiveData({
+    setAuthInitialMode,
+    setShowAuthModal,
+    setSelectedRideForMap
+  });
 
   const showNotice = useCallback((text, tone = 'info') => {
     setAppNotice({ text, tone });
@@ -212,509 +167,10 @@ export default function App() {
     captureInviteFromUrl();
   }, []);
 
-  const loadUserProfile = useCallback(async (authUser) => {
-    if (!supabase || !authUser) return;
-    let { data } = await supabase
-      .from('profiles')
-      .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
-      .eq('id', authUser.id)
-      .maybeSingle();
-
-    if (!data) {
-      const fallbackName =
-        authUser.user_metadata?.full_name ||
-        authUser.email?.split('@')[0] ||
-        'Szomszéd';
-      const cleanZone = (authUser.user_metadata?.zone || 'Pismány')
-        .replace(/\s*\(.*?\)\s*/g, '')
-        .trim();
-      const { data: inserted } = await supabase
-        .from('profiles')
-        .insert({
-          id: authUser.id,
-          display_name:
-            fallbackName === 'Belépés' ? authUser.email?.split('@')[0] || 'Szomszéd' : fallbackName,
-          zone: cleanZone
-        })
-        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
-        .single();
-      data = inserted;
-    } else if (data.display_name === 'Belépés') {
-      const fixedName = authUser.email?.split('@')[0] || 'Szomszéd';
-      const { data: fixed } = await supabase
-        .from('profiles')
-        .update({ display_name: fixedName })
-        .eq('id', authUser.id)
-        .select('id, display_name, zone, bio, car_info, avatar_url, ride_hearts, favor_hearts, is_gps_local_verified, invite_code, is_admin, beta_approved')
-        .single();
-      if (fixed) data = fixed;
-    }
-
-    if (data) {
-      if (!data.beta_approved && !data.is_admin) {
-        const pendingCode = getPendingInviteCode();
-        if (pendingCode) {
-          try {
-            const { data: redeemRes } = await supabase.rpc('redeem_beta_invite', {
-              p_code: pendingCode
-            });
-            if (redeemRes?.ok) {
-              clearPendingInviteCode();
-              data = { ...data, beta_approved: true };
-            }
-          } catch {}
-        }
-      }
-      setProfile(data);
-      const dbHidden = Array.isArray(data.hidden_agreement_ids) ? data.hidden_agreement_ids : [];
-      const localHidden = getHiddenAgreements(data.id);
-      const mergedHidden = Array.from(new Set([...dbHidden, ...localHidden]));
-      setHiddenAgreementIds(mergedHidden);
-      localStorage.setItem(`kalaka_hidden_${data.id}`, JSON.stringify(mergedHidden));
-      if (supabase && mergedHidden.length > dbHidden.length) {
-        supabase
-          .from('profiles')
-          .update({ hidden_agreement_ids: mergedHidden })
-          .eq('id', data.id)
-          .then(() => {});
-      }
-      setPersonalRoutines(getPersonalRoutines(data.id));
-      setSavedPlaces(getSavedPlaces(data.id));
-    }
-  }, []);
-
-  const fetchAllLiveData = useCallback(async (currentUserId) => {
-    if (!supabase) return;
-    const nowIso = new Date().toISOString();
-
-    const [{ data: rideRows }, { data: favorRows }, { data: allProfs }, { data: allKudosRows }, { data: proRows }, { data: alertRows }] =
-      await Promise.all([
-        supabase
-          .from('rides')
-          .select('*, author:profiles!rides_user_id_fkey(display_name, ride_hearts, favor_hearts, zone, car_info, avatar_url)')
-          .eq('status', 'open')
-          .gt('expires_at', nowIso)
-          .order('departure_at', { ascending: true }),
-        supabase
-          .from('favors')
-          .select('*, author:profiles!favors_user_id_fkey(display_name, favor_hearts, zone, avatar_url)')
-          .eq('status', 'open')
-          .gt('expires_at', nowIso)
-          .order('created_at', { ascending: false }),
-        supabase.from('profiles').select('id, ride_hearts, favor_hearts'),
-        supabase.from('kudos').select('receiver_id'),
-        supabase
-          .from('local_pros')
-          .select('*')
-          .eq('is_active', true)
-          .order('endorsement_count', { ascending: false }),
-        supabase
-          .from('road_alerts')
-          .select('*, reporter:profiles!road_alerts_reporter_id_fkey(display_name, zone)')
-          .gt('expires_at', nowIso)
-          .order('last_confirmed_at', { ascending: false })
-          .limit(20)
-      ]);
-
-    const kMap = {};
-    (allProfs || []).forEach((p) => {
-      kMap[p.id] = (p.ride_hearts || 0) + (p.favor_hearts || 0);
-    });
-    const rawCounts = {};
-    (allKudosRows || []).forEach((kr) => {
-      if (kr.receiver_id) rawCounts[kr.receiver_id] = (rawCounts[kr.receiver_id] || 0) + 1;
-    });
-    Object.keys(rawCounts).forEach((uid) => {
-      kMap[uid] = Math.max(kMap[uid] || 0, rawCounts[uid]);
-    });
-    setKudosCountByUser(kMap);
-
-    if (rideRows) {
-      const mappedRides = rideRows.map((r) => {
-        const dt = new Date(r.departure_at);
-        const timeStr = dt.toTimeString().slice(0, 5);
-        const recMatch = r.note?.match(/^\[Rendszeres:\s*(.*?)\]\s*(.*)$/);
-        const isRec = Boolean(r.recurring_id || r.schedule_label || recMatch);
-        const scheduleLabel =
-          r.schedule_label || (recMatch ? recMatch[1] : isRec ? 'Munkanapokon (H–P)' : null);
-        const cleanNote = recMatch ? recMatch[2] : r.note;
-
-        let effectiveDepIso = r.departure_at;
-        if (isRec) {
-          const [hh, mm] = timeStr.split(':').map(Number);
-          const nextDep = new Date();
-          nextDep.setHours(hh || 6, mm || 0, 0, 0);
-          if (nextDep.getTime() < Date.now() - 15 * 60000) {
-            nextDep.setDate(nextDep.getDate() + 1);
-          }
-          effectiveDepIso = nextDep.toISOString();
-        }
-
-        let fixedOriginLat = r.origin_lat;
-        let fixedOriginLng = r.origin_lng;
-        if (
-          (r.origin_text || '').toLowerCase().includes('fogoly') &&
-          (!fixedOriginLng || Number(fixedOriginLng) < 19.059)
-        ) {
-          fixedOriginLat = 47.69031;
-          fixedOriginLng = 19.06172;
-        }
-
-        return {
-          ...r,
-          origin_lat: fixedOriginLat,
-          origin_lng: fixedOriginLng,
-          departure_at: effectiveDepIso,
-          note: cleanNote,
-          author_name: r.author?.display_name || 'Szomszéd',
-          author_zone: r.author?.zone || '',
-          author_avatar: r.author?.avatar_url || null,
-          author_car: r.car_info || r.author?.car_info || null,
-          car_info: r.car_info || r.author?.car_info || null,
-          author_ride_hearts: r.author?.ride_hearts || 0,
-          author_favor_hearts: r.author?.favor_hearts || 0,
-          is_recurring: isRec,
-          schedule_text: scheduleLabel,
-          depart_time: timeStr,
-          time_label: timeStr,
-          date_label: formatDayLabelFromIso(effectiveDepIso, isRec, scheduleLabel),
-          stops: []
-        };
-      });
-      mappedRides.sort((a, b) => new Date(a.departure_at) - new Date(b.departure_at));
-      setRides(mappedRides);
-
-      Promise.all(
-        mappedRides.map(async (rideItem) => {
-          if (rideItem.kind !== 'offer') return rideItem;
-          const computedStops = await computeStopsAlongRoute(rideItem);
-          return { ...rideItem, stops: computedStops };
-        })
-      ).then((enrichedRides) => {
-        setRides(enrichedRides);
-        setSelectedRideForMap((prev) =>
-          prev ? enrichedRides.find((x) => x.id === prev.id) || prev : null
-        );
-      });
-    }
-
-    if (favorRows) {
-      setFavors(
-        favorRows.map((f) => ({
-          ...f,
-          author_name: f.author?.display_name || 'Szomszéd',
-          author_zone: f.author?.zone || '',
-          author_avatar: f.author?.avatar_url || null,
-          author_favor_hearts: f.author?.favor_hearts || 0
-        }))
-      );
-    }
-
-    if (proRows) setPros(proRows);
-
-    if (alertRows && alertRows.length > 0) {
-      setRoadAlerts(
-        alertRows.map((a) => ({
-          ...a,
-          author_name: a.reporter?.display_name || 'Helyi lakos'
-        }))
-      );
-      supabase.auth.getUser().then(({ data: uData }) => {
-        const activeUid = uData?.user?.id;
-        if (!activeUid) {
-          setMyAlertVotes({});
-          return;
-        }
-        supabase
-          .from('road_alert_votes')
-          .select('alert_id, vote')
-          .eq('user_id', activeUid)
-          .in(
-            'alert_id',
-            alertRows.map((a) => a.id)
-          )
-          .then(({ data: voteRows }) => {
-            const vMap = {};
-            (voteRows || []).forEach((v) => {
-              vMap[v.alert_id] = v.vote;
-            });
-            setMyAlertVotes(vMap);
-          });
-      });
-    } else {
-      setRoadAlerts([
-        {
-          id: 'default-ok',
-          category: 'traffic',
-          zone: 'Szentendre',
-          status_level: 'ok',
-          message: 'Folyamatos haladás a 11-es úton • Hegyi utak tiszták',
-          author_name: 'Közösségi útinfó',
-          confirm_count: 0,
-          clear_count: 0,
-          updates: [],
-          created_at: new Date().toISOString()
-        }
-      ]);
-      setMyAlertVotes({});
-    }
-
-    supabase
-      .from('route_search_stats')
-      .select('hub_label, search_count')
-      .then(({ data: statRows }) => {
-        if (statRows) {
-          const m = {};
-          statRows.forEach((s) => {
-            m[s.hub_label] = s.search_count || 0;
-          });
-          setSearchStatsMap(m);
-        }
-      });
-
-    if (currentUserId && currentUserId !== 'guest-user') {
-      const { data: agrRows } = await supabase
-        .from('agreements')
-        .select(`
-          *,
-          requester:profiles!agreements_requester_id_fkey(display_name, avatar_url),
-          helper:profiles!agreements_helper_id_fkey(display_name, car_info, avatar_url),
-          ride:rides(origin_text, dest_text, kind, user_id, car_info, departure_at),
-          favor:favors(title),
-          pro:local_pros(business_name, profession_name)
-        `)
-        .or(`requester_id.eq.${currentUserId},helper_id.eq.${currentUserId}`)
-        .order('created_at', { ascending: false });
-
-      if (agrRows) {
-        const agrIds = agrRows.map((x) => x.id);
-        let latestMsgByAgr = {};
-        if (agrIds.length > 0) {
-          const { data: recentMsgs } = await supabase
-            .from('messages')
-            .select('agreement_id, sender_id, body, created_at')
-            .in('agreement_id', agrIds)
-            .order('created_at', { ascending: false })
-            .limit(80);
-          (recentMsgs || []).forEach((m) => {
-            if (!latestMsgByAgr[m.agreement_id]) {
-              latestMsgByAgr[m.agreement_id] = m;
-            }
-          });
-        }
-
-        const readMap = getReadTimestamps(currentUserId);
-        const mappedAgrs = agrRows.map((a) => {
-          const isReq = a.requester_id === currentUserId;
-          const lastMsg = latestMsgByAgr[a.id] || null;
-          const lastActivityAt = lastMsg?.created_at || a.created_at;
-          const lastReadAt = readMap[a.id];
-          const isUnread = Boolean(
-            lastMsg &&
-              lastMsg.sender_id !== currentUserId &&
-              (!lastReadAt || new Date(lastMsg.created_at) > new Date(lastReadAt))
-          );
-
-          return {
-            ...a,
-            partner_name: a.pro
-              ? a.pro.business_name
-              : isReq
-              ? a.helper?.display_name || 'Szomszéd'
-              : a.requester?.display_name || 'Szomszéd',
-            partner_avatar: a.pro
-              ? null
-              : isReq
-              ? a.helper?.avatar_url || null
-              : a.requester?.avatar_url || null,
-            post_owner_id: a.ride?.user_id || a.helper_id,
-            car_info: a.ride?.car_info || a.helper?.car_info || null,
-            ride_origin_text: a.ride?.origin_text || null,
-            ride_dest_text: a.ride?.dest_text || null,
-            ride_departure_at: a.ride?.departure_at || null,
-            title: a.ride
-              ? formatAgreementRideTitle(a.ride.origin_text, a.ride.dest_text, a.status)
-              : a.pro
-              ? a.pro.profession_name || 'Szakmai megkeresés'
-              : a.favor?.title || 'Egyeztetés',
-            last_message_body: lastMsg?.body || '',
-            last_activity_at: lastActivityAt,
-            has_unread: isUnread
-          };
-        });
-
-        mappedAgrs.sort(
-          (x, y) => new Date(y.last_activity_at) - new Date(x.last_activity_at)
-        );
-        setMyAgreements(mappedAgrs);
-
-        mappedAgrs.forEach((item) => {
-          if (item.has_unread && item.last_activity_at) {
-            const notifKey = `${item.id}_${item.last_activity_at}`;
-            if (!notifiedMsgKeysRef.current.has(notifKey)) {
-              notifiedMsgKeysRef.current.add(notifKey);
-              const previewText = `${item.partner_name}: ${item.last_message_body || 'Új üzenet / jelentkezés'}`;
-              playSoftNotificationTone();
-              triggerSystemNotification('Kaláka Szentendre', previewText);
-              setIncomingToast({
-                agreement_id: item.id,
-                body: previewText
-              });
-            }
-          }
-        });
-      }
-    }
-
-    setInitialLoading(false);
-  }, []);
-
-  const scheduleDebouncedRefresh = useCallback(
-    (uid) => {
-      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
-      fetchDebounceRef.current = setTimeout(() => {
-        fetchAllLiveData(uid);
-      }, 500);
-    },
-    [fetchAllLiveData]
-  );
-
   useEffect(() => {
     const timer = setInterval(() => setNowTick(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-    const uid = session?.user?.id || null;
-
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      if (s?.user) {
-        loadUserProfile(s.user);
-        fetchAllLiveData(s.user.id);
-      } else {
-        fetchAllLiveData(null);
-      }
-    });
-
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((event, s) => {
-      setSession(s);
-      if (event === 'PASSWORD_RECOVERY') {
-        setAuthInitialMode('recovery');
-        setShowAuthModal(true);
-      }
-      if (s?.user) {
-        loadUserProfile(s.user);
-        fetchAllLiveData(s.user.id);
-      } else {
-        setProfile({
-          id: 'guest-user',
-          display_name: '',
-          zone: 'Pismány',
-          ride_hearts: 0,
-          favor_hearts: 0
-        });
-        setMyAgreements([]);
-        setPersonalRoutines(getPersonalRoutines(null));
-        setSavedPlaces(getSavedPlaces(null));
-      }
-    });
-
-    let wakeRetryTimer = null;
-    const handleWakeOrFocus = () => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        scheduleDebouncedRefresh(uid);
-        if (wakeRetryTimer) clearTimeout(wakeRetryTimer);
-        wakeRetryTimer = setTimeout(() => {
-          fetchAllLiveData(uid);
-        }, 1500);
-      }
-    };
-    document.addEventListener('visibilitychange', handleWakeOrFocus);
-    window.addEventListener('focus', handleWakeOrFocus);
-    window.addEventListener('pageshow', handleWakeOrFocus);
-    window.addEventListener('online', handleWakeOrFocus);
-
-    const feedPollTimer = setInterval(() => {
-      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchAllLiveData(uid);
-      }
-    }, 15000);
-
-    const globalChannel = supabase
-      .channel('public-feed-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rides' }, () =>
-        scheduleDebouncedRefresh(uid)
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'favors' }, () =>
-        scheduleDebouncedRefresh(uid)
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agreements' }, (payload) => {
-        const oldRow = payload.old || {};
-        const newRow = payload.new || {};
-        if (
-          payload.eventType === 'UPDATE' &&
-          oldRow.status === newRow.status &&
-          oldRow.requester_agreed === newRow.requester_agreed &&
-          oldRow.helper_agreed === newRow.helper_agreed
-        ) {
-          return;
-        }
-        scheduleDebouncedRefresh(uid);
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-        const msg = payload.new;
-        if (!uid || !msg) return;
-        scheduleDebouncedRefresh(uid);
-        if (msg.sender_id !== uid) {
-          setHiddenAgreementIds((prev) => {
-            if (!prev.includes(msg.agreement_id)) return prev;
-            const next = prev.filter((id) => id !== msg.agreement_id);
-            localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
-            if (supabase) {
-              supabase
-                .from('profiles')
-                .update({ hidden_agreement_ids: next })
-                .eq('id', uid)
-                .then(() => {});
-            }
-            return next;
-          });
-          playSoftNotificationTone();
-          triggerSystemNotification('Új üzenet a Kalákán', msg.body || 'Új üzeneted érkezett');
-          setIncomingToast({
-            agreement_id: msg.agreement_id,
-            body: msg.body
-          });
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'road_alerts' }, () =>
-        scheduleDebouncedRefresh(uid)
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'local_pros' }, () =>
-        scheduleDebouncedRefresh(uid)
-      )
-      .subscribe((subStatus) => {
-        if (subStatus === 'SUBSCRIBED') {
-          scheduleDebouncedRefresh(uid);
-        }
-      });
-
-    return () => {
-      subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleWakeOrFocus);
-      window.removeEventListener('focus', handleWakeOrFocus);
-      window.removeEventListener('pageshow', handleWakeOrFocus);
-      window.removeEventListener('online', handleWakeOrFocus);
-      clearInterval(feedPollTimer);
-      if (wakeRetryTimer) clearTimeout(wakeRetryTimer);
-      supabase.removeChannel(globalChannel);
-      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
-    };
-  }, [loadUserProfile, fetchAllLiveData, scheduleDebouncedRefresh, session?.user?.id]);
 
   const activeTimeRides = useMemo(
     () =>
@@ -840,6 +296,91 @@ export default function App() {
     if (!shouldPromptForMessagePush(uid)) return;
     setJitPushPrompt({ title, subtitle });
   };
+
+  const {
+    inlineComposerMode,
+    setInlineComposerMode,
+    inlineTime,
+    setInlineTime,
+    inlineSchedule,
+    setInlineSchedule,
+    inlineSeats,
+    setInlineSeats,
+    inlineNote,
+    setInlineNote,
+    inlineCarInfo,
+    setInlineCarInfo,
+    inlineSaving,
+    showNewModal,
+    setShowNewModal,
+    editingItemId,
+    setEditingItemId,
+    newKind,
+    setNewKind,
+    newFavorMode,
+    setNewFavorMode,
+    newFrom,
+    setNewFrom,
+    setNewFromCoords,
+    newTo,
+    setNewTo,
+    setNewToCoords,
+    newTime,
+    setNewTime,
+    newScheduleText,
+    setNewScheduleText,
+    newSeats,
+    setNewSeats,
+    newValidMins,
+    setNewValidMins,
+    newNote,
+    setNewNote,
+    newMinHearts,
+    setNewMinHearts,
+    showModalAdvanced,
+    setShowModalAdvanced,
+    handlePublishInlineRide,
+    handleDeleteRide,
+    handleDeleteFavor,
+    handleOpenEditRide,
+    handleOpenEditFavor,
+    handleSaveModalPost
+  } = usePostCrud({
+    session,
+    profile,
+    filterFrom,
+    filterTo,
+    fromCoords,
+    toCoords,
+    setRides,
+    setFavors,
+    setPersonalRoutines,
+    setActiveTab,
+    setShowAuthModal,
+    showNotice,
+    fetchAllLiveData,
+    maybeOpenJitPushPrompt
+  });
+
+  const {
+    handleOpenAgreement,
+    handleStartRideAgreement,
+    handleStartFavorAgreement,
+    handleStartProAgreement,
+    handleHideCompletedAgreement
+  } = useAgreementActions({
+    session,
+    profile,
+    myAgreements,
+    setMyAgreements,
+    hiddenAgreementIds,
+    setHiddenAgreementIds,
+    setIncomingToast,
+    setActiveAgreement,
+    setShowAuthModal,
+    showNotice,
+    fetchAllLiveData
+  });
 
   useEffect(() => {
     syncAppBadge(unreadCount);
@@ -1016,327 +557,6 @@ export default function App() {
     );
   };
 
-  const handlePublishInlineRide = async (e) => {
-    e.preventDefault();
-    if (!filterFrom.trim() || !filterTo.trim()) return;
-
-    if (!session?.user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    setInlineSaving(true);
-    try {
-      const [hh, mm] = (inlineTime || '05:50').split(':').map(Number);
-      const dep = new Date();
-      dep.setHours(hh || 5, mm || 50, 0, 0);
-      if (dep < new Date()) dep.setDate(dep.getDate() + 1);
-
-      const isRec = inlineComposerMode === 'recurring';
-      const dbKind = inlineComposerMode === 'ask' ? 'ask' : 'offer';
-
-      const exp = isRec
-        ? new Date(Date.now() + 30 * 24 * 3600000)
-        : dbKind === 'ask'
-        ? new Date(dep.getTime() + 30 * 60000)
-        : new Date(dep.getTime() + 45 * 60000);
-
-      const startPt = fromCoords || resolveCoordsFromText(filterFrom) || (await geocodeAddressFallback(filterFrom));
-      const endPt = toCoords || resolveCoordsFromText(filterTo) || (await geocodeAddressFallback(filterTo));
-      const chosenCar =
-        dbKind === 'offer' ? inlineCarInfo.trim() || profile?.car_info || null : null;
-
-      const payload = {
-        user_id: session.user.id,
-        kind: dbKind,
-        origin_text: filterFrom.trim(),
-        dest_text: filterTo.trim(),
-        departure_at: dep.toISOString(),
-        expires_at: exp.toISOString(),
-        seats: dbKind === 'ask' ? Number(inlineSeats) || 1 : Number(inlineSeats) || 3,
-        car_info: chosenCar,
-        is_confirmed_today: true,
-        note: isRec
-          ? `[Rendszeres: ${inlineSchedule}] ${inlineNote.trim()}`.trim()
-          : inlineNote.trim()
-      };
-
-      if (startPt) {
-        payload.origin_lat = startPt.lat;
-        payload.origin_lng = startPt.lng;
-      }
-      if (endPt) {
-        payload.dest_lat = endPt.lat;
-        payload.dest_lng = endPt.lng;
-      }
-
-      let insertedRideId = null;
-      const { data: insRide, error } = await supabase
-        .from('rides')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) {
-        const { origin_lat, origin_lng, dest_lat, dest_lng, ...basicPayload } = payload;
-        const { data: retryRide, error: retryErr } = await supabase
-          .from('rides')
-          .insert(basicPayload)
-          .select('id')
-          .single();
-        if (retryErr) throw retryErr;
-        insertedRideId = retryRide?.id || null;
-      } else {
-        insertedRideId = insRide?.id || null;
-      }
-      if (insertedRideId) {
-        triggerNewRidePush(supabase, insertedRideId);
-      }
-
-      if (chosenCar && !profile?.car_info) {
-        await supabase
-          .from('profiles')
-          .update({ car_info: chosenCar })
-          .eq('id', session.user.id);
-      }
-
-      recordPersonalRoutine(session.user.id, filterFrom.trim(), filterTo.trim(), startPt, endPt);
-      setPersonalRoutines(getPersonalRoutines(session.user.id));
-      await fetchAllLiveData(session.user.id);
-      setInlineComposerMode(null);
-      setInlineNote('');
-      showNotice('Útvonal közzétéve ✓');
-      maybeOpenJitPushPrompt(
-        'Szóljunk, ha jelentkezik valaki az utadra?',
-        'Csak a saját üzeneteidről és fuvar-visszaigazolásokról küldünk jelzést. Városi hírekkel nem zavarunk, amíg külön nem kéred.'
-      );
-    } catch (err) {
-      showNotice(`Hiba a mentéskor: ${err.message}`, 'err');
-    } finally {
-      setInlineSaving(false);
-    }
-  };
-
-  const handleDeleteRide = async (rideId) => {
-    setRides((prev) => prev.filter((r) => r.id !== rideId));
-    if (supabase && !String(rideId).startsWith('demo-')) {
-      const { error } = await supabase.from('rides').delete().eq('id', rideId);
-      if (error) {
-        showNotice(`Törlési hiba: ${error.message}`, 'err');
-        fetchAllLiveData(session?.user?.id);
-      } else {
-        showNotice('Útvonal törölve.');
-      }
-    }
-  };
-
-  const handleDeleteFavor = async (favorId) => {
-    setFavors((prev) => prev.filter((f) => f.id !== favorId));
-    if (supabase && !String(favorId).startsWith('demo-')) {
-      const { error } = await supabase.from('favors').delete().eq('id', favorId);
-      if (error) {
-        showNotice(`Törlési hiba: ${error.message}`, 'err');
-        fetchAllLiveData(session?.user?.id);
-      } else {
-        showNotice('Kérés törölve.');
-      }
-    }
-  };
-
-  const handleOpenEditRide = (ride) => {
-    setEditingItemId(ride.id);
-    setNewKind(ride.is_recurring ? 'recurring' : ride.kind);
-    setNewFrom(ride.origin_text || '');
-    setNewTo(ride.dest_text || '');
-    setNewFromCoords(
-      ride.origin_lat && ride.origin_lng
-        ? { lat: Number(ride.origin_lat), lng: Number(ride.origin_lng) }
-        : null
-    );
-    setNewToCoords(
-      ride.dest_lat && ride.dest_lng
-        ? { lat: Number(ride.dest_lat), lng: Number(ride.dest_lng) }
-        : null
-    );
-    setNewTime(ride.time_label || '05:50');
-    setNewScheduleText(ride.schedule_text || 'Munkanapokon (H–P)');
-    setNewSeats(ride.seats || 3);
-    setNewNote(ride.note || '');
-    setNewValidMins(720);
-    setShowNewModal(true);
-  };
-
-  const handleOpenEditFavor = (favor) => {
-    const { isOffer, cleanTitle } = parseFavorTag(favor.title);
-    setEditingItemId(favor.id);
-    setNewKind('favor');
-    setNewFavorMode(isOffer ? 'offer' : 'ask');
-    setNewFrom(cleanTitle);
-    setNewNote(favor.description || '');
-    setNewMinHearts(favor.min_favor_hearts || 0);
-    setNewValidMins(1440);
-    setShowModalAdvanced(Boolean(favor.min_favor_hearts > 0));
-    setShowNewModal(true);
-  };
-
-  const handleSaveModalPost = async (e) => {
-    e.preventDefault();
-    if (!session?.user) {
-      setShowNewModal(false);
-      setShowAuthModal(true);
-      return;
-    }
-
-    if (newKind === 'favor') {
-      const validMinutes = Number(newValidMins) || 1440;
-      const expIso = new Date(Date.now() + validMinutes * 60 * 1000).toISOString();
-      const rawClean = newFrom.replace(/^\[(Felajánlás|Kérés)\]\s*/i, '').trim();
-      if (!rawClean) return;
-
-      const prefix = newFavorMode === 'offer' ? '[Felajánlás] ' : '[Kérés] ';
-      const favPayload = {
-        title: `${prefix}${rawClean}`,
-        description: newNote.trim(),
-        zone: profile.zone || 'Pismány',
-        min_favor_hearts: Number(newMinHearts) || 0,
-        expires_at: expIso
-      };
-
-      if (editingItemId) {
-        const { error } = await supabase
-          .from('favors')
-          .update(favPayload)
-          .eq('id', editingItemId);
-        if (error) {
-          showNotice(`Szerkesztési hiba: ${error.message}`, 'err');
-          return;
-        }
-      } else {
-        const { error } = await supabase
-          .from('favors')
-          .insert({ ...favPayload, user_id: session.user.id });
-        if (error) {
-          showNotice(`Mentési hiba: ${error.message}`, 'err');
-          return;
-        }
-      }
-      setActiveTab('favors');
-    } else {
-      if (!newFrom.trim() || !newTo.trim()) return;
-      const [hh, mm] = (newTime || '05:50').split(':').map(Number);
-      const dep = new Date();
-      dep.setHours(hh || 5, mm || 50, 0, 0);
-      if (dep < new Date()) dep.setDate(dep.getDate() + 1);
-
-      const isRec = newKind === 'recurring';
-      const actualKind = isRec ? 'offer' : newKind;
-
-      const expDate = isRec
-        ? new Date(Date.now() + 30 * 24 * 3600000)
-        : actualKind === 'ask'
-        ? new Date(dep.getTime() + 30 * 60000)
-        : new Date(dep.getTime() + 45 * 60000);
-
-      const startPt = newFromCoords || resolveCoordsFromText(newFrom);
-      const endPt = newToCoords || resolveCoordsFromText(newTo);
-
-      const ridePayload = {
-        kind: actualKind,
-        origin_text: newFrom.trim(),
-        dest_text: newTo.trim(),
-        departure_at: dep.toISOString(),
-        expires_at: expDate.toISOString(),
-        seats: Number(newSeats) || 3,
-        car_info: profile?.car_info || null,
-        is_confirmed_today: true,
-        note: isRec
-          ? `[Rendszeres: ${newScheduleText}] ${newNote.trim()}`.trim()
-          : newNote.trim()
-      };
-
-      if (startPt) {
-        ridePayload.origin_lat = startPt.lat;
-        ridePayload.origin_lng = startPt.lng;
-      }
-      if (endPt) {
-        ridePayload.dest_lat = endPt.lat;
-        ridePayload.dest_lng = endPt.lng;
-      }
-
-      if (editingItemId) {
-        const { error } = await supabase
-          .from('rides')
-          .update(ridePayload)
-          .eq('id', editingItemId);
-        if (error) {
-          const { origin_lat, origin_lng, dest_lat, dest_lng, ...basic } = ridePayload;
-          const { error: retryErr } = await supabase
-            .from('rides')
-            .update(basic)
-            .eq('id', editingItemId);
-          if (retryErr) {
-            showNotice(`Szerkesztési hiba: ${retryErr.message}`, 'err');
-            return;
-          }
-        }
-      } else {
-        let insertedRideId = null;
-        const { data: insRide, error } = await supabase
-          .from('rides')
-          .insert({ ...ridePayload, user_id: session.user.id })
-          .select('id')
-          .single();
-        if (error) {
-          const { origin_lat, origin_lng, dest_lat, dest_lng, ...basic } = ridePayload;
-          const { data: retryRide, error: retryErr } = await supabase
-            .from('rides')
-            .insert({ ...basic, user_id: session.user.id })
-            .select('id')
-            .single();
-          if (retryErr) {
-            showNotice(`Mentési hiba: ${retryErr.message}`, 'err');
-            return;
-          }
-          insertedRideId = retryRide?.id || null;
-        } else {
-          insertedRideId = insRide?.id || null;
-        }
-        if (insertedRideId) {
-          triggerNewRidePush(supabase, insertedRideId);
-        }
-      }
-      recordPersonalRoutine(session.user.id, newFrom.trim(), newTo.trim(), startPt, endPt);
-      setPersonalRoutines(getPersonalRoutines(session.user.id));
-      setActiveTab('rides');
-    }
-
-    setShowNewModal(false);
-    setEditingItemId(null);
-    setNewFrom('');
-    setNewTo('');
-    setNewNote('');
-    showNotice(editingItemId ? 'Módosítások mentve ✓' : 'Közzétéve ✓');
-    fetchAllLiveData(session.user.id);
-    if (!editingItemId) {
-      maybeOpenJitPushPrompt(
-        newKind === 'favor'
-          ? 'Szóljunk, ha jelentkezik egy szomszéd?'
-          : 'Szóljunk, ha jelentkezik valaki az utadra?',
-        'Csak a saját üzeneteidről és visszaigazolásokról kapsz jelzést — a Városi Radart külön kapcsolhatod be.'
-      );
-    }
-  };
-
-  const handleOpenAgreement = (agr) => {
-    if (session?.user?.id && agr?.id) {
-      markAgreementReadStorage(session.user.id, agr.id);
-      setMyAgreements((prev) =>
-        prev.map((item) => (item.id === agr.id ? { ...item, has_unread: false } : item))
-      );
-    }
-    setIncomingToast(null);
-    setActiveAgreement(agr);
-  };
-
   useEffect(() => {
     if (!pendingNotifAgrId) return;
     const target = myAgreements.find((a) => a.id === pendingNotifAgrId);
@@ -1345,225 +565,6 @@ export default function App() {
       handleOpenAgreement(target);
     }
   }, [pendingNotifAgrId, myAgreements]);
-
-  const handleStartRideAgreement = async (ride, selectedStop) => {
-    if (!session?.user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    const existingLocal = myAgreements.find((a) => a.ride_id === ride.id);
-    if (existingLocal) {
-      handleOpenAgreement(existingLocal);
-      return;
-    }
-
-    const requesterId = ride.kind === 'offer' ? session.user.id : ride.user_id;
-    const helperId = ride.kind === 'offer' ? ride.user_id : session.user.id;
-    const stopLabel = selectedStop
-      ? [selectedStop.time, selectedStop.name].filter(Boolean).join(' ').trim()
-      : null;
-
-    const { data: existingAgr } = await supabase
-      .from('agreements')
-      .select('*')
-      .eq('ride_id', ride.id)
-      .eq('requester_id', requesterId)
-      .eq('helper_id', helperId)
-      .maybeSingle();
-
-    if (existingAgr) {
-      const resolvedCar = ride.car_info || (ride.kind === 'ask' ? profile?.car_info || null : null);
-      handleOpenAgreement({
-        ...existingAgr,
-        post_owner_id: ride.user_id,
-        car_info: resolvedCar,
-        ride_origin_text: ride.origin_text || null,
-        ride_dest_text: ride.dest_text || null,
-        partner_name: ride.author_name,
-        partner_avatar: ride.author_avatar || null,
-        title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, existingAgr.status)
-      });
-      return;
-    }
-
-    const { data: createdAgr, error } = await supabase
-      .from('agreements')
-      .insert({
-        ride_id: ride.id,
-        requester_id: requesterId,
-        helper_id: helperId,
-        pickup_stop_name: stopLabel,
-        status: 'chatting'
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      showNotice(`Nem sikerült csatlakozni: ${error.message}`, 'err');
-      return;
-    }
-
-    const initialRideMsg =
-      ride.kind === 'ask'
-        ? 'Szia! Szívesen elviszlek erre az útra.'
-        : stopLabel
-        ? selectedStop?.detourLabel
-          ? `Szia! Felszállnék itt: ${stopLabel} (${selectedStop.detourLabel}).`
-          : `Szia! Felszállnék itt: ${stopLabel}.`
-        : 'Szia! Csatlakoznék az úthoz.';
-
-    await supabase.from('messages').insert({
-      agreement_id: createdAgr.id,
-      sender_id: session.user.id,
-      body: initialRideMsg
-    });
-
-    triggerAgreementPush(
-      supabase,
-      createdAgr.id,
-      ride.kind === 'ask' ? 'Új fuvarajánlat érkezett' : 'Valaki csatlakozna a fuvarodhoz',
-      initialRideMsg
-    );
-
-    const resolvedCar = ride.car_info || (ride.kind === 'ask' ? profile?.car_info || null : null);
-    handleOpenAgreement({
-      ...createdAgr,
-      post_owner_id: ride.user_id,
-      car_info: resolvedCar,
-      ride_origin_text: ride.origin_text || null,
-      ride_dest_text: ride.dest_text || null,
-      ride_departure_at: ride.departure_at || null,
-      partner_name: ride.author_name,
-      partner_avatar: ride.author_avatar || null,
-      title: formatAgreementRideTitle(ride.origin_text, ride.dest_text, 'chatting')
-    });
-    fetchAllLiveData(session.user.id);
-  };
-
-  const handleStartFavorAgreement = async (favor) => {
-    if (!session?.user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    const existingLocal = myAgreements.find((a) => a.favor_id === favor.id);
-    if (existingLocal) {
-      handleOpenAgreement(existingLocal);
-      return;
-    }
-
-    const requesterId = session.user.id;
-    const helperId = favor.user_id;
-
-    const { data: existingAgr } = await supabase
-      .from('agreements')
-      .select('*')
-      .eq('favor_id', favor.id)
-      .eq('requester_id', requesterId)
-      .eq('helper_id', helperId)
-      .maybeSingle();
-
-    if (existingAgr) {
-      handleOpenAgreement({
-        ...existingAgr,
-        partner_name: favor.author_name,
-        partner_avatar: favor.author_avatar || null,
-        title: favor.title
-      });
-      return;
-    }
-
-    const { data: createdAgr, error } = await supabase
-      .from('agreements')
-      .insert({
-        favor_id: favor.id,
-        requester_id: requesterId,
-        helper_id: helperId,
-        status: 'chatting'
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      showNotice(`Nem sikerült megnyitni: ${error.message}`, 'err');
-      return;
-    }
-
-    const initialFavorMsg = `Szia! Érdekelne: ${favor.title}`;
-    await supabase.from('messages').insert({
-      agreement_id: createdAgr.id,
-      sender_id: session.user.id,
-      body: initialFavorMsg
-    });
-
-    triggerAgreementPush(
-      supabase,
-      createdAgr.id,
-      'Új jelentkező a Kalákádra',
-      initialFavorMsg
-    );
-
-    handleOpenAgreement({
-      ...createdAgr,
-      partner_name: favor.author_name,
-      partner_avatar: favor.author_avatar || null,
-      title: favor.title
-    });
-    fetchAllLiveData(session.user.id);
-  };
-
-  const handleStartProAgreement = async (pro) => {
-    if (!session?.user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    const { data: existingAgr } = await supabase
-      .from('agreements')
-      .select('*')
-      .eq('pro_id', pro.id)
-      .eq('requester_id', session.user.id)
-      .maybeSingle();
-
-    if (existingAgr) {
-      handleOpenAgreement({
-        ...existingAgr,
-        partner_name: pro.business_name,
-        title: pro.profession_name || 'Szakmai egyeztetés'
-      });
-      return;
-    }
-
-    const { data: createdAgr, error } = await supabase
-      .from('agreements')
-      .insert({
-        pro_id: pro.id,
-        requester_id: session.user.id,
-        helper_id: pro.owner_id || null,
-        status: 'chatting'
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      showNotice(`Nem sikerült megnyitni a beszélgetést: ${error.message}`, 'err');
-      return;
-    }
-
-    await supabase.from('messages').insert({
-      agreement_id: createdAgr.id,
-      sender_id: session.user.id,
-      body: 'Szia! Szeretnék érdeklődni, mikor lenne szabad időpontod.'
-    });
-
-    handleOpenAgreement({
-      ...createdAgr,
-      partner_name: pro.business_name,
-      title: pro.profession_name || 'Szakmai egyeztetés'
-    });
-    fetchAllLiveData(session.user.id);
-  };
 
   const handleSelectRoadPrefix = (prefix) => {
     setSelectedRoadHub(prefix);
@@ -1648,27 +649,6 @@ export default function App() {
     if (!supabase || alertId === 'default-ok') return;
     await supabase.from('road_alerts').delete().eq('id', alertId);
     fetchAllLiveData(session?.user?.id);
-  };
-
-  const handleHideCompletedAgreement = async (e, agrId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const uid = session?.user?.id;
-    if (!uid) return;
-    markAgreementReadStorage(uid, agrId);
-    setMyAgreements((prev) =>
-      prev.map((item) => (item.id === agrId ? { ...item, has_unread: false } : item))
-    );
-    setIncomingToast((prev) => (prev?.agreement_id === agrId ? null : prev));
-    const next = Array.from(new Set([...hiddenAgreementIds, agrId]));
-    setHiddenAgreementIds(next);
-    localStorage.setItem(`kalaka_hidden_${uid}`, JSON.stringify(next));
-    if (supabase) {
-      await supabase
-        .from('profiles')
-        .update({ hidden_agreement_ids: next })
-        .eq('id', uid);
-    }
   };
 
   const hasBothRouteEnds = Boolean(filterFrom.trim() && filterTo.trim());
@@ -2071,7 +1051,7 @@ export default function App() {
           (!profile.beta_approved && !profile.is_admin)) && (
           <BetaGateModal
             session={session}
-            profileLoading={Boolean(session?.user && profile.id !== session.user.id)}
+            profileLoading={!authReady || Boolean(session?.user && profile.id !== session.user.id)}
             onOpenAuth={(nextMode) => {
               setAuthInitialMode(nextMode || 'login');
               setShowAuthModal(true);

@@ -24,6 +24,7 @@ export function useLiveData({
   setSelectedRideForMap
 }) {
   const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [roadAlerts, setRoadAlerts] = useState(() => [createDefaultRoadAlert()]);
   const [myAlertVotes, setMyAlertVotes] = useState({});
@@ -209,13 +210,14 @@ export function useLiveData({
 
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
+      setAuthReady(true);
       if (s?.user) {
         loadUserProfile(s.user);
         fetchAllLiveData(s.user.id);
       } else {
         fetchAllLiveData(null);
       }
-    });
+    }).catch(() => setAuthReady(true));
 
     const {
       data: { subscription }
@@ -331,6 +333,7 @@ export function useLiveData({
 
   return {
     session,
+    authReady,
     profile,
     setProfile,
     roadAlerts,
