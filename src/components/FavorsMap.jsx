@@ -29,7 +29,7 @@ export default function FavorsMap({ favors = [], onSelectFavor }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
-  const [showMap, setShowMap] = useState(() => favors.length > 0);
+  const [showMap, setShowMap] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [selectedFavor, setSelectedFavor] = useState(null);
 

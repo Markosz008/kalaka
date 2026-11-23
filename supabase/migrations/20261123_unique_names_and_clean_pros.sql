@@ -1,4 +1,5 @@
-delete from public.local_pros
+update public.local_pros
+set is_active = false
 where id in (
   'c3f746f7-fde2-403d-a467-fcff43e9fa9a',
   '2585b982-ad33-4f3a-a59e-59009ac1db9a'
